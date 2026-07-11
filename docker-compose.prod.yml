@@ -145,7 +145,7 @@ services:
       context: .
       dockerfile: deploy/nginx/Dockerfile
     ports:
-      - 9050:9050
+      - "127.0.0.1:9050:80"
     depends_on:
       backend:
         condition: service_healthy
