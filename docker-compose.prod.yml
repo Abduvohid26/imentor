@@ -145,7 +145,7 @@ services:
       context: .
       dockerfile: deploy/nginx/Dockerfile
     ports:
-      - "${IMENTOR_HTTP_BIND:-127.0.0.1}:${IMENTOR_HTTP_PORT:-9050}:80"
+      - 9050:9050
     depends_on:
       backend:
         condition: service_healthy
