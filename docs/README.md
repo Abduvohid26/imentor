@@ -101,11 +101,9 @@
 | Celery | 5.4 | AI vazifalar (background worker) |
 | OpenAI API | gpt-4o / gpt-4o-mini | AI generatsiya |
 
-### DevOps
-
 - Docker + Docker Compose (`dev` va `prod` — alohida to'liq stack fayllar)
-- nginx gateway (`deploy/nginx/docker-gateway.conf`) — frontend, API va media proxy
-- GitHub Actions (CI + ixtiyoriy SSH deploy)
+- Docker ichidagi **nginx gateway** — frontend, API va media routing
+- Host nginx (serverda qo'lda) — SSL va domen
 
 ---
 
@@ -115,19 +113,17 @@
 Brauzer
    │
    ▼
-nginx (gateway) ──► frontend (static SPA)
-   │                      │
-   ├── /api/* ────────────┼──► backend ×2 (Gunicorn, least_conn)
-   │                      │
-   └── /media/* ──────────┘
-                              │
-                    celery_worker (AI tasks)
-                              │
-                    postgres + redis
+Host nginx (serverda, SSL) ──► Docker nginx gateway (:9050)
+                                   ├── /api/*, /media/* ──► backend ×N
+                                   └── / ─────────────────► frontend (SPA)
+                                                              │
+                                                    celery_worker
+                                                              │
+                                                    postgres + redis
 ```
 
 - **migrate** — bir martalik servis: migratsiya, static, bootstrap admin
-- **backend** — `RUN_MIGRATIONS=0`, 2 ta replika tavsiya etiladi (`--scale backend=2`)
+- **backend** — `RUN_MIGRATIONS=0`, `--scale backend=2` tavsiya (gateway load balance qiladi)
 - **celery_worker** — OpenAI chaqiruvlari (ta'lim va startap AI)
 - **redis** — cache, rate-limit, Celery broker, AI job holati
 - **postgres** — asosiy ma'lumotlar bazasi (SQLite ishlatilmaydi)
@@ -172,18 +168,11 @@ imentor/
 │   └── package.json
 ├── deploy/
 │   ├── .env.production.example
-│   ├── .env.deploy.local.example
-│   ├── remote_deploy.py
-│   ├── nginx/
-│   │   ├── Dockerfile          # Gateway image
-│   │   ├── docker-gateway.conf
-│   │   ├── imentor.conf.example
-│   │   └── imentor-ssl.conf.example
-│   └── data/                   # Xodim roster JSON
-├── .github/workflows/
-│   ├── ci.yml
-│   └── deploy-production.yml
-├── docker-compose.dev.yml      # Lokal dev (port 8080)
+│   ├── set-django-secret.sh
+│   └── nginx/
+│       ├── Dockerfile          # Docker gateway
+│       └── docker-gateway.conf
+├── docker-compose.dev.yml      # Lokal dev (gateway :8080)
 ├── docker-compose.prod.yml     # Production (IMENTOR_HTTP_PORT)
 ├── .env.example
 └── README.md
@@ -225,7 +214,7 @@ docker compose -f docker-compose.dev.yml up --scale backend=2 --build
 | Swagger | http://localhost:8080/api/docs/ |
 | Health check | http://localhost:8080/api/health/ |
 
-> Dev rejimida nginx porti **8080** ga bog'langan (`127.0.0.1:8080:80`). `.env` dagi `IMENTOR_HTTP_PORT` dev uchun **ishlatilmaydi**.
+> Dev: bitta gateway port **8080** — `/api` va SPA bir joydan ishlaydi.
 
 ### Variant B — Native (faqat backend/frontend alohida)
 
@@ -291,7 +280,7 @@ docker compose -f docker-compose.prod.yml \
   up --scale backend=2 --build
 ```
 
-Default port: `http://127.0.0.1:31001` (`IMENTOR_HTTP_PORT=31001`).
+Default port: `http://127.0.0.1:9050` (`IMENTOR_HTTP_PORT=9050`).
 
 ---
 
@@ -310,7 +299,7 @@ Default port: `http://127.0.0.1:31001` (`IMENTOR_HTTP_PORT=31001`).
 | `VITE_API_BASE_URL` | Frontend API bazasi | `/api` |
 | `ADMIN_PHONE` | Bootstrap superuser telefoni | — |
 | `ADMIN_PASSWORD` | Bootstrap superuser paroli | — |
-| `IMENTOR_HTTP_PORT` | Prod gateway porti (faqat prod) | `31001` |
+| `IMENTOR_HTTP_PORT` | Prod gateway porti | `9050` |
 | `IMENTOR_HTTP_BIND` | Prod bind manzili | `127.0.0.1` |
 
 ### Backend qo'shimcha
@@ -445,12 +434,12 @@ To'liq ro'yxat: `backend/core/urls.py` yoki Swagger UI.
 
 ## Docker Compose
 
-Faqat **ikkita** compose fayl — har biri to'liq stack (postgres, redis, migrate, backend, celery, frontend, nginx).
+Faqat **ikkita** compose fayl — har biri to'liq stack (postgres, redis, migrate, backend, celery, frontend, nginx gateway).
 
 | Fayl | Maqsad | Port |
 |---|---|---|
 | `docker-compose.dev.yml` | Lokal dev | `http://localhost:8080` |
-| `docker-compose.prod.yml` | Production | `http://127.0.0.1:${IMENTOR_HTTP_PORT}` (default `31001`) |
+| `docker-compose.prod.yml` | Production | `http://127.0.0.1:${IMENTOR_HTTP_PORT}` |
 
 ### Servislar
 
@@ -461,7 +450,7 @@ Faqat **ikkita** compose fayl — har biri to'liq stack (postgres, redis, migrat
 | `migrate` | Bir martalik: migrate, collectstatic, admin bootstrap |
 | `backend` | Gunicorn API (`--scale backend=2` tavsiya) |
 | `celery_worker` | AI background tasklar |
-| `frontend` | Vite build → nginx static |
+| `frontend` | Vite build → static SPA |
 | `nginx` | Gateway: `/` → frontend, `/api` → backend, `/media` → backend |
 
 ### Ishga tushirish
@@ -480,33 +469,26 @@ docker compose -f docker-compose.prod.yml \
 
 ## Production deploy
 
-Production manzil: **imentor.uz**
-
-Docker gateway faqat `127.0.0.1:IMENTOR_HTTP_PORT` da tinglaydi — host nginx shu portga proxy qiladi.
+Serverda faqat Docker stack ishga tushiring. **Host nginx** va **SSL** ni serverda o'zingiz sozlaysiz.
 
 ### 1. Muhit fayli
 
 ```bash
 cp deploy/.env.production.example deploy/.env.production
+sh deploy/set-django-secret.sh
+nano deploy/.env.production
 ```
 
-`deploy/.env.production` ichida to'ldiring:
+Majburiy: `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, `OPENAI_API_KEY`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS`.
+
+Port (default `9050`):
 
 ```env
-DJANGO_SECRET_KEY=<python -c "import secrets; print(secrets.token_urlsafe(48))">
-POSTGRES_PASSWORD=<kuchli-parol>
-OPENAI_API_KEY=<openai-api-kaliti>
-ADMIN_PHONE=998907863888
-ADMIN_PASSWORD=<kuchli-parol>
-DJANGO_ALLOWED_HOSTS=imentor.uz,www.imentor.uz,api.imentor.uz,localhost,127.0.0.1
-DJANGO_CORS_ALLOWED_ORIGINS=https://imentor.uz,https://www.imentor.uz
-DJANGO_CSRF_TRUSTED_ORIGINS=https://imentor.uz,https://www.imentor.uz,https://api.imentor.uz
-VITE_API_BASE_URL=/api
 IMENTOR_HTTP_BIND=127.0.0.1
-IMENTOR_HTTP_PORT=31001
+IMENTOR_HTTP_PORT=9050
 ```
 
-> `.env.production` faylini **hech qachon git'ga commit qilmang**.
+> `.env.production` git'ga commit qilinmaydi.
 
 ### 2. Docker Compose
 
@@ -516,27 +498,27 @@ docker compose -f docker-compose.prod.yml \
   up --scale backend=2 -d --build
 ```
 
-### 3. Host nginx
+Tekshirish:
 
 ```bash
-sudo cp deploy/nginx/imentor.conf.example /etc/nginx/sites-available/imentor
-sudo ln -sf /etc/nginx/sites-available/imentor /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+curl http://127.0.0.1:9050/api/health/
 ```
 
-### 4. TLS (SSL)
+### 3. Server nginx (qo'lda)
 
-```bash
-sudo certbot --nginx -d imentor.uz -d www.imentor.uz
+Docker gateway portiga proxy qiling (masalan `9050`):
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:9050;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
 ```
 
-### Masofadan deploy
-
-```bash
-pip install -r deploy/requirements-deploy.txt
-cp deploy/.env.deploy.local.example deploy/.env.deploy.local
-python deploy/remote_deploy.py
-```
+SSL — serverda `certbot` yoki mavjud sertifikatingiz bilan.
 
 ---
 
@@ -562,13 +544,9 @@ Har bir PR va `main`/`master` push'da:
 
 | Job | Vazifa |
 |---|---|
-| `frontend` | `npm ci` → `tsc` → `vite build` |
+| `frontend` | `npm ci` → `tsc` → `vitest` → `vite build` |
 | `backend` | `pip install` → `check --deploy` → `migrate` → `test` |
 | `docker-smoke` | `docker compose -f docker-compose.prod.yml up` → health check |
-
-### Avtomatik deploy (`deploy-production.yml`)
-
-`vars.SSH_DEPLOY_ENABLED == 'true'` bo'lsa, SSH orqali serverga `git pull` + `docker compose up -d --build`.
 
 ---
 
@@ -606,9 +584,7 @@ Faqat **dev** rejimida yoki `VITE_ENABLE_DEMO_AUTH=true` bo'lganda ishlaydi.
 | Compose | URL |
 |---|---|
 | `docker-compose.dev.yml` | http://localhost:**8080** |
-| `docker-compose.prod.yml` | http://127.0.0.1:**IMENTOR_HTTP_PORT** (default 31001) |
-
-`.env` dagi `IMENTOR_HTTP_PORT=88` faqat **prod** compose bilan ishlaydi.
+| `docker-compose.prod.yml` | http://127.0.0.1:**IMENTOR_HTTP_PORT** (default 9050) |
 
 Tekshirish:
 
@@ -634,7 +610,7 @@ docker compose -f docker-compose.dev.yml logs migrate
 
 ### Frontend API'ga ulanmayapti
 
-- Docker'da `VITE_API_BASE_URL=/api` bo'lishi kerak
+- Docker'da `VITE_API_BASE_URL=/api` bo'lishi kerak (gateway `/api` ni backendga yo'naltiradi)
 - Native dev'da `VITE_API_BASE_URL=http://localhost:8000/api`
 - CORS: `DJANGO_CORS_ALLOWED_ORIGINS` ga frontend manzilini qo'shing
 

@@ -3,7 +3,7 @@
 #   cp deploy/.env.production.example deploy/.env.production
 #   docker compose -f docker-compose.prod.yml --env-file deploy/.env.production up --scale backend=2 -d --build
 #
-# Server (host nginx proxy): IMENTOR_HTTP_PORT=31001 → 127.0.0.1:31001
+# Tashqi port: IMENTOR_HTTP_BIND + IMENTOR_HTTP_PORT (gateway nginx — host nginx shu portga proxy qiladi)
 
 x-backend-env: &backend-env
   DJANGO_ENV: prod
@@ -145,7 +145,7 @@ services:
       context: .
       dockerfile: deploy/nginx/Dockerfile
     ports:
-      - "${IMENTOR_HTTP_BIND:-127.0.0.1}:${IMENTOR_HTTP_PORT:-31001}:80"
+      - "${IMENTOR_HTTP_BIND:-127.0.0.1}:${IMENTOR_HTTP_PORT:-9050}:80"
     depends_on:
       backend:
         condition: service_healthy

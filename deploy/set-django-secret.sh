@@ -39,4 +39,4 @@ mv "$tmp" "$ENV_FILE"
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 
 echo "OK: DJANGO_SECRET_KEY yangilandi ($ENV_FILE)."
-echo "Keyin: cd $ROOT && sh deploy/server-pull.sh"
+echo "Keyin: docker compose -f docker-compose.prod.yml --env-file deploy/.env.production up -d --build"

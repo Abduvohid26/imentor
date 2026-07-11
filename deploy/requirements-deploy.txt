@@ -1,2 +1,0 @@
-# pip install -r deploy/requirements-deploy.txt
-paramiko>=3.4,<4

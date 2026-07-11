@@ -22,4 +22,4 @@ frontend/playwright-report/
 .env*
 !.env.example
 !deploy/.env.production.example
-!deploy/.env.deploy.local.example
+.claude
