@@ -48,7 +48,7 @@ if not os.getenv("REDIS_URL", "").strip():  # noqa: F405
 if not os.getenv("DJANGO_DB_PASSWORD", "").strip():  # noqa: F405
     raise ImproperlyConfigured("DJANGO_DB_PASSWORD / POSTGRES_PASSWORD must be set in production.")
 
-if not _BEHIND_PROXY:  # noqa: F405
+if not os.getenv("_BEHIND_PROXY", "").strip():  # noqa: F405
     import warnings
 
     warnings.warn(
