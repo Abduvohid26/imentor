@@ -1,0 +1,66 @@
+# Salomatlik AI — qo'shimcha o'zbekcha tarjimalar (Django admin)
+msgid ""
+msgstr ""
+"Language: uz\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Authentication and Authorization"
+msgstr "Foydalanuvchilar va ruxsatlar"
+
+msgid "Log in"
+msgstr "Kirish"
+
+msgid "Welcome,"
+msgstr "Xush kelibsiz,"
+
+msgid "View site"
+msgstr "Saytni ko'rish"
+
+msgid "Change password"
+msgstr "Parolni o'zgartirish"
+
+msgid "Log out"
+msgstr "Chiqish"
+
+msgid "Home"
+msgstr "Bosh sahifa"
+
+msgid "Add"
+msgstr "Qo'shish"
+
+msgid "Change"
+msgstr "O'zgartirish"
+
+msgid "Delete"
+msgstr "O'chirish"
+
+msgid "Save"
+msgstr "Saqlash"
+
+msgid "Save and continue editing"
+msgstr "Saqlash va tahrirlashni davom ettirish"
+
+msgid "Save and add another"
+msgstr "Saqlash va yana qo'shish"
+
+msgid "The installation worked successfully! Congratulations!"
+msgstr "O'rnatish muvaffaqiyatli yakunlandi!"
+
+msgid "Search"
+msgstr "Qidirish"
+
+msgid "Filter"
+msgstr "Filtr"
+
+msgid "Actions"
+msgstr "Amallar"
+
+msgid "Go"
+msgstr "Bajarish"
+
+msgid "Yes, I'm sure"
+msgstr "Ha, ishonchim komil"
+
+msgid "No, take me back"
+msgstr "Yo'q, ortga qaytish"

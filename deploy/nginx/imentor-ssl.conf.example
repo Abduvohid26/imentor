@@ -1,0 +1,83 @@
+# TLS — certbot dan keyin. Docker gateway: 127.0.0.1:31001 (bitta port)
+#
+# Requires: docker compose -f docker-compose.prod.yml
+# Health: curl -sfS http://127.0.0.1:31001/api/health/
+
+upstream imentor_gateway {
+    server 127.0.0.1:31001;
+    keepalive 8;
+}
+
+map $http_origin $imentor_cors_origin {
+    default "";
+    "https://imentor.uz" $http_origin;
+    "https://www.imentor.uz" $http_origin;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name imentor.uz www.imentor.uz api.imentor.uz;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name imentor.uz www.imentor.uz;
+
+    ssl_certificate /etc/letsencrypt/live/imentor.uz/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/imentor.uz/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://imentor_gateway;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name api.imentor.uz;
+
+    ssl_certificate /etc/letsencrypt/live/imentor.uz/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/imentor.uz/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://imentor_gateway;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+
+        add_header Access-Control-Allow-Origin $imentor_cors_origin always;
+        add_header Access-Control-Allow-Credentials true always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With" always;
+
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin $imentor_cors_origin always;
+            add_header Access-Control-Allow-Credentials true always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With" always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+    }
+}

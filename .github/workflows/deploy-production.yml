@@ -1,0 +1,48 @@
+# Serverda: git pull + docker compose rebuild.
+#
+# Ishlashi uchun GitHub repo → Settings → Secrets and variables → Actions:
+#   Secrets:  SSH_HOST, SSH_USER, SSH_PRIVATE_KEY (to'liq private key, -----BEGIN ... END-----)
+#   Variables: SSH_DEPLOY_ENABLED = true
+#              REMOTE_REPO_PATH = /opt/imentor   (ixtiyoriy, bo'lmasa /opt/imentor)
+#
+# Birinchi marta: Actions → "Deploy to production" → Run workflow.
+# Keyin: main ga push bo'lganda ham ishlaydi (SSH_DEPLOY_ENABLED=true bo'lsa).
+
+name: Deploy to production
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: vars.SSH_DEPLOY_ENABLED == 'true'
+    steps:
+      - name: Pull and restart Docker stack
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+            REMOTE_PATH="${{ vars.REMOTE_REPO_PATH }}"
+            if [ -z "${REMOTE_PATH}" ] || [ "${REMOTE_PATH}" = "" ]; then
+              REMOTE_PATH="/opt/imentor"
+            fi
+            cd "${REMOTE_PATH}"
+            git config --global --add safe.directory "${REMOTE_PATH}" || true
+            git fetch origin
+            git checkout main
+            git pull --ff-only origin main
+            docker compose -f docker-compose.prod.yml --env-file deploy/.env.production up --scale backend=2 -d --build
+            docker compose -f docker-compose.prod.yml --env-file deploy/.env.production ps

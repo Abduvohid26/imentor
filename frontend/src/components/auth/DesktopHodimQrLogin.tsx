@@ -1,0 +1,203 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2, Monitor, RefreshCw, Smartphone } from 'lucide-react';
+import QRCode from 'qrcode';
+import { HttpError } from '../../api/httpClient';
+import {
+  createDevicePairingSession,
+  pollDevicePairingStatus,
+} from '../../utils/devicePairingApi';
+import { syncStaffPhotoFromServer, writeBackendTokensFromPair } from '../../utils/backendAuth';
+import {
+  establishLocalSessionFromProfile,
+  type LocalStaffUser,
+} from '../../utils/localStaffAuth';
+import { markDesktopPairedSession } from '../../utils/deviceSession';
+import { useUiText } from '../../i18n/useUiText';
+
+type Props = {
+  onOtherRoles: () => void;
+};
+
+export default function DesktopHodimQrLogin({ onOtherRoles }: Props) {
+  const { t } = useUiText();
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expiresLabel, setExpiresLabel] = useState('');
+  const [waitingPhone, setWaitingPhone] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const aliveRef = useRef(true);
+  const desktopSecretRef = useRef('');
+
+  const stopPoll = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const startPairing = useCallback(async () => {
+    stopPoll();
+    setLoading(true);
+    setError(null);
+    setWaitingPhone(false);
+    try {
+      const created = await createDevicePairingSession();
+      desktopSecretRef.current = created.desktop_secret || '';
+      if (!desktopSecretRef.current) {
+        setError(t('auth.qrNoSecret'));
+        return;
+      }
+      const url = await QRCode.toDataURL(created.qr_payload, {
+        width: 280,
+        margin: 2,
+        color: { dark: '#083047', light: '#ffffff' },
+      });
+      setQrDataUrl(url);
+      const exp = new Date(created.expires_at);
+      setExpiresLabel(exp.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }));
+      setWaitingPhone(true);
+
+      pollRef.current = setInterval(async () => {
+        if (!aliveRef.current) return;
+        try {
+          const st = await pollDevicePairingStatus(
+            created.pairing_token,
+            desktopSecretRef.current,
+          );
+          if (!aliveRef.current) return;
+          if (st.status === 'expired') {
+            stopPoll();
+            setWaitingPhone(false);
+            setError(t('auth.qrExpired'));
+            return;
+          }
+          if (st.status !== 'confirmed' || !st.access || !st.refresh) return;
+          stopPoll();
+          setWaitingPhone(false);
+          const profile = (st.profile ?? {}) as Partial<LocalStaffUser>;
+          const phoneDigits = profile.phoneDigits || st.username || '';
+          if (!phoneDigits) {
+            setError(t('auth.qrProfileIncomplete'));
+            return;
+          }
+          writeBackendTokensFromPair({
+            access: st.access,
+            refresh: st.refresh,
+            role: (st.role as 'hodim') || 'hodim',
+            username: st.username || phoneDigits,
+          });
+          const sessionUser = establishLocalSessionFromProfile({
+            uid: profile.uid || `pair_${phoneDigits}`,
+            displayName: profile.displayName || phoneDigits,
+            firstName: profile.firstName || '',
+            lastName: profile.lastName || '',
+            phoneDisplay: profile.phoneDisplay || phoneDigits,
+            phoneDigits,
+            faculty: profile.faculty || '',
+            department: profile.department || '',
+            direction: profile.direction || '',
+            email: profile.email || '',
+            password: '',
+            role: (st.role as LocalStaffUser['role']) || profile.role || 'hodim',
+            photoURL: profile.photoURL ?? null,
+            createdAt: profile.createdAt ?? Date.now(),
+            updatedAt: Date.now(),
+          });
+          markDesktopPairedSession(sessionUser.uid);
+          void syncStaffPhotoFromServer();
+        } catch (err) {
+          if (err instanceof HttpError && err.status === 403) {
+            stopPoll();
+            setWaitingPhone(false);
+            setError(t('auth.qrRejected'));
+          }
+        }
+      }, 2000);
+    } catch {
+      setError(t('auth.qrCreateFailed'));
+    } finally {
+      setLoading(false);
+    }
+  }, [stopPoll, t]);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    void startPairing();
+    return () => {
+      aliveRef.current = false;
+      stopPoll();
+    };
+  }, [startPairing, stopPoll]);
+
+  return (
+    <div className="w-full max-w-md mx-auto space-y-5">
+      <div className="text-center space-y-2">
+        <div className="mx-auto w-14 h-14 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-lg">
+          <Monitor size={28} />
+        </div>
+        <h2 className="text-2xl font-bold text-[#083047] tracking-tight">{t('auth.qrTitle')}</h2>
+        <p className="text-[14px] text-black/55 leading-relaxed">
+          {t('auth.qrSubtitle')}
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-sky-100 bg-sky-50/90 px-4 py-3">
+        <div className="flex items-center gap-2 mb-2">
+          <Smartphone size={18} className="text-sky-700 shrink-0" />
+          <span className="text-[13px] font-bold text-sky-900">{t('auth.qrPhoneInstructions')}</span>
+        </div>
+        <ol className="space-y-2">
+          {([1, 2, 3] as const).map((n) => (
+            <li key={n} className="flex gap-2.5 text-[13px] text-sky-950/90 leading-snug">
+              <span className="font-bold text-sky-700 shrink-0">{n}.</span>
+              <span>{t((`auth.qrStep${n}`) as 'auth.qrStep1' | 'auth.qrStep2' | 'auth.qrStep3')}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="rounded-3xl border border-white/80 bg-white/90 p-6 shadow-xl flex flex-col items-center gap-4">
+        {loading && !qrDataUrl ? (
+          <div className="py-12 flex flex-col items-center gap-3 text-black/50">
+            <Loader2 className="animate-spin text-sky-600" size={36} />
+            <span className="text-sm font-medium">{t('auth.qrPreparing')}</span>
+          </div>
+        ) : qrDataUrl ? (
+          <>
+            <img src={qrDataUrl} alt={t('auth.qrAlt')} className="w-[260px] h-[260px] rounded-2xl" />
+            {expiresLabel && (
+              <p className="text-[12px] text-black/45">{t('auth.qrExpires', { time: expiresLabel })}</p>
+            )}
+            {waitingPhone && (
+              <p className="text-[13px] text-sky-700 font-medium text-center animate-pulse">
+                {t('auth.qrWaiting')}
+              </p>
+            )}
+          </>
+        ) : null}
+
+        {error && (
+          <p className="text-[13px] text-rose-600 font-medium text-center">{error}</p>
+        )}
+
+        <button
+          type="button"
+          onClick={() => void startPairing()}
+          className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl border border-sky-200 bg-white text-sky-800 font-semibold text-[14px] hover:bg-sky-50 transition-colors"
+        >
+          <RefreshCw size={18} />
+          {t('auth.qrNew')}
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={onOtherRoles}
+        className="w-full text-center text-[13px] font-semibold text-black/50 hover:text-sky-700 underline underline-offset-2"
+      >
+        {t('auth.otherRoles')}
+      </button>
+    </div>
+  );
+}
