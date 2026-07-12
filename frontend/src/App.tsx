@@ -467,6 +467,11 @@ export default function App() {
     );
   };
 
+  const handleClearTopic = useCallback(() => {
+    setSelectedTopic(null);
+    persistSelectedTopic(null);
+  }, []);
+
   const handleOpenLectures = (topic: SyllabusTopicContext) => {
     setSelectedTopic(topic);
     persistSelectedTopic(topic);
@@ -511,6 +516,7 @@ export default function App() {
             userRole={userRole}
             selectedTopic={selectedTopic}
             onSelectTopic={handleSelectTopic}
+            onClearTopic={handleClearTopic}
             onOpenLectures={handleOpenLectures}
             onOpenHandouts={openHandouts}
           />
@@ -533,6 +539,7 @@ export default function App() {
             userRole={userRole}
             selectedTopic={selectedTopic}
             onSelectTopic={handleSelectTopic}
+            onClearTopic={handleClearTopic}
             onOpenLectures={handleOpenLectures}
             onOpenHandouts={openHandouts}
           />

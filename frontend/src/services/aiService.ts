@@ -1,5 +1,6 @@
 import { type AppLanguage, inferPdfLanguage } from '../i18n/language';
 import { translate } from '../i18n/translations';
+import type { PresentationDeck } from '../utils/buildPresentationPptx';
 import {
   extractTopicsByRegex,
   guessSubjectFromDocumentText,
@@ -474,6 +475,78 @@ function normalizeTestSession(topic: string, data: TestSession, requestedCount: 
   };
 }
 
+function normalizePresentationDeck(
+  raw: Partial<PresentationDeck> | null | undefined,
+  fallbackTitle: string,
+): PresentationDeck {
+  const title = (raw?.title || fallbackTitle || 'Taqdimot').trim().slice(0, 120);
+  const slides = (Array.isArray(raw?.slides) ? raw!.slides! : [])
+    .map((s, i) => {
+      const st = String(s?.title || `Slayd ${i + 1}`).trim();
+      const bullets = (Array.isArray(s?.bullets) ? s.bullets : [])
+        .map((b) => String(b || '').trim())
+        .filter((b) => b.length > 4)
+        .slice(0, 8);
+      const notes = String(s?.notes || '').trim();
+      if (!st || bullets.length === 0) return null;
+      return { title: st.slice(0, 120), bullets, notes: notes || undefined };
+    })
+    .filter((s): s is NonNullable<typeof s> => Boolean(s));
+
+  if (slides.length >= 4) return { title, slides: slides.slice(0, 16) };
+
+  return {
+    title,
+    slides: [
+      { title: fallbackTitle, bullets: ['Mavzu kirish', 'Asosiy tushunchalar', 'Klinik ahamiyat'] },
+      { title: 'Etiologiya va patogenez', bullets: ['Sabablar', 'Mexanizm', 'Xavf omillari'] },
+      { title: 'Tashxis', bullets: ['Anamnez', 'Ko\'rik', 'Instrumental tekshiruvlar'] },
+      { title: 'Davolash va profilaktika', bullets: ['Konservativ', 'Operativ', 'Profilaktika'] },
+    ],
+  };
+}
+
+async function requestPresentationDeckFromAi(params: {
+  topicTitle: string;
+  topicId: string;
+  topicType: 'lecture' | 'practical';
+  subjectName: string;
+  variantLabel: string;
+  language: AppLanguage;
+  mode: 'generate' | 'enhance';
+  sourceFileName?: string;
+  sourceText?: string;
+}): Promise<PresentationDeck> {
+  assertOpenAiApiKey();
+  const outLang = languageName(params.language);
+  const kind = params.topicType === 'practical' ? 'amaliy mashg\'ulot' : 'ma\'ruza';
+  const enhanceBlock =
+    params.mode === 'enhance'
+      ? `O'qituvchi allaqachon taqdimot yuklagan ("${params.sourceFileName || 'fayl'}"). ` +
+        `Mavjud material asosida dars uchun yanada boyitilgan, tuzilgan taqdimot yarating. ` +
+        (params.sourceText?.trim()
+          ? `Yuklangan fayldan ajratilgan matn:\n${params.sourceText.slice(0, 12000)}\n`
+          : '')
+      : 'O\'qituvchida taqdimot yo\'q — mavzu bo\'yicha noldan dars taqdimoti yarating.';
+
+  const raw = await openaiJson<Partial<PresentationDeck>>({
+    model: OPENAI_CHAT,
+    system:
+      `${SYS_MEDICAL} Return ONLY valid JSON: ` +
+      '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
+      '8-12 slides for university medical class. Each slide 3-6 concise bullets. Language: ' +
+      outLang + '.',
+    user:
+      `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
+      `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}`,
+    maxTokens: 6144,
+    temperature: 0.55,
+    parse: (t) => parseJSONSafe<Partial<PresentationDeck>>(t),
+  });
+
+  return normalizePresentationDeck(raw, `${params.topicId} — ${params.topicTitle}`);
+}
+
 export const aiService = {
   async extractSyllabusFromDocument(file: File): Promise<SyllabusExtractResult> {
     try {
@@ -659,6 +732,20 @@ export const aiService = {
       console.error("Exercise generation failed:", error);
       throw error;
     }
+  },
+
+  async generatePresentationDeck(params: {
+    topicTitle: string;
+    topicId: string;
+    topicType: 'lecture' | 'practical';
+    subjectName: string;
+    variantLabel: string;
+    language: AppLanguage;
+    mode: 'generate' | 'enhance';
+    sourceFileName?: string;
+    sourceText?: string;
+  }): Promise<PresentationDeck> {
+    return requestPresentationDeckFromAi(params);
   },
 
   async generateImage(_prompt: string): Promise<string | null> {

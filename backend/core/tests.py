@@ -787,6 +787,71 @@ class SecurityAndFeatureApiTests(TestCase):
 
 
 @override_settings(DEBUG=False, SECURE_SSL_REDIRECT=False)
+class StaffCourseAssignmentPolicyTests(TestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+        Group.objects.get_or_create(name='hodim')
+        Group.objects.get_or_create(name='admin')
+        self.hodim = User.objects.create_user(
+            username='998901112233',
+            password='TestHodim123',
+            first_name='Test',
+            last_name='Hodim',
+        )
+        self.hodim.groups.add(Group.objects.get(name='hodim'))
+        from .models import CourseSyllabus, StaffCourseSelection
+
+        self.syllabus = CourseSyllabus.objects.create(
+            subject_name='Onkologiya',
+            subject_code='onkologiya',
+            variants=[
+                {
+                    'label': 'XT',
+                    'file_name': 'Onkologiya(XT).pdf',
+                    'topics': [{'id': 'M1', 'title': 'Mavzu 1', 'type': 'lecture'}],
+                }
+            ],
+            topics=[{'id': 'M1', 'title': 'Mavzu 1', 'type': 'lecture'}],
+        )
+        StaffCourseSelection.objects.create(
+            owner_key=self.hodim.username,
+            syllabus=self.syllabus,
+            variant_label='XT',
+        )
+
+    def _hodim_token(self) -> str:
+        resp = self.client.post(
+            '/api/v1/auth/local-login/',
+            {'phone_digits': '998901112233', 'password': 'TestHodim123'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 200)
+        return resp.json()['access']
+
+    def test_hodim_cannot_self_enroll_course(self) -> None:
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._hodim_token()}')
+        resp = self.client.post(
+            '/api/v1/course-syllabuses/my/',
+            {'syllabus_id': self.syllabus.id},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_hodim_cannot_remove_assigned_course(self) -> None:
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._hodim_token()}')
+        resp = self.client.delete(f'/api/v1/course-syllabuses/my/{self.syllabus.id}/')
+        self.assertEqual(resp.status_code, 403)
+        from .models import StaffCourseSelection
+
+        self.assertTrue(
+            StaffCourseSelection.objects.filter(
+                owner_key=self.hodim.username,
+                syllabus=self.syllabus,
+            ).exists()
+        )
+
+
+@override_settings(DEBUG=False, SECURE_SSL_REDIRECT=False)
 class EnsureDemoRoleUsersCommandTests(TestCase):
     def test_creates_demo_users_when_enabled(self) -> None:
         import os

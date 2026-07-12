@@ -91,10 +91,24 @@ class TopicPresentationListCreateView(APIView):
 
     @extend_schema(responses=TopicPresentationSerializer(many=True))
     def get(self, request):
-        topic_norm = _norm_topic(request.query_params.get("topic_norm", ""))
-        if not topic_norm:
+        norms: list[str] = []
+        single = _norm_topic(request.query_params.get("topic_norm", ""))
+        if single:
+            norms.append(single)
+        for raw in request.query_params.getlist("topic_norm"):
+            n = _norm_topic(raw)
+            if n and n not in norms:
+                norms.append(n)
+        syllabus_raw = (request.query_params.get("syllabus_id") or "").strip()
+        variant_label = (request.query_params.get("variant_label") or "").strip()
+        topic_code = (request.query_params.get("topic_code") or "").strip()
+        if syllabus_raw and variant_label and topic_code:
+            built = f"{syllabus_raw}::{variant_label.strip().lower()}::{topic_code.strip().lower()}"
+            if built not in norms:
+                norms.append(built)
+        if not norms:
             return Response({"detail": "topic_norm parametri kerak."}, status=400)
-        qs = TopicPresentation.objects.filter(topic_norm=topic_norm)
+        qs = TopicPresentation.objects.filter(topic_norm__in=norms).order_by("sort_order", "id")
         ser = TopicPresentationSerializer(qs, many=True, context={"request": request})
         return Response(ser.data)
 

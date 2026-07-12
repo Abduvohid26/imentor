@@ -5,8 +5,6 @@ import {
   FlaskConical,
   ArrowRight,
   Check,
-  Plus,
-  X,
   GraduationCap,
   ListChecks,
   ChevronLeft,
@@ -15,17 +13,13 @@ import {
 } from 'lucide-react';
 import SyllabusHandoutPanel from './staff/SyllabusHandoutPanel';
 import TopicVideoPanel from './staff/TopicVideoPanel';
-import { motion } from 'motion/react';
 import type { SyllabusTopic } from '../services/aiService';
 import { AppLanguageContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
 import type { UserRole } from '../utils/localStaffAuth';
 import {
-  fetchCourseSyllabusCatalog,
   fetchMyCourseSelections,
   isSyncUnavailable,
-  selectCourseSyllabus,
-  unselectCourseSyllabus,
   type CourseSyllabusRow,
   type StaffCourseSelectionRow,
 } from '../utils/syllabusApi';
@@ -48,6 +42,7 @@ interface SyllabusViewProps {
   userRole: UserRole | null;
   selectedTopic: SyllabusTopicContext | null;
   onSelectTopic: (topic: SyllabusTopicContext) => void;
+  onClearTopic: () => void;
   onOpenLectures: (topic: SyllabusTopicContext) => void;
   onOpenHandouts: () => void;
 }
@@ -56,6 +51,7 @@ export default function SyllabusView({
   userRole,
   selectedTopic,
   onSelectTopic,
+  onClearTopic,
   onOpenLectures,
   onOpenHandouts,
 }: SyllabusViewProps) {
@@ -64,17 +60,13 @@ export default function SyllabusView({
   const steps = [t('syllabus.step1'), t('syllabus.step2'), t('syllabus.step3')];
 
   const [loading, setLoading] = useState(true);
-  const [catalog, setCatalog] = useState<CourseSyllabusRow[]>([]);
   const [mySelections, setMySelections] = useState<StaffCourseSelectionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [catalogOpen, setCatalogOpen] = useState(true);
   const [activeSyllabusId, setActiveSyllabusId] = useState<number | null>(null);
   const [variantBySubject, setVariantBySubject] = useState<Record<number, string>>(
     () => loadPersistedVariantBySubject(),
   );
 
-  const selectedIds = new Set(mySelections.map((s) => s.syllabus.id));
 
   // Bitta fan bir nechta yo'nalishga biriktirilgan bo'lishi mumkin —
   // chiplar uchun har fandan bitta (noyob) qator.
@@ -90,18 +82,26 @@ export default function SyllabusView({
     return out;
   })();
 
-  const setVariant = useCallback((syllabusId: number, label: string) => {
-    setVariantBySubject((prev) => {
-      const next = { ...prev, [syllabusId]: label };
-      persistVariantBySubject(next);
-      return next;
-    });
-  }, []);
+  const setVariant = useCallback(
+    (syllabusId: number, label: string) => {
+      setVariantBySubject((prev) => {
+        const next = { ...prev, [syllabusId]: label };
+        persistVariantBySubject(next);
+        return next;
+      });
+      if (
+        selectedTopic?.syllabusId === syllabusId &&
+        selectedTopic.variantLabel !== label
+      ) {
+        onClearTopic();
+      }
+    },
+    [selectedTopic, onClearTopic],
+  );
 
   const load = useCallback(async () => {
     if (userRole !== 'hodim') {
       setLoading(false);
-      setCatalog([]);
       setMySelections([]);
       setError(t('syllabus.errorRole'));
       return;
@@ -109,13 +109,8 @@ export default function SyllabusView({
     setLoading(true);
     setError(null);
     try {
-      const [cat, mine] = await Promise.all([
-        fetchCourseSyllabusCatalog(),
-        fetchMyCourseSelections(),
-      ]);
-      setCatalog(cat);
+      const mine = await fetchMyCourseSelections();
       setMySelections(mine);
-      if (mine.length === 0) setCatalogOpen(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (msg === 'no-backend-token') {
@@ -149,37 +144,6 @@ export default function SyllabusView({
     });
   }, [mySelections, selectedTopic?.syllabusId]);
 
-  const syncCourseLanguage = (row: CourseSyllabusRow) => {
-    applyInstructionLanguage(resolveSyllabusInstructionLanguage(row), setLanguage);
-  };
-
-  const addSubject = async (row: CourseSyllabusRow) => {
-    setBusyId(row.id);
-    try {
-      await selectCourseSyllabus(row.id);
-      syncCourseLanguage(row);
-      setActiveSyllabusId(row.id);
-      setCatalogOpen(false);
-      await load();
-    } catch {
-      setError(t('syllabus.errorAdd'));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const removeSubject = async (syllabusId: number) => {
-    setBusyId(syllabusId);
-    try {
-      await unselectCourseSyllabus(syllabusId);
-      await load();
-    } catch {
-      setError(t('syllabus.errorRemove'));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const pickTopic = (
     topic: SyllabusTopic,
     syllabus: CourseSyllabusRow,
@@ -196,16 +160,17 @@ export default function SyllabusView({
   const activeRows = mySelections.filter((s) => s.syllabus.id === activeSyllabusId);
   const activeSyllabus = activeRows[0]?.syllabus ?? mySelections[0]?.syllabus ?? null;
   const allActiveVariants = activeSyllabus ? resolveSyllabusVariants(activeSyllabus) : [];
-  // Admin biriktirgan yo'nalishlar; bo'sh ("") qator = barcha yo'nalish ruxsat.
-  const assignedLabels = new Set(activeRows.map((r) => r.variant_label).filter(Boolean));
-  const hasAllDirections = activeRows.length === 0 || activeRows.some((r) => !r.variant_label);
+  const assignedLabels = new Set(
+    activeRows.map((r) => (r.variant_label || '').trim()).filter(Boolean),
+  );
+  const adminAssignedAllDirections =
+    activeRows.length > 0 && activeRows.some((r) => !(r.variant_label || '').trim());
   const allowedVariants =
-    hasAllDirections || assignedLabels.size === 0
+    adminAssignedAllDirections || assignedLabels.size === 0
       ? allActiveVariants
       : allActiveVariants.filter((v) => assignedLabels.has(v.label));
   const activeVariants = allowedVariants.length > 0 ? allowedVariants : allActiveVariants;
-  // Admin faqat ma'lum yo'nalish(lar)ga cheklaganmi (barcha yo'nalish emas)
-  const restrictedByAdmin = !hasAllDirections && assignedLabels.size > 0;
+  const restrictedByAdmin = !adminAssignedAllDirections && assignedLabels.size > 0;
   const preferredLabel = activeSyllabus ? variantBySubject[activeSyllabus.id] : undefined;
   const activeVariant =
     activeVariants.find((v) => v.label === preferredLabel) ?? activeVariants[0] ?? null;
@@ -286,110 +251,39 @@ export default function SyllabusView({
           {mySelections.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
               {mySubjects.map((sel) => {
-                  const syllabus = sel.syllabus;
-                  const isActive = activeSyllabusId === syllabus.id;
-                  return (
-                    <div
-                      key={sel.id}
-                      className={`inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg border text-[12px] transition ${
-                        isActive
-                          ? 'border-blue-400 bg-blue-50'
-                          : 'border-slate-200 bg-white'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setActiveSyllabusId(syllabus.id)}
-                        className="text-left min-w-0 flex items-center gap-1.5"
-                      >
-                        <span className="font-semibold text-slate-900 truncate max-w-[140px] sm:max-w-[200px]">
-                          {syllabus.subject_name}
-                        </span>
-                        <span className="text-[9px] text-slate-500 shrink-0">
-                          {instructionLanguageBadge(resolveSyllabusInstructionLanguage(syllabus))}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === syllabus.id}
-                        onClick={() => void removeSubject(syllabus.id)}
-                        className="p-1 rounded text-rose-500 hover:bg-rose-50 shrink-0"
-                        aria-label={t('syllabus.remove')}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
-              <button
-                type="button"
-                onClick={() => setCatalogOpen((v) => !v)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold text-[11px] hover:bg-blue-500"
-              >
-                <Plus size={14} />
-                {catalogOpen ? t('syllabus.close') : t('syllabus.addCourse')}
-              </button>
+                const syllabus = sel.syllabus;
+                const isActive = activeSyllabusId === syllabus.id;
+                const variants = resolveSyllabusVariants(syllabus);
+                const topics = totalTopicCount(variants);
+                return (
+                  <button
+                    key={sel.id}
+                    type="button"
+                    onClick={() => setActiveSyllabusId(syllabus.id)}
+                    className={`inline-flex items-center gap-1.5 pl-2.5 pr-2.5 py-1.5 rounded-lg border text-[12px] transition ${
+                      isActive
+                        ? 'border-blue-400 bg-blue-50'
+                        : 'border-slate-200 bg-white hover:border-blue-300'
+                    }`}
+                  >
+                    <span className="font-semibold text-slate-900 truncate max-w-[160px] sm:max-w-[220px]">
+                      {syllabus.subject_name}
+                    </span>
+                    <span className="text-[9px] text-slate-500 shrink-0">
+                      {instructionLanguageBadge(resolveSyllabusInstructionLanguage(syllabus))}
+                    </span>
+                    <span className="text-[9px] text-slate-400 shrink-0">
+                      {variants.length} {t('syllabus.tracks')} · {topics} {t('syllabus.topics')}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[11px] text-slate-500">{t('syllabus.noCourseHint')}</p>
-              <button
-                type="button"
-                onClick={() => setCatalogOpen((v) => !v)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold text-[11px] hover:bg-blue-500"
-              >
-                <Plus size={14} />
-                {t('syllabus.addCourse')}
-              </button>
+            <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-3 space-y-1">
+              <p className="text-[12px] font-semibold text-amber-900">{t('syllabus.noAssignedCourses')}</p>
+              <p className="text-[11px] text-amber-800 leading-relaxed">{t('syllabus.noAssignedCoursesHint')}</p>
             </div>
-          )}
-
-          {catalogOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-2 bg-slate-50 rounded-lg border border-slate-200 p-2 sm:p-3 space-y-2"
-            >
-              <p className="text-[11px] font-bold text-slate-700">{t('syllabus.availableCourses')}</p>
-              {catalog.length === 0 ? (
-                <p className="text-slate-500 text-sm py-4 text-center">{t('syllabus.noCourses')}</p>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-1.5">
-                  {catalog.map((row) => {
-                    const picked = selectedIds.has(row.id);
-                    const variants = resolveSyllabusVariants(row);
-                    const topics = totalTopicCount(variants);
-                    return (
-                      <button
-                        key={row.id}
-                        type="button"
-                        disabled={picked || busyId === row.id}
-                        onClick={() => void addSubject(row)}
-                        className={`text-left p-2.5 rounded-lg border transition ${
-                          picked
-                            ? 'border-emerald-300 bg-emerald-50 opacity-70 cursor-default'
-                            : 'border-white bg-white hover:border-blue-300 hover:shadow-md'
-                        }`}
-                      >
-                        <p className="font-semibold text-slate-900 text-[12px] leading-tight">{row.subject_name}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">
-                          {variants.length} {t('syllabus.tracks')} · {topics} {t('syllabus.topics')}
-                        </p>
-                        {picked ? (
-                          <span className="inline-block mt-2 text-[10px] text-emerald-700 font-bold">
-                            ✓ {t('syllabus.selected')}
-                          </span>
-                        ) : (
-                          <span className="inline-block mt-2 text-[10px] text-blue-600 font-semibold">
-                            + {t('syllabus.add')}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </motion.div>
           )}
         </SyllabusStepSection>
 

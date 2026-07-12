@@ -199,20 +199,11 @@ class StaffCourseSelectionListView(APIView):
         responses=StaffCourseSelectionSerializer,
     )
     def post(self, request):
-        syllabus_id = request.data.get("syllabus_id")
-        if not syllabus_id:
-            return Response({"detail": "syllabus_id kerak."}, status=400)
-        syllabus = CourseSyllabus.objects.filter(pk=syllabus_id, is_active=True).first()
-        if not syllabus:
-            return Response({"detail": "Fan topilmadi yoki faol emas."}, status=404)
-        sel, _created = StaffCourseSelection.objects.get_or_create(
-            owner_key=request.user.username,
-            syllabus=syllabus,
-            variant_label="",
-        )
         return Response(
-            StaffCourseSelectionSerializer(sel).data,
-            status=status.HTTP_201_CREATED if _created else status.HTTP_200_OK,
+            {
+                "detail": "Fanni faqat administrator biriktiradi. Administrator bilan bog'laning.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
         )
 
 
@@ -221,13 +212,12 @@ class StaffCourseSelectionDetailView(APIView):
     permission_classes = [IsAuthenticated, IsHodimRole]
 
     def delete(self, request, syllabus_id: int):
-        deleted, _ = StaffCourseSelection.objects.filter(
-            owner_key=request.user.username,
-            syllabus_id=syllabus_id,
-        ).delete()
-        if not deleted:
-            return Response({"detail": "Tanlov topilmadi."}, status=404)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            {
+                "detail": "Fanni faqat administrator olib tashlaydi.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
 
 class AdminStaffCourseSelectionListCreateView(APIView):

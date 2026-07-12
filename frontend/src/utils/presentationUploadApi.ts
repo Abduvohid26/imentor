@@ -1,6 +1,11 @@
 import { HttpError } from '../api/httpClient';
 import { getBackendAccessToken } from './backendAuth';
 import { normTopicKey } from './preparedContentStore';
+import {
+  primaryPresentationTopicNorm,
+  resolvePresentationTopicNorms,
+} from './presentationTopicNorm';
+import type { SyllabusTopicContext } from './syllabusTopicContext';
 
 export type PresentationKind = 'pdf' | 'ppt' | 'pptx';
 
@@ -60,14 +65,32 @@ export function normPresentationTopic(topic: string): string {
   return normTopicKey(topic);
 }
 
-export async function fetchPresentationsForTopic(topic: string): Promise<TopicPresentationItem[]> {
+export async function fetchPresentationsForTopic(
+  topic: string | SyllabusTopicContext,
+): Promise<TopicPresentationItem[]> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
-  const topicNorm = normPresentationTopic(topic);
-  const res = await fetch(
-    `${apiBaseUrl()}/v1/presentations/?topic_norm=${encodeURIComponent(topicNorm)}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
+  const norms = resolvePresentationTopicNorms(topic);
+  if (!norms.length) return [];
+  const query =
+    typeof topic === 'object' &&
+    topic &&
+    'syllabusId' in topic &&
+    topic.syllabusId != null &&
+    topic.variantLabel &&
+    topic.id
+      ? new URLSearchParams({
+          syllabus_id: String(topic.syllabusId),
+          variant_label: topic.variantLabel,
+          topic_code: topic.id,
+        })
+      : new URLSearchParams();
+  for (const norm of norms) {
+    query.append('topic_norm', norm);
+  }
+  const res = await fetch(`${apiBaseUrl()}/v1/presentations/?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   const text = await res.text();
   let data: unknown = [];
   if (text) {
@@ -85,12 +108,16 @@ export async function uploadPresentation(params: {
   topic: string;
   file: File;
   title?: string;
+  context?: SyllabusTopicContext;
 }): Promise<TopicPresentationItem> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
+  const topicNorm = params.context
+    ? primaryPresentationTopicNorm(params.context)
+    : normPresentationTopic(params.topic);
   const form = new FormData();
   form.append('topic', params.topic.trim());
-  form.append('topic_norm', normPresentationTopic(params.topic));
+  form.append('topic_norm', topicNorm);
   form.append('file', params.file);
   if (params.title?.trim()) form.append('title', params.title.trim());
 

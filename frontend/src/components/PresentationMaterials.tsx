@@ -7,14 +7,19 @@ import {
   FileText,
   Loader2,
   Presentation,
+  Sparkles,
   Trash2,
   Upload,
   X,
   ZoomIn,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GlobalTopicContext, AppNavigationContext } from '../App';
+import { GlobalTopicContext, AppNavigationContext, AppLanguageContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
+import { aiService } from '../services/aiService';
+import { buildPresentationPptxFile } from '../utils/buildPresentationPptx';
+import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
+import { isTopicContextComplete } from '../utils/syllabusTopicContext';
 import {
   deletePresentation,
   fetchPresentationsForTopic,
@@ -181,25 +186,28 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
 export default function PresentationMaterials() {
   const { t } = useUiText();
   const globalTopic = useContext(GlobalTopicContext);
+  const { language } = useContext(AppLanguageContext);
   const { openSyllabus } = useContext(AppNavigationContext);
   const [items, setItems] = useState<TopicPresentationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const topicTitle = globalTopic?.title?.trim() ?? '';
+  const topicReady = Boolean(globalTopic && topicTitle && isTopicContextComplete(globalTopic));
 
   const loadItems = useCallback(async () => {
-    if (!topicTitle) {
+    if (!topicReady || !globalTopic) {
       setItems([]);
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      setItems(await fetchPresentationsForTopic(topicTitle));
+      setItems(await fetchPresentationsForTopic(globalTopic));
     } catch (e) {
       setItems([]);
       setError(
@@ -210,14 +218,14 @@ export default function PresentationMaterials() {
     } finally {
       setLoading(false);
     }
-  }, [topicTitle, t]);
+  }, [topicReady, globalTopic, t]);
 
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
 
   const handleUpload = async (file: File) => {
-    if (!topicTitle) return;
+    if (!topicReady || !globalTopic) return;
     if (!isAllowedPresentationFile(file)) {
       setError(t('presentation.errorFileType'));
       return;
@@ -225,13 +233,55 @@ export default function PresentationMaterials() {
     setUploading(true);
     setError(null);
     try {
-      await uploadPresentation({ topic: topicTitle, file });
+      await uploadPresentation({ topic: topicTitle, file, context: globalTopic });
       await loadItems();
     } catch {
       setError(t('presentation.errorUpload'));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleAiPresentation = async () => {
+    if (!topicReady || !globalTopic) return;
+    setAiLoading(true);
+    setError(null);
+    try {
+      let sourceText = '';
+      const pdfItem = items.find((i) => i.kind === 'pdf');
+      if (pdfItem) {
+        try {
+          const blobUrl = await getPresentationFileBlobUrl(pdfItem.id);
+          const res = await fetch(blobUrl);
+          sourceText = await extractPdfTextFromBlob(await res.blob());
+        } catch {
+          /* PDF matn ixtiyoriy */
+        }
+      }
+      const deck = await aiService.generatePresentationDeck({
+        topicTitle: globalTopic.title,
+        topicId: globalTopic.id,
+        topicType: globalTopic.type,
+        subjectName: globalTopic.subjectName,
+        variantLabel: globalTopic.variantLabel,
+        language,
+        mode: items.length > 0 ? 'enhance' : 'generate',
+        sourceFileName: items[0]?.file_name,
+        sourceText,
+      });
+      const file = await buildPresentationPptxFile(deck);
+      await uploadPresentation({
+        topic: topicTitle,
+        file,
+        title: deck.title,
+        context: globalTopic,
+      });
+      await loadItems();
+    } catch {
+      setError(t('presentation.errorAi'));
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -246,7 +296,7 @@ export default function PresentationMaterials() {
     }
   };
 
-  if (!globalTopic || !topicTitle) {
+  if (!topicReady || !globalTopic) {
     return (
       <div className="max-w-lg mx-auto p-8 text-center space-y-4">
         <div className="ios-glass rounded-2xl border border-white/70 p-8">
@@ -275,7 +325,9 @@ export default function PresentationMaterials() {
             {globalTopic.id} — {globalTopic.title}
           </span>
         </p>
-        <p className="text-[12px] text-black/45 mt-2">{t('presentation.hint')}</p>
+        <p className="text-[12px] text-black/45 mt-2">
+          {items.length > 0 ? t('presentation.hintWithUpload') : t('presentation.hintAiGenerate')}
+        </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <input
             ref={fileRef}
@@ -289,12 +341,25 @@ export default function PresentationMaterials() {
           />
           <button
             type="button"
-            disabled={uploading}
+            disabled={uploading || aiLoading}
             onClick={() => fileRef.current?.click()}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-[14px] font-semibold hover:bg-indigo-500 disabled:opacity-50"
           >
             {uploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
             {uploading ? t('common.loading') : t('presentation.upload')}
+          </button>
+          <button
+            type="button"
+            disabled={uploading || aiLoading}
+            onClick={() => void handleAiPresentation()}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-[14px] font-semibold hover:bg-violet-500 disabled:opacity-50"
+          >
+            {aiLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+            {aiLoading
+              ? t('common.loading')
+              : items.length > 0
+                ? t('presentation.aiEnhance')
+                : t('presentation.aiGenerate')}
           </button>
           <button
             type="button"

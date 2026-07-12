@@ -192,6 +192,11 @@ class TopicHandoutListCreateView(APIView):
 
     @extend_schema(request=TopicHandoutUploadSerializer, responses=TopicHandoutSerializer)
     def post(self, request):
+        if resolve_user_role(request.user) != "admin":
+            return Response(
+                {"detail": "Tarqatma fayllarni faqat administrator yuklaydi."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         ser = TopicHandoutUploadSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
