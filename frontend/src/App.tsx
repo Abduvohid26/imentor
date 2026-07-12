@@ -775,7 +775,8 @@ export default function App() {
           {userRole === 'hodim' &&
             selectedTopic &&
             activeView !== 'handouts' &&
-            activeView !== 'syllabus' && <HandoutTopicBanner />}
+            activeView !== 'syllabus' &&
+            activeView !== 'lectures' && <HandoutTopicBanner />}
 
           {isNotificationsOpen && (
             <div

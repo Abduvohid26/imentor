@@ -22,7 +22,13 @@ import {
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
 import { buildPreparedContentMeta } from '../utils/preparedContentMeta';
-import ContentTopicToolbar from './staff/ContentTopicToolbar';
+import ContentTopicToolbar, { StaffToolbarButton } from './staff/ContentTopicToolbar';
+import StaffPageLayout from './staff/StaffPageLayout';
+import StaffErrorAlert from './staff/StaffErrorAlert';
+import StaffLoading from './staff/StaffLoading';
+import StaffPanel from './staff/StaffPanel';
+import { isTopicContextComplete } from '../utils/syllabusTopicContext';
+import { staffInput, staffLabel, staffBtnPrimary, STAFF_HEADING } from './staff/staffUi';
 import { messageFromAiError } from '../utils/aiErrors';
 import MedicalReferencesList from './staff/MedicalReferencesList';
 import { parseKeywordsInput } from '../utils/generationVariety';
@@ -169,111 +175,83 @@ export default function CaseStudies() {
     }
   };
 
+  const staffTopic =
+    globalTopic && isTopicContextComplete(globalTopic) ? globalTopic : null;
+
   return (
-    <div className="w-full px-3 sm:px-5 lg:px-6 space-y-6 pb-20 print:p-0 print:max-w-none print:m-0">
+    <StaffPageLayout spacious className="print:p-0 print:max-w-none print:m-0">
       <ContentTopicToolbar
-        topic={topic}
+        moduleLabel={t('case.create')}
+        topic={staffTopic}
+        topicValue={topic}
         onTopicChange={setTopic}
         topicLabel={t('case.topicLabel')}
         topicPlaceholder={t('case.topicPlaceholder')}
         createLabel={t('case.create')}
         loading={loading}
         onCreate={() => void handleGenerate(topic)}
-        accent="emerald"
+        lockTopicFromSyllabus={Boolean(staffTopic)}
         versions={versions}
         activeVersionId={activeVersionId}
         onSelectVersion={(id) => void handleSelectVersion(id)}
         versionsTitle={t('case.savedVersions')}
+        extra={
+          <div className="space-y-2">
+            <label className={`flex items-center gap-2 ${staffLabel}`}>
+              <Tags size={14} />
+              {t('case.keywordsLabel')}
+              <span className="text-black/35">({t('case.keywordsOptional')})</span>
+            </label>
+            <input
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder={t('case.keywordsPlaceholder')}
+              disabled={loading}
+              className={staffInput}
+            />
+            <p className="text-[11px] text-black/45">{t('case.keywordsHint')}</p>
+          </div>
+        }
       />
 
-      <div className="ios-glass rounded-2xl border border-white/60 p-4 space-y-2 print:hidden">
-        <label className="flex items-center gap-2 text-[13px] font-semibold text-black/70">
-          <Tags size={16} className="text-emerald-600" />
-          {t('case.keywordsLabel')}
-          <span className="text-[11px] font-medium text-black/40">({t('case.keywordsOptional')})</span>
-        </label>
-        <input
-          value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
-          placeholder={t('case.keywordsPlaceholder')}
-          disabled={loading}
-          className="w-full px-4 py-3 rounded-xl border border-black/10 bg-white/80 text-[14px] outline-none focus:ring-2 focus:ring-emerald-400/40"
-        />
-        <p className="text-[11px] text-black/45">{t('case.keywordsHint')}</p>
-      </div>
-
-      {error && (
-        <div className="flex items-center gap-2 text-rose-600 text-[12px] font-semibold bg-rose-500/10 px-4 py-3 rounded-xl border border-rose-500/20 print:hidden">
-          <AlertCircle size={16} />
-          {error}
-        </div>
-      )}
-
-      {loading && (
-        <div className="ios-glass p-12 rounded-[2rem] flex flex-col items-center gap-4 print:hidden">
-          <Loader2 className="animate-spin text-emerald-600" size={36} />
-          <p className="text-[14px] font-medium text-black/60">{t('case.generating')}</p>
-        </div>
-      )}
+      {error && <StaffErrorAlert message={error} />}
+      {loading && <StaffLoading label={t('case.generating')} />}
 
       {!loading && !caseSession && topic.trim() && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="ios-glass p-10 rounded-[2rem] text-center flex flex-col items-center gap-4 print:hidden"
-        >
-          <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center text-emerald-600">
-            <Stethoscope strokeWidth={2} size={28} />
-          </div>
-          <p className="text-[14px] text-black/55 max-w-md">
+        <StaffPanel className="p-10 text-center print:hidden">
+          <Stethoscope strokeWidth={2} size={32} className="mx-auto text-[#083047]/50 mb-4" />
+          <p className="text-[14px] text-black/55 max-w-md mx-auto">
             {t('case.noSavedHint', { action: t('case.create') })}
           </p>
-        </motion.div>
+        </StaffPanel>
       )}
 
       {!loading && caseSession && (
-        <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
-          <div className="flex items-center justify-between ios-glass p-3 rounded-[1.5rem] shadow-sm print:hidden flex-wrap gap-2">
-            <div className="flex items-center gap-2 font-mono text-[12px] font-medium text-black/40">
-              {t('case.viewLabel')}: <span className="font-bold text-black/70">{caseSession.topic}</span>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => void handleGenerate(topic)}
-                disabled={loading}
-                className="px-4 py-2 flex items-center gap-2 text-[13px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl border border-emerald-200"
-              >
+        <div className="space-y-5 print:hidden">
+          <StaffPanel className="p-4 flex flex-wrap items-center justify-between gap-3">
+            <p className={`text-[14px] font-semibold ${STAFF_HEADING}`}>{caseSession.topic}</p>
+            <div className="flex flex-wrap gap-2">
+              <StaffToolbarButton onClick={() => void handleGenerate(topic)} disabled={loading}>
                 <RefreshCw size={16} />
                 {t('case.regenerate')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDownloadCasesPdf()}
-                disabled={downloadingCasesPdf}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-[13px] font-semibold hover:bg-emerald-100 disabled:opacity-50"
-              >
+              </StaffToolbarButton>
+              <StaffToolbarButton onClick={() => void handleDownloadCasesPdf()} disabled={downloadingCasesPdf}>
                 {downloadingCasesPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
                 {t('case.downloadCasesPdf')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDownloadKeyPdf()}
-                disabled={downloadingKeyPdf}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-[13px] font-semibold hover:bg-blue-100 disabled:opacity-50"
-              >
+              </StaffToolbarButton>
+              <StaffToolbarButton onClick={() => void handleDownloadKeyPdf()} disabled={downloadingKeyPdf}>
                 {downloadingKeyPdf ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
                 {t('case.downloadKeyPdf')}
-              </button>
+              </StaffToolbarButton>
             </div>
-          </div>
+          </StaffPanel>
 
           {caseSession.keywords && caseSession.keywords.length > 0 && (
-            <div className="flex flex-wrap gap-2 print:hidden">
+            <div className="flex flex-wrap gap-2">
               {caseSession.keywords.map((kw) => (
                 <span
                   key={kw}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-800 text-[12px] font-semibold border border-emerald-500/20"
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-slate-100 text-[#083047] text-[12px] font-semibold"
                 >
                   <Tags size={12} /> {kw}
                 </span>
@@ -281,24 +259,17 @@ export default function CaseStudies() {
             </div>
           )}
 
-          <div
-            className="ios-glass rounded-[2rem] overflow-hidden shadow-lg border border-white/60 print:shadow-none print:border-none print:bg-transparent"
-          >
-            <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/5 p-8 border-b border-white/40 relative overflow-hidden print:bg-none print:border-b-2 print:border-black/10">
-              <div className="flex items-center gap-3 mb-4 relative z-10">
-                <div className="w-8 h-8 rounded-xl bg-white/60 shadow-sm border border-white flex items-center justify-center text-emerald-600 print:border-emerald-600">
-                  <FileText size={16} />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-600/70 print:text-black">
-                  TIBBIY KEYSLAR TO&apos;PLAMI
-                </span>
-              </div>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-black/90 relative z-10 leading-tight pr-10">
+          <StaffPanel large className="overflow-hidden print:shadow-none print:border-none print:bg-transparent">
+            <div className="p-6 sm:p-8 border-b border-black/5">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#083047]/60 mb-2">
+                {t('case.viewLabel')}
+              </p>
+              <h1 className={`text-xl sm:text-2xl font-bold leading-tight ${STAFF_HEADING}`}>
                 {caseSession.topic}
               </h1>
             </div>
 
-            <div className="p-8 space-y-10 bg-white/40 print:bg-transparent">
+            <div className="p-6 sm:p-8 space-y-10 bg-white/30 print:bg-transparent">
               {caseSession.references && caseSession.references.length > 0 && (
                 <MedicalReferencesList references={caseSession.references} className="print:break-inside-avoid" />
               )}
@@ -307,7 +278,7 @@ export default function CaseStudies() {
                   <div key={i} className="space-y-5 print:break-inside-avoid">
                     <div className="flex gap-4">
                       <div className="flex flex-col items-center gap-2 shrink-0">
-                        <span className="w-8 h-8 rounded-[10px] bg-emerald-500/10 flex items-center justify-center text-emerald-700 text-[13px] font-bold border border-emerald-500/20">
+                        <span className="w-8 h-8 rounded-lg bg-[#083047]/8 flex items-center justify-center text-[#083047] text-[13px] font-bold">
                           {i + 1}
                         </span>
                         {q.focus && (
@@ -326,7 +297,7 @@ export default function CaseStudies() {
                           <button
                             type="button"
                             onClick={() => handleRevealAnswer(i)}
-                            className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-500 transition-all"
+                            className={staffBtnPrimary}
                           >
                             {revealedAnswers[i] ? 'Javobni yashirish' : 'Javobni aniqlash'}
                           </button>
@@ -335,13 +306,13 @@ export default function CaseStudies() {
                           <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
-                            className="bg-blue-500/5 mt-4 rounded-xl p-5 border border-blue-500/10 border-l-4 border-l-blue-500"
+                            className="mt-4 rounded-xl p-5 border border-black/8 border-l-4 border-l-[#083047]/40 bg-white/50"
                           >
-                            <h4 className="text-[12px] font-bold text-blue-800 uppercase tracking-wide mb-2 flex items-center gap-2">
+                            <h4 className={`text-[12px] font-bold uppercase tracking-wide mb-2 flex items-center gap-2 ${STAFF_HEADING}`}>
                               <AlertCircle size={16} />
                               Keys javobi:
                             </h4>
-                            <p className="text-[14px] text-blue-900/80 leading-relaxed font-medium whitespace-pre-wrap">{q.answer}</p>
+                            <p className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap">{q.answer}</p>
                             {q.references && q.references.length > 0 && (
                               <div className="mt-4">
                                 <MedicalReferencesList
@@ -359,9 +330,9 @@ export default function CaseStudies() {
                 ))}
               </div>
             </div>
-          </div>
+          </StaffPanel>
         </div>
       )}
-    </div>
+    </StaffPageLayout>
   );
 }

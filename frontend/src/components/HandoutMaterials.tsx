@@ -19,6 +19,13 @@ import {
   resolveHandoutFileUrl,
   type TopicHandoutItem,
 } from '../utils/handoutApi';
+import StaffPageLayout from './staff/StaffPageLayout';
+import StaffTopicHeader from './staff/StaffTopicHeader';
+import StaffEmptyState from './staff/StaffEmptyState';
+import StaffErrorAlert from './staff/StaffErrorAlert';
+import StaffPanel from './staff/StaffPanel';
+import { staffBtnGhost } from './staff/staffUi';
+import { isTopicContextComplete } from '../utils/syllabusTopicContext';
 
 function HandoutFilePreview({
   item,
@@ -252,56 +259,48 @@ export default function HandoutMaterials() {
     }
   };
 
-  if (!globalTopic?.title) {
+  if (!globalTopic?.title || !isTopicContextComplete(globalTopic)) {
     return (
-      <div className="max-w-lg mx-auto p-8 text-center space-y-4">
-        <div className="ios-glass rounded-2xl border border-white/70 p-8">
-          <BookOpen size={40} className="mx-auto text-amber-600 mb-4" />
-          <h2 className="text-lg font-bold text-[#083047]">{t('handout.noTopicTitle')}</h2>
-          <p className="text-[14px] text-black/55 mt-2 leading-relaxed">{t('handout.noTopicHint')}</p>
-          <button
-            type="button"
-            onClick={openSyllabus}
-            className="mt-5 px-5 py-2.5 rounded-xl bg-amber-600 text-white text-[14px] font-semibold hover:bg-amber-500"
-          >
-            {t('common.goToCourses')}
-          </button>
-        </div>
-      </div>
+      <StaffPageLayout>
+        <StaffEmptyState
+          icon={BookOpen}
+          title={t('handout.noTopicTitle')}
+          hint={t('handout.noTopicHint')}
+          actionLabel={t('common.goToCourses')}
+          onAction={openSyllabus}
+        />
+      </StaffPageLayout>
     );
   }
 
   return (
-    <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-6 space-y-5 pb-8">
-      <div className="ios-glass rounded-[1.5rem] border border-white/70 p-5 sm:p-6 shadow-sm">
-        <h2 className="text-xl sm:text-2xl font-bold text-[#083047]">{t('handout.title')}</h2>
-        <p className="text-[14px] text-black/55 mt-1">
-          {t('handout.selectedTopic')}{' '}
-          <span className="font-semibold text-amber-800">
-            {globalTopic.id} — {globalTopic.title}
-          </span>
-        </p>
-        <p className="text-[12px] text-black/45 mt-2">{t('handout.uploadHint')}</p>
-        <button
-          type="button"
-          onClick={() => void loadHandouts()}
-          disabled={loading}
-          className="mt-3 text-[13px] font-semibold text-amber-700 hover:text-amber-900 disabled:opacity-50"
-        >
-          {loading ? t('common.loading') : t('common.refresh')}
-        </button>
-      </div>
+    <StaffPageLayout>
+      <StaffTopicHeader
+        moduleLabel={t('handout.title')}
+        topic={globalTopic}
+        hint={t('handout.uploadHint')}
+        actions={
+          <button
+            type="button"
+            onClick={() => void loadHandouts()}
+            disabled={loading}
+            className={`${staffBtnGhost} disabled:opacity-50`}
+          >
+            {loading ? t('common.loading') : t('common.refresh')}
+          </button>
+        }
+      />
 
-      {error && <p className="text-[13px] text-rose-600 font-medium text-center">{error}</p>}
+      {error && <StaffErrorAlert message={error} />}
 
       {loading ? (
         <div className="flex justify-center py-16">
-          <Loader2 className="animate-spin text-amber-600" size={36} />
+          <Loader2 className="animate-spin text-[#083047]/60" size={36} />
         </div>
       ) : items.length === 0 ? (
-        <p className="text-center text-black/45 py-12 ios-glass rounded-2xl border border-white/60">
+        <StaffPanel className="py-12 text-center text-black/45 text-[14px]">
           {t('handout.empty')}
-        </p>
+        </StaffPanel>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
           {items.map((item, idx) => {
@@ -363,6 +362,6 @@ export default function HandoutMaterials() {
           />
         )}
       </AnimatePresence>
-    </div>
+    </StaffPageLayout>
   );
 }

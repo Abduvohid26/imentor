@@ -37,6 +37,7 @@ import {
   resolveSyllabusInstructionLanguage,
 } from '../utils/syllabusInstructionLanguage';
 import { PAGE_ROOT } from '../layout/pageContainer';
+import { staffCardLg, STAFF_HEADING } from './staff/staffUi';
 
 interface SyllabusViewProps {
   userRole: UserRole | null;
@@ -195,15 +196,15 @@ export default function SyllabusView({
 
   return (
     <div className={`${PAGE_ROOT} py-2 sm:py-3 pb-6`}>
-      <div className="w-full bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="px-3 sm:px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+      <div className={`${staffCardLg} overflow-hidden`}>
+        <div className="px-3 sm:px-4 py-3 border-b border-white/60 bg-white/30">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="min-w-0">
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <GraduationCap className="text-blue-600 shrink-0" size={20} />
+              <h2 className={`text-base sm:text-lg font-bold tracking-tight flex items-center gap-2 ${STAFF_HEADING}`}>
+                <GraduationCap className="text-[#083047] shrink-0" size={20} />
                 {t('syllabus.title')}
               </h2>
-              <p className="text-slate-500 mt-0.5 text-[11px] sm:text-xs leading-snug">{t('syllabus.subtitle')}</p>
+              <p className="text-black/50 mt-0.5 text-[11px] sm:text-xs leading-snug">{t('syllabus.subtitle')}</p>
             </div>
             <div className="flex flex-wrap gap-1.5 shrink-0">
               {steps.map((label, i) => {
@@ -217,10 +218,10 @@ export default function SyllabusView({
                     key={label}
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold ${
                       done
-                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        ? 'bg-[#083047]/10 text-[#083047] border border-[#083047]/20'
                         : active
-                          ? 'bg-blue-50 text-blue-800 border border-blue-200'
-                          : 'bg-white text-slate-600 border border-slate-200'
+                          ? 'bg-white/80 text-[#083047] border border-black/10'
+                          : 'bg-white/50 text-black/55 border border-black/8'
                     }`}
                   >
                     {done ? <Check size={12} /> : <ListChecks size={12} />}

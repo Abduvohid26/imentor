@@ -27,6 +27,8 @@ import {
 } from '../utils/backendAuth';
 import { roleLabel as translateRoleLabel } from '../i18n/translations';
 import { useUiText } from '../i18n/useUiText';
+import StaffPageLayout from './staff/StaffPageLayout';
+import { staffBtnPrimary, staffBtnSecondary, STAFF_HEADING } from './staff/staffUi';
 import { AVATAR_ACCEPT, fileToAvatarBlob } from '../utils/profilePhoto';
 import {
   deleteStaffAvatarOnServer,
@@ -182,10 +184,10 @@ export default function UserProfile() {
   const displayRole = translateRoleLabel(language, role);
 
   return (
-    <div className="w-full px-3 sm:px-5 lg:px-6 space-y-6 pb-10 flex flex-col h-full py-4 sm:py-6">
+    <StaffPageLayout className="flex flex-col h-full">
       {/* Header Profile Section */}
       <div className="ios-glass p-6 sm:p-8 rounded-[2rem] shadow-sm relative w-full border border-white/60">
-        <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[150%] bg-gradient-to-l from-blue-500/20 to-transparent blur-3xl pointer-events-none rounded-full" />
+        <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[150%] bg-[#083047]/5 blur-3xl pointer-events-none rounded-full" />
 
         <button
           type="button"
@@ -207,7 +209,7 @@ export default function UserProfile() {
               className="hidden"
               onChange={(e) => void handleAvatarFile(e.target.files)}
             />
-            <div className="w-32 h-32 md:w-40 md:h-40 rounded-[2rem] p-1.5 bg-gradient-to-tr from-sky-400 via-blue-500 to-indigo-500 shadow-xl shadow-blue-500/30 relative">
+            <div className="w-32 h-32 md:w-40 md:h-40 rounded-[2rem] p-1.5 bg-[#083047]/15 shadow-lg relative">
               <div className="w-full h-full rounded-[1.75rem] overflow-hidden bg-white flex items-center justify-center">
                 {user?.photoURL ? (
                   <img key={user.photoURL} src={resolveProfilePhotoUrl(user.photoURL)} alt="Profile" className="w-full h-full object-cover" />
@@ -346,7 +348,7 @@ export default function UserProfile() {
                     <button 
                         type="submit"
                         disabled={loadingProfile}
-                        className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                        className={`w-full mt-2 ${staffBtnPrimary} py-3.5`}
                     >
                         {loadingProfile ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                         {t('profile.saveChanges')}
@@ -423,7 +425,7 @@ export default function UserProfile() {
                         <button 
                             type="submit"
                             disabled={loadingPassword}
-                            className="w-full mt-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                            className={`w-full mt-2 ${staffBtnPrimary} py-3.5`}
                         >
                             {loadingPassword ? <Loader2 size={18} className="animate-spin" /> : <Lock size={18} />}
                             {t('profile.updatePassword')}
@@ -433,6 +435,6 @@ export default function UserProfile() {
             </div>
          </div>
       </div>
-    </div>
+    </StaffPageLayout>
   );
 }

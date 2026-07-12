@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import {
-  ClipboardList,
   Sparkles,
   Loader2,
   CheckCircle2,
@@ -29,7 +28,13 @@ import {
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
 import { buildPreparedContentMeta } from '../utils/preparedContentMeta';
-import ContentTopicToolbar from './staff/ContentTopicToolbar';
+import ContentTopicToolbar, { StaffToolbarButton } from './staff/ContentTopicToolbar';
+import StaffPageLayout from './staff/StaffPageLayout';
+import StaffErrorAlert from './staff/StaffErrorAlert';
+import StaffLoading from './staff/StaffLoading';
+import StaffPanel from './staff/StaffPanel';
+import { isTopicContextComplete } from '../utils/syllabusTopicContext';
+import { STAFF_HEADING } from './staff/staffUi';
 import { messageFromAiError } from '../utils/aiErrors';
 import {
   syncLiveTestSessionToServer,
@@ -751,63 +756,31 @@ export default function TestQuestions() {
     );
   }
 
+  const staffTopic =
+    globalTopic && isTopicContextComplete(globalTopic) ? globalTopic : null;
+
   return (
-    <div className="h-full flex flex-col bg-[#f2f2f7] p-3 sm:p-5 lg:p-6 overflow-y-auto">
-      <div className="w-full space-y-8 pb-32">
-        <div className="text-center space-y-4 pt-4">
-          <div className="inline-flex items-center gap-2 bg-indigo-100 text-indigo-700 px-4 py-1.5 rounded-full font-semibold text-sm mb-4">
-            <ClipboardList size={16} />
-            {t('test.teacherBadge')}
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight leading-tight">
-            {t('test.heroTitle')} <br className="hidden sm:block"/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-              {t('test.heroHighlight')}
-            </span>
-          </h1>
-          <p className="text-gray-500 text-lg max-w-2xl mx-auto font-medium">
-            {t('test.heroSubtitle')}
-          </p>
-        </div>
+    <StaffPageLayout spacious>
+      <ContentTopicToolbar
+        moduleLabel={t('test.teacherBadge')}
+        topic={staffTopic}
+        topicValue={topic}
+        onTopicChange={setTopic}
+        topicLabel={t('test.topicLabel')}
+        topicPlaceholder={t('test.topicPlaceholder')}
+        createLabel={t('test.create')}
+        loading={loading}
+        onCreate={() => void handleGenerate()}
+        lockTopicFromSyllabus={Boolean(staffTopic)}
+        hint={t('test.heroSubtitle')}
+        versions={versions}
+        activeVersionId={activeVersionId}
+        onSelectVersion={handleSelectVersion}
+        versionsTitle={t('test.savedVersions')}
+      />
 
-        <div className="w-full">
-          <ContentTopicToolbar
-            topic={topic}
-            onTopicChange={setTopic}
-            topicLabel={t('test.topicLabel')}
-            topicPlaceholder={t('test.topicPlaceholder')}
-            createLabel={t('test.create')}
-            loading={loading}
-            onCreate={() => void handleGenerate()}
-            accent="indigo"
-            versions={versions}
-            activeVersionId={activeVersionId}
-            onSelectVersion={handleSelectVersion}
-            versionsTitle={t('test.savedVersions')}
-          />
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl w-full text-center font-medium">
-            {error}
-          </div>
-        )}
-
-        {loading && (
-          <div className="py-20 flex flex-col items-center justify-center">
-            <div className="relative w-20 h-20 mb-6">
-              <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
-              <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
-              <Brain size={28} className="absolute inset-0 m-auto text-indigo-600 animate-pulse" />
-            </div>
-            <p className="text-gray-500 font-medium animate-pulse text-lg">
-              {t('test.generating')}
-            </p>
-            <p className="text-gray-400 text-sm mt-2 max-w-md text-center">
-              {t('test.generatingHint')}
-            </p>
-          </div>
-        )}
+      {error && <StaffErrorAlert message={error} />}
+      {loading && <StaffLoading label={t('test.generating')} hint={t('test.generatingHint')} />}
 
         {testSession && !loading && (
           <motion.div 
@@ -815,38 +788,25 @@ export default function TestQuestions() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+            <StaffPanel className="p-5 sm:p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <h2 className="text-2xl font-bold text-gray-800">{testSession.topic}</h2>
+                <h2 className={`text-xl font-bold ${STAFF_HEADING}`}>{testSession.topic}</h2>
                 <div className="flex flex-wrap gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => void handleDownloadTestPdf()}
-                    disabled={downloadingTestPdf}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm font-semibold hover:bg-indigo-100 disabled:opacity-50"
-                  >
+                  <StaffToolbarButton onClick={() => void handleDownloadTestPdf()} disabled={downloadingTestPdf}>
                     {downloadingTestPdf ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
                     {t('test.downloadTestPdf')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleDownloadKeyPdf()}
-                    disabled={downloadingKeyPdf}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm font-semibold hover:bg-emerald-100 disabled:opacity-50"
-                  >
+                  </StaffToolbarButton>
+                  <StaffToolbarButton onClick={() => void handleDownloadKeyPdf()} disabled={downloadingKeyPdf}>
                     {downloadingKeyPdf ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
                     {t('test.downloadKeyPdf')}
-                  </button>
-                  <button
-                    type="button"
+                  </StaffToolbarButton>
+                  <StaffToolbarButton
                     onClick={() => void handleDownloadResultsPdf()}
                     disabled={downloadingResultsPdf || submissions.length === 0}
-                    title={submissions.length === 0 ? t('test.noResultsYet') : undefined}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-sm font-semibold hover:bg-amber-100 disabled:opacity-50"
                   >
                     {downloadingResultsPdf ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                     {t('test.downloadResultsPdf')} ({submissions.length})
-                  </button>
+                  </StaffToolbarButton>
                 </div>
               </div>
               {testSession.references && testSession.references.length > 0 && (
@@ -932,7 +892,7 @@ export default function TestQuestions() {
                   </div>
                 </div>
               )}
-            </div>
+            </StaffPanel>
 
             {!showAnalysis ? (
               <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -1059,7 +1019,6 @@ export default function TestQuestions() {
             </div>
           </motion.div>
         )}
-      </div>
-    </div>
+    </StaffPageLayout>
   );
 }

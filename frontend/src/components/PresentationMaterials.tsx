@@ -30,6 +30,12 @@ import {
   uploadPresentation,
   type TopicPresentationItem,
 } from '../utils/presentationUploadApi';
+import StaffPageLayout from './staff/StaffPageLayout';
+import StaffTopicHeader from './staff/StaffTopicHeader';
+import StaffEmptyState from './staff/StaffEmptyState';
+import StaffErrorAlert from './staff/StaffErrorAlert';
+import StaffPanel from './staff/StaffPanel';
+import { staffBtnGhost, staffBtnPrimary, staffBtnSecondary } from './staff/staffUi';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -300,37 +306,26 @@ export default function PresentationMaterials() {
 
   if (!topicReady || !globalTopic) {
     return (
-      <div className="max-w-lg mx-auto p-8 text-center space-y-4">
-        <div className="ios-glass rounded-2xl border border-white/70 p-8">
-          <BookOpen size={40} className="mx-auto text-indigo-600 mb-4" />
-          <h2 className="text-lg font-bold text-[#083047]">{t('presentation.noTopic')}</h2>
-          <p className="text-[14px] text-black/55 mt-2 leading-relaxed">{t('presentation.noTopicHint')}</p>
-          <button
-            type="button"
-            onClick={openSyllabus}
-            className="mt-5 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-[14px] font-semibold hover:bg-indigo-500"
-          >
-            {t('common.goToSyllabus')}
-          </button>
-        </div>
-      </div>
+      <StaffPageLayout>
+        <StaffEmptyState
+          icon={BookOpen}
+          title={t('presentation.noTopic')}
+          hint={t('presentation.noTopicHint')}
+          actionLabel={t('common.goToSyllabus')}
+          onAction={openSyllabus}
+        />
+      </StaffPageLayout>
     );
   }
 
   return (
-    <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-6 space-y-5 pb-8">
-      <div className="ios-glass rounded-[1.5rem] border border-white/70 p-5 sm:p-6 shadow-sm">
-        <h2 className="text-xl sm:text-2xl font-bold text-[#083047]">{t('presentation.title')}</h2>
-        <p className="text-[14px] text-black/55 mt-1">
-          {t('presentation.topicLabel')}{' '}
-          <span className="font-semibold text-indigo-800">
-            {globalTopic.id} — {globalTopic.title}
-          </span>
-        </p>
-        <p className="text-[12px] text-black/45 mt-2">
-          {items.length > 0 ? t('presentation.hintWithUpload') : t('presentation.hintAiGenerate')}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
+    <StaffPageLayout>
+      <StaffTopicHeader
+        moduleLabel={t('presentation.title')}
+        topic={globalTopic}
+        hint={items.length > 0 ? t('presentation.hintWithUpload') : t('presentation.hintAiGenerate')}
+      >
+        <div className="flex flex-wrap gap-2">
           <input
             ref={fileRef}
             type="file"
@@ -345,7 +340,7 @@ export default function PresentationMaterials() {
             type="button"
             disabled={uploading || aiLoading}
             onClick={() => fileRef.current?.click()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-[14px] font-semibold hover:bg-indigo-500 disabled:opacity-50"
+            className={`${staffBtnPrimary} disabled:opacity-50`}
           >
             {uploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
             {uploading ? t('common.loading') : t('presentation.upload')}
@@ -354,7 +349,7 @@ export default function PresentationMaterials() {
             type="button"
             disabled={uploading || aiLoading}
             onClick={() => void handleAiPresentation()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-[14px] font-semibold hover:bg-violet-500 disabled:opacity-50"
+            className={`${staffBtnSecondary} disabled:opacity-50`}
           >
             {aiLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
             {aiLoading
@@ -367,23 +362,23 @@ export default function PresentationMaterials() {
             type="button"
             onClick={() => void loadItems()}
             disabled={loading}
-            className="px-4 py-2.5 rounded-xl border border-black/10 text-[14px] font-semibold text-indigo-700 hover:bg-white/80 disabled:opacity-50"
+            className={`${staffBtnGhost} disabled:opacity-50`}
           >
             {loading ? t('common.loading') : t('common.refresh')}
           </button>
         </div>
-      </div>
+      </StaffTopicHeader>
 
-      {error && <p className="text-[13px] text-rose-600 font-medium text-center">{error}</p>}
+      {error && <StaffErrorAlert message={error} />}
 
       {loading ? (
         <div className="flex justify-center py-16">
-          <Loader2 className="animate-spin text-indigo-600" size={36} />
+          <Loader2 className="animate-spin text-[#083047]/60" size={36} />
         </div>
       ) : items.length === 0 ? (
-        <p className="text-center text-black/45 py-12 ios-glass rounded-2xl border border-white/60">
+        <StaffPanel className="py-12 text-center text-black/45 text-[14px]">
           {t('presentation.empty')}
-        </p>
+        </StaffPanel>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
           {items.map((item, idx) => (
@@ -433,6 +428,6 @@ export default function PresentationMaterials() {
           />
         )}
       </AnimatePresence>
-    </div>
+    </StaffPageLayout>
   );
 }
