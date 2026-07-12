@@ -8,7 +8,7 @@ import { fetchHandoutsForTopic, type TopicHandoutItem } from '../../utils/handou
 export default function HandoutTopicBanner() {
   const { t } = useUiText();
   const topic = useContext(GlobalTopicContext);
-  const { openHandouts, openSyllabus } = useContext(AppNavigationContext);
+  const { openHandouts } = useContext(AppNavigationContext);
   const [items, setItems] = useState<TopicHandoutItem[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -52,17 +52,17 @@ export default function HandoutTopicBanner() {
             ) : items.length > 0 ? (
               t('banner.materialsCount', { count: items.length })
             ) : (
-              t('banner.noMaterials')
+              t('banner.noMaterialsAdmin')
             )}
           </p>
         </div>
       </div>
       <button
         type="button"
-        onClick={items.length > 0 ? openHandouts : openSyllabus}
+        onClick={openHandouts}
         className="shrink-0 px-4 py-2 rounded-xl bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-500 shadow-sm"
       >
-        {items.length > 0 ? t('banner.view') : t('banner.uploadInSyllabus')}
+        {items.length > 0 ? t('banner.view') : t('banner.openHandouts')}
       </button>
     </div>
   );

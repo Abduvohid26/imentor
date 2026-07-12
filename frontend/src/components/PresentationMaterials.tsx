@@ -19,6 +19,7 @@ import { useUiText } from '../i18n/useUiText';
 import { aiService } from '../services/aiService';
 import { buildPresentationPptxFile } from '../utils/buildPresentationPptx';
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
 import {
   deletePresentation,
@@ -235,8 +236,8 @@ export default function PresentationMaterials() {
     try {
       await uploadPresentation({ topic: topicTitle, file, context: globalTopic });
       await loadItems();
-    } catch {
-      setError(t('presentation.errorUpload'));
+    } catch (e) {
+      setError(apiErrorMessage(e, t('presentation.errorUpload')));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -278,8 +279,9 @@ export default function PresentationMaterials() {
         context: globalTopic,
       });
       await loadItems();
-    } catch {
-      setError(t('presentation.errorAi'));
+    } catch (e) {
+      const detail = apiErrorMessage(e, t('presentation.errorAiHint'));
+      setError(`${t('presentation.errorAi')} ${detail}`);
     } finally {
       setAiLoading(false);
     }

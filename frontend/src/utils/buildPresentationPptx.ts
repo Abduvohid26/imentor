@@ -30,7 +30,8 @@ export async function buildPresentationPptxFile(deck: PresentationDeck): Promise
   }
 
   const blob = (await pptx.write({ outputType: 'blob' })) as Blob;
-  const safeName = deck.title.replace(/[^\w\u0400-\u04FF\s-]+/g, '').trim().slice(0, 48) || 'taqdimot';
+  const safeName =
+    deck.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().slice(0, 48) || 'taqdimot';
   return new File([blob], `${safeName}.pptx`, {
     type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   });

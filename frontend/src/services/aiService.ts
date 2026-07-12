@@ -520,6 +520,7 @@ async function requestPresentationDeckFromAi(params: {
   assertOpenAiApiKey();
   const outLang = languageName(params.language);
   const kind = params.topicType === 'practical' ? 'amaliy mashg\'ulot' : 'ma\'ruza';
+  const fallbackTitle = `${params.topicId} — ${params.topicTitle}`;
   const enhanceBlock =
     params.mode === 'enhance'
       ? `O'qituvchi allaqachon taqdimot yuklagan ("${params.sourceFileName || 'fayl'}"). ` +
@@ -529,22 +530,36 @@ async function requestPresentationDeckFromAi(params: {
           : '')
       : 'O\'qituvchida taqdimot yo\'q — mavzu bo\'yicha noldan dars taqdimoti yarating.';
 
-  const raw = await openaiJson<Partial<PresentationDeck>>({
-    model: OPENAI_CHAT,
-    system:
-      `${SYS_MEDICAL} Return ONLY valid JSON: ` +
-      '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
-      '8-12 slides for university medical class. Each slide 3-6 concise bullets. Language: ' +
-      outLang + '.',
-    user:
-      `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
-      `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}`,
-    maxTokens: 6144,
-    temperature: 0.55,
-    parse: (t) => parseJSONSafe<Partial<PresentationDeck>>(t),
-  });
+  const userPrompt =
+    `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
+    `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}`;
 
-  return normalizePresentationDeck(raw, `${params.topicId} — ${params.topicTitle}`);
+  const attempts: Array<{ maxTokens: number; temperature: number }> = [
+    { maxTokens: 6144, temperature: 0.55 },
+    { maxTokens: 4096, temperature: 0.4 },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const raw = await openaiJson<Partial<PresentationDeck>>({
+        model: OPENAI_CHAT,
+        system:
+          `${SYS_MEDICAL} Return ONLY valid JSON: ` +
+          '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
+          '8-12 slides for university medical class. Each slide 3-6 concise bullets. Language: ' +
+          outLang + '.',
+        user: userPrompt,
+        maxTokens: attempt.maxTokens,
+        temperature: attempt.temperature,
+        parse: (t) => parseJSONSafe<Partial<PresentationDeck>>(t),
+      });
+      return normalizePresentationDeck(raw, fallbackTitle);
+    } catch (error) {
+      console.warn('Presentation AI attempt failed:', error);
+    }
+  }
+
+  return normalizePresentationDeck(null, fallbackTitle);
 }
 
 export const aiService = {
