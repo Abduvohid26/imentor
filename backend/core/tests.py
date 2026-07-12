@@ -784,3 +784,52 @@ class SecurityAndFeatureApiTests(TestCase):
         )
         self.assertEqual(second.status_code, 200)
         self.assertTrue(second.json().get('already_submitted'))
+
+
+@override_settings(DEBUG=False, SECURE_SSL_REDIRECT=False)
+class EnsureDemoRoleUsersCommandTests(TestCase):
+    def test_creates_demo_users_when_enabled(self) -> None:
+        import os
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        prev = os.environ.get("DJANGO_ENSURE_DEMO_USERS")
+        os.environ["DJANGO_ENSURE_DEMO_USERS"] = "True"
+        try:
+            out = StringIO()
+            call_command("ensure_demo_role_users", stdout=out)
+            self.assertIn("demo_admin", out.getvalue())
+        finally:
+            if prev is None:
+                os.environ.pop("DJANGO_ENSURE_DEMO_USERS", None)
+            else:
+                os.environ["DJANGO_ENSURE_DEMO_USERS"] = prev
+
+        admin = User.objects.get(username="998901110001")
+        self.assertTrue(admin.check_password("AdminDemo123"))
+        self.assertTrue(admin.groups.filter(name="admin").exists())
+
+        hodim = User.objects.get(username="998901112233")
+        self.assertTrue(hodim.check_password("TestHodim123"))
+        self.assertTrue(hodim.groups.filter(name="hodim").exists())
+
+    def test_skipped_when_disabled_in_prod(self) -> None:
+        import os
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        prev = os.environ.get("DJANGO_ENSURE_DEMO_USERS")
+        os.environ["DJANGO_ENSURE_DEMO_USERS"] = "False"
+        try:
+            out = StringIO()
+            call_command("ensure_demo_role_users", stdout=out)
+            self.assertIn("skipped", out.getvalue().lower())
+        finally:
+            if prev is None:
+                os.environ.pop("DJANGO_ENSURE_DEMO_USERS", None)
+            else:
+                os.environ["DJANGO_ENSURE_DEMO_USERS"] = prev
+
+        self.assertFalse(User.objects.filter(username="998901110001").exists())

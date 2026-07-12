@@ -111,7 +111,9 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
       });
     } catch (err: unknown) {
       const code = err instanceof Error ? err.message : '';
-      if (err instanceof HttpError && err.status === 409) {
+      if (err instanceof HttpError && err.status === 403) {
+        setError(t('auth.register.errorDisabled'));
+      } else if (err instanceof HttpError && err.status === 409) {
         setError(t('auth.register.errorExists'));
       } else if (code === 'already-exists') {
         setError(t('auth.register.errorExists'));

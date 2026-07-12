@@ -129,15 +129,16 @@ export default function AdminSyllabusCatalog() {
 
   /**
    * PDF(lar)dan AI orqali mavzularni ajratib variantlar yig'adi.
-   * Bitta fayl xato bersa yoki 0 mavzu chiqsa — butun jarayon to'xtaydi (null qaytadi).
+   * Bitta fayl xato bo'lsa — qolganlarini davom ettiradi; kamida bitta muvaffaqiyat kerak.
    */
   const extractVariantsFromFiles = async (
     files: File[],
     fallbackLanguage: AppLanguage,
-  ): Promise<{ variants: SyllabusVariant[]; language: AppLanguage } | null> => {
+  ): Promise<{ variants: SyllabusVariant[]; language: AppLanguage; skipped: string[] } | null> => {
     setUploading(true);
     setError(null);
     const newVariants: SyllabusVariant[] = [];
+    const skipped: string[] = [];
     let detectedInstructionLanguage: AppLanguage = fallbackLanguage;
     let lastFileName = '';
     try {
@@ -145,20 +146,44 @@ export default function AdminSyllabusCatalog() {
         const file = files[i];
         lastFileName = file.name;
         setProgress({ current: i + 1, total: files.length, fileName: file.name });
-        const extracted = await aiService.extractSyllabusFromDocument(file);
-        if (i === 0) {
-          detectedInstructionLanguage = extracted.instruction_language;
+        try {
+          const extracted = await aiService.extractSyllabusFromDocument(file);
+          if (i === 0 && newVariants.length === 0) {
+            detectedInstructionLanguage = extracted.instruction_language;
+          }
+          if (!extracted.topics.length) {
+            skipped.push(file.name);
+            continue;
+          }
+          newVariants.push({
+            label: parseVariantLabel(file.name),
+            file_name: file.name,
+            topics: extracted.topics,
+          });
+        } catch (fileErr) {
+          skipped.push(file.name);
+          console.warn('Syllabus extract skipped:', file.name, fileErr);
         }
-        if (!extracted.topics.length) {
-          throw new Error(`empty:${file.name}`);
-        }
-        newVariants.push({
-          label: parseVariantLabel(file.name),
-          file_name: file.name,
-          topics: extracted.topics,
-        });
       }
-      return { variants: dedupeVariantLabels(newVariants), language: detectedInstructionLanguage };
+
+      if (!newVariants.length) {
+        throw new Error(`empty:${lastFileName || 'batch'}`);
+      }
+
+      if (skipped.length) {
+        setError(
+          t('admin.error.syllabusPartialSkipped', {
+            skipped: skipped.join(', '),
+            ok: newVariants.length,
+          }),
+        );
+      }
+
+      return {
+        variants: dedupeVariantLabels(newVariants),
+        language: detectedInstructionLanguage,
+        skipped,
+      };
     } catch (err) {
       if (err instanceof HttpError && err.status === 403) {
         setError(t('admin.error.adminRequired'));

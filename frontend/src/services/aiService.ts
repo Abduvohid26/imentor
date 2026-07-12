@@ -4,6 +4,7 @@ import {
   extractTopicsByRegex,
   guessSubjectFromDocumentText,
   isWeakSyllabusExtraction,
+  normalizeSyllabusDocumentText,
   normalizeSyllabusTopics,
   scoreSyllabusTopics,
 } from '../utils/syllabusTopicParse';
@@ -171,7 +172,8 @@ async function extractSyllabusWithAi(
   file: File,
   docText: string,
 ): Promise<SyllabusExtractResult> {
-  const docLang = inferPdfLanguage(docText);
+  const normalizedText = normalizeSyllabusDocumentText(docText);
+  const docLang = inferPdfLanguage(normalizedText);
   const docLangName = languageName(docLang);
   let best: SyllabusExtractResult = { subject_name: '', topics: [], instruction_language: docLang };
 
@@ -181,11 +183,11 @@ async function extractSyllabusWithAi(
       system: SYLLABUS_AI_SYSTEM,
       user:
         `Document language: ${docLangName}. File: "${file.name}". ${SYLLABUS_NO_TRANSLATE_RULE}\n\n` +
-        docText.slice(0, 100000),
+        normalizedText.slice(0, 100000),
       maxTokens: 6144,
       parse: (t) => parseJSONSafe<Partial<SyllabusExtractResult>>(t),
     });
-    best = normalizeSyllabusExtract(textRaw, file.name, docText);
+    best = normalizeSyllabusExtract(textRaw, file.name, normalizedText);
   } catch (firstAiError) {
     console.warn('Syllabus AI text pass failed:', firstAiError);
   }
@@ -199,19 +201,19 @@ async function extractSyllabusWithAi(
           ' List every numbered topic line from the syllabus table of contents or topic list.',
         user:
           `Document language: ${docLangName}. Extract ALL topics with correct lecture/practical type.\n\n` +
-          docText.slice(0, 100000),
+          normalizedText.slice(0, 100000),
         maxTokens: 6144,
         parse: (t) => parseJSONSafe<Partial<SyllabusExtractResult>>(t),
       });
-      best = pickBetterExtract(best, normalizeSyllabusExtract(retryRaw, file.name, docText));
+      best = pickBetterExtract(best, normalizeSyllabusExtract(retryRaw, file.name, normalizedText));
     } catch (retryError) {
       console.warn('Syllabus AI retry failed:', retryError);
     }
   }
 
-  const regexPass = extractTopicsByRegex(docText);
+  const regexPass = extractTopicsByRegex(normalizedText);
   if (regexPass.length > 0) {
-    const regexResult = normalizeSyllabusExtract({ topics: regexPass }, file.name, docText);
+    const regexResult = normalizeSyllabusExtract({ topics: regexPass }, file.name, normalizedText);
     best = pickBetterExtract(best, regexResult);
   }
 
