@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { LayoutDashboard, Users, BriefcaseMedical, ClipboardList, RefreshCw, LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
-import { fetchAdminCatalogItems } from '../../utils/contentCatalogApi';
+import { fetchAdminCatalogStats } from '../../utils/contentCatalogApi';
 import { fetchStaffDirectory } from '../../utils/staffDirectoryApi';
 import { useUiText } from '../../i18n/useUiText';
 
@@ -27,19 +27,23 @@ export default function AdminDashboardHome() {
   const [todayLogins, setTodayLogins] = useState(0);
   const [caseCount, setCaseCount] = useState(0);
   const [testCount, setTestCount] = useState(0);
+  const [pendingTests, setPendingTests] = useState(0);
+  const [subjectsCount, setSubjectsCount] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [staff, cases, tests] = await Promise.all([
+      const [staff, caseStats, testStats] = await Promise.all([
         fetchStaffDirectory().catch(() => []),
-        fetchAdminCatalogItems({ kind: 'case' }).catch(() => []),
-        fetchAdminCatalogItems({ kind: 'test' }).catch(() => []),
+        fetchAdminCatalogStats({ kind: 'case' }).catch(() => null),
+        fetchAdminCatalogStats({ kind: 'test' }).catch(() => null),
       ]);
       setStaffCount(staff.length);
       setTodayLogins(staff.filter((s) => isToday(s.last_login)).length);
-      setCaseCount(cases.length);
-      setTestCount(tests.length);
+      setCaseCount(caseStats?.totals.total_count ?? 0);
+      setTestCount(testStats?.totals.total_count ?? 0);
+      setPendingTests(testStats?.totals.pending_publish_count ?? 0);
+      setSubjectsCount(testStats?.totals.subjects_distinct ?? 0);
     } finally {
       setLoading(false);
     }
@@ -93,6 +97,19 @@ export default function AdminDashboardHome() {
           </div>
         ))}
       </div>
+
+      {(testCount > 0 || subjectsCount > 0) && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700/70">{t('admin.statsSubjects')}</p>
+            <p className="text-xl font-bold text-blue-900 tabular-nums mt-1">{subjectsCount}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800/70">{t('admin.statsPendingPublish')}</p>
+            <p className="text-xl font-bold text-amber-900 tabular-nums mt-1">{pendingTests}</p>
+          </div>
+        </div>
+      )}
 
       <p className="text-[12px] text-black/45 text-center max-w-lg mx-auto">
         {t('admin.dashboardNote', { hodim: t('admin.hodimRole') })}

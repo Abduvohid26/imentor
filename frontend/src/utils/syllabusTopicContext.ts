@@ -115,6 +115,16 @@ export function isTopicContextComplete(
   );
 }
 
+/** useEffect dependency — obyekt o'rniga barqaror kalit */
+export function topicContextKey(
+  topic: SyllabusTopic | SyllabusTopicContext | null | undefined,
+): string {
+  if (!topic || !isTopicContextComplete(topic)) {
+    return topic?.title?.trim() || '';
+  }
+  return `${topic.syllabusId}::${topic.variantLabel}::${topic.id}::${topic.type}`;
+}
+
 export function topicsMatch(
   a: SyllabusTopic | SyllabusTopicContext | null,
   b: SyllabusTopic | SyllabusTopicContext | null,

@@ -170,12 +170,13 @@ export default function TestQuestions() {
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
 
   const refreshVersions = React.useCallback(() => {
-    if (!topic.trim()) {
+    const lookup = globalTopic ?? topic;
+    if (!topic.trim() && !globalTopic) {
       setVersions([]);
       return;
     }
-    setVersions(listPreparedForTopic('test', topic));
-  }, [topic]);
+    setVersions(listPreparedForTopic('test', lookup));
+  }, [topic, globalTopic]);
 
   useEffect(() => {
     if (globalTopic && !isStudentMode) {
@@ -394,9 +395,10 @@ export default function TestQuestions() {
 
   useEffect(() => {
     if (isStudentMode || !topic.trim()) return;
+    const lookup = globalTopic ?? topic;
     let mounted = true;
     (async () => {
-      const prepared = await loadLatestPreparedContent<TestSession>('test', topic);
+      const prepared = await loadLatestPreparedContent<TestSession>('test', lookup);
       if (!mounted) return;
       refreshVersions();
       if (!prepared) {
@@ -406,7 +408,7 @@ export default function TestQuestions() {
         setActiveVersionId(null);
         return;
       }
-      const list = listPreparedForTopic('test', topic);
+      const list = listPreparedForTopic('test', lookup);
       setTestSession(prepared);
       const reused = tryReuseTeacherSessionId(prepared);
       void setupTeacherLiveSession(prepared, reused ?? undefined);
@@ -415,7 +417,7 @@ export default function TestQuestions() {
     return () => {
       mounted = false;
     };
-  }, [isStudentMode, topic, refreshVersions]);
+  }, [isStudentMode, topic, globalTopic, refreshVersions]);
 
   useEffect(() => {
     if (isStudentMode || !teacherSessionId || sessionClosed) return;
@@ -543,7 +545,7 @@ export default function TestQuestions() {
       const data = await aiService.generateTests(topic, 10, language);
       await savePreparedContent('test', topic, data, buildPreparedContentMeta(globalTopic));
       refreshVersions();
-      const list = listPreparedForTopic('test', topic);
+      const list = listPreparedForTopic('test', globalTopic ?? topic);
       const sid = await setupTeacherLiveSession(data);
       setTestSession(data);
       setActiveVersionId(list[0]?.id ?? null);

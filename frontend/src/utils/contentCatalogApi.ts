@@ -14,9 +14,85 @@ export type CatalogItemSummary = {
   topic_norm: string;
   subject_name: string;
   subject_code: string;
+  variant_label: string;
+  topic_code: string;
+  syllabus_id: number | null;
   author_display_name: string;
+  owner_key: string;
   created_at: string;
   question_count: number;
+  is_published: boolean;
+  publish_at: string;
+};
+
+export type CatalogStatsTotals = {
+  case_count: number;
+  test_count: number;
+  total_count: number;
+  questions_total: number;
+  published_count: number;
+  pending_publish_count: number;
+  authors_distinct: number;
+  subjects_distinct: number;
+  variants_distinct: number;
+  topics_distinct: number;
+  created_last_7d: number;
+  created_last_30d: number;
+};
+
+export type CatalogStatsSubjectRow = {
+  subject_code: string;
+  subject_name: string;
+  case_count: number;
+  test_count: number;
+  total_count: number;
+  questions_total: number;
+  pending_publish_count: number;
+  variants_distinct: number;
+  topics_distinct: number;
+};
+
+export type CatalogStatsVariantRow = {
+  subject_code: string;
+  subject_name: string;
+  variant_label: string;
+  case_count: number;
+  test_count: number;
+  total_count: number;
+  questions_total: number;
+  topics_distinct: number;
+};
+
+export type CatalogStatsTopicRow = {
+  subject_code: string;
+  subject_name: string;
+  variant_label: string;
+  topic_code: string;
+  topic: string;
+  case_count: number;
+  test_count: number;
+  total_count: number;
+  questions_total: number;
+};
+
+export type CatalogStatsAuthorRow = {
+  owner_key: string;
+  author_display_name: string;
+  case_count: number;
+  test_count: number;
+  total_count: number;
+  questions_total: number;
+};
+
+export type CatalogStats = {
+  generated_at: string;
+  kind: string;
+  totals: CatalogStatsTotals;
+  by_subject: CatalogStatsSubjectRow[];
+  by_variant: CatalogStatsVariantRow[];
+  by_topic: CatalogStatsTopicRow[];
+  by_author: CatalogStatsAuthorRow[];
+  recent: CatalogItemSummary[];
 };
 
 export type CatalogSubjectRow = {
@@ -133,6 +209,20 @@ export async function deleteAdminCatalogItem(id: number): Promise<void> {
     method: 'DELETE',
     headers: authHeaders(token),
     timeoutMs: 20000,
+  });
+}
+
+export async function fetchAdminCatalogStats(params?: {
+  kind?: CatalogKind | '';
+}): Promise<CatalogStats | null> {
+  const token = await getBackendAccessToken();
+  if (!token) return null;
+  const query = new URLSearchParams();
+  if (params?.kind) query.set('kind', params.kind);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return httpJson<CatalogStats>(`${apiBaseUrl()}/v1/admin/content-catalog/stats/${suffix}`, {
+    headers: authHeaders(token),
+    timeoutMs: 30000,
   });
 }
 

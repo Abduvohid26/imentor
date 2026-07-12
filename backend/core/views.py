@@ -15,6 +15,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 
+from .content_catalog_service import parse_topic_norm
 from .permissions import (
     ALLOWED_ROLES,
     HasEducationRole,
@@ -198,17 +199,29 @@ class PreparedContentV1View(PreparedContentView):
         serializer = PreparedContentSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
 
-        # Fanga qat'iy bog'lash: subject_code -> CourseSyllabus (topilsa FK + kanonik nom)
         subject_code = (serializer.validated_data.get("subject_code") or "").strip()
         syllabus = (
             CourseSyllabus.objects.filter(subject_code=subject_code).first()
             if subject_code
             else None
         )
+        save_kwargs: dict = {}
         if syllabus:
-            item = serializer.save(syllabus=syllabus, subject_name=syllabus.subject_name)
-        else:
-            item = serializer.save()
+            save_kwargs["syllabus"] = syllabus
+            save_kwargs["subject_name"] = syllabus.subject_name
+
+        variant_label = (serializer.validated_data.get("variant_label") or "").strip()
+        topic_code = (serializer.validated_data.get("topic_code") or "").strip()
+        if not variant_label or not topic_code:
+            parsed = parse_topic_norm(serializer.validated_data.get("topic_norm") or "")
+            variant_label = variant_label or parsed.get("variant_label", "")
+            topic_code = topic_code or parsed.get("topic_code", "")
+        if variant_label:
+            save_kwargs["variant_label"] = variant_label[:128]
+        if topic_code:
+            save_kwargs["topic_code"] = topic_code[:32]
+
+        item = serializer.save(**save_kwargs)
         return Response(PreparedContentSerializer(item).data, status=status.HTTP_201_CREATED)
 
 

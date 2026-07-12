@@ -20,6 +20,8 @@ class PreparedContent(models.Model):
     author_display_name = models.CharField(max_length=128, blank=True, default='')
     subject_name = models.CharField(max_length=255, blank=True, default='', db_index=True)
     subject_code = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    variant_label = models.CharField(max_length=128, blank=True, default='', db_index=True)
+    topic_code = models.CharField(max_length=32, blank=True, default='', db_index=True)
     # Fanga qat'iy bog'lanish (test bazasi fan bo'yicha guruhlanadi). Fan o'chsa NULL.
     syllabus = models.ForeignKey(
         'CourseSyllabus',

@@ -20,7 +20,7 @@ import { aiService } from '../services/aiService';
 import { buildPresentationPptxFile } from '../utils/buildPresentationPptx';
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
-import { isTopicContextComplete } from '../utils/syllabusTopicContext';
+import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
 import {
   deletePresentation,
   fetchPresentationsForTopic,
@@ -151,28 +151,30 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
         )}
 
         <div className="w-full h-full max-w-6xl flex items-center justify-center">
-          {!fileSrc && item.kind !== 'pdf' ? (
-            <div className="text-center text-white/80 px-6 space-y-4">
-              <Presentation size={56} className="mx-auto opacity-80" />
-              <p className="text-sm">{t('presentation.hint')}</p>
+          {!fileSrc ? (
+            <Loader2 className="animate-spin text-white" size={40} />
+          ) : item.kind === 'pdf' ? (
+            <iframe
+              title={item.file_name}
+              src={fileSrc}
+              className="w-full h-full min-h-[50vh] rounded-lg bg-white"
+            />
+          ) : (
+            <div className="text-center text-white px-6 space-y-5 max-w-md">
+              <div className="relative w-48 h-32 mx-auto rounded-2xl overflow-hidden bg-white/10">
+                <PresentationPreview item={item} mode="full" />
+              </div>
+              <p className="text-[14px] text-white/80 leading-relaxed">{t('presentation.previewDownload')}</p>
               {downloadUrl && (
                 <a
                   href={downloadUrl}
                   download={item.file_name}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-sm font-semibold"
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#083047] text-white text-[14px] font-semibold hover:bg-[#0a4060]"
                 >
-                  <Download size={16} /> {t('common.download')}
+                  <Download size={18} /> {t('common.download')}
                 </a>
               )}
             </div>
-          ) : !fileSrc ? (
-            <Loader2 className="animate-spin text-white" size={40} />
-          ) : item.kind === 'pdf' && fileSrc ? (
-            <iframe title={item.file_name} src={fileSrc} className="w-full h-full min-h-[50vh] rounded-lg bg-white" />
-          ) : fileSrc ? (
-            <iframe title={item.file_name} src={fileSrc} className="w-full h-full min-h-[50vh] rounded-lg bg-white" />
-          ) : (
-            <Loader2 className="animate-spin text-white" size={40} />
           )}
         </div>
 
@@ -206,16 +208,24 @@ export default function PresentationMaterials() {
   const topicTitle = globalTopic?.title?.trim() ?? '';
   const topicReady = Boolean(globalTopic && topicTitle && isTopicContextComplete(globalTopic));
 
+  const topicKey = topicContextKey(globalTopic);
+  const requestSeq = useRef(0);
+
   const loadItems = useCallback(async () => {
-    if (!topicReady || !globalTopic) {
+    if (!topicReady || !globalTopic || !topicKey) {
       setItems([]);
+      setLoading(false);
       return;
     }
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     try {
-      setItems(await fetchPresentationsForTopic(globalTopic));
+      const rows = await fetchPresentationsForTopic(globalTopic);
+      if (seq !== requestSeq.current) return;
+      setItems(rows);
     } catch (e) {
+      if (seq !== requestSeq.current) return;
       setItems([]);
       setError(
         e instanceof Error && e.message === 'no-backend-token'
@@ -223,9 +233,9 @@ export default function PresentationMaterials() {
           : t('presentation.errorLoad'),
       );
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [topicReady, globalTopic, t]);
+  }, [topicReady, topicKey, globalTopic, t]);
 
   useEffect(() => {
     void loadItems();
@@ -278,6 +288,9 @@ export default function PresentationMaterials() {
         sourceText,
       });
       const file = await buildPresentationPptxFile(deck);
+      if (!file.size) {
+        throw new Error('empty-pptx');
+      }
       await uploadPresentation({
         topic: topicTitle,
         file,

@@ -229,6 +229,9 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
 SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", default=not DEBUG)
 ALLOW_LEGACY_PREPARED_CONTENT_API = env_bool("DJANGO_ALLOW_LEGACY_PREPARED_CONTENT_API", default=DEBUG)
 
+# Tashqi servislar uchun API kalitlari (vergul bilan). Masalan: key1,key2
+EXTERNAL_API_KEYS = (os.getenv("IMENTOR_EXTERNAL_API_KEYS") or os.getenv("EXTERNAL_API_KEYS") or "").strip()
+
 # OpenAI — test, keys, ma'ruza, tarjima va boshqalar. Kalit gitga kirmaydi.
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "").strip()
 OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o").strip() or "gpt-4o"

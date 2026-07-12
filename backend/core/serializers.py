@@ -126,6 +126,8 @@ class PreparedContentSerializer(serializers.ModelSerializer):
             'author_display_name',
             'subject_name',
             'subject_code',
+            'variant_label',
+            'topic_code',
             'payload',
             'created_at',
         ]

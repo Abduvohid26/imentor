@@ -1,8 +1,9 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { Files, Loader2 } from 'lucide-react';
 import { GlobalTopicContext, AppNavigationContext } from '../../App';
 import { useUiText } from '../../i18n/useUiText';
 import { fetchHandoutsForTopic, type TopicHandoutItem } from '../../utils/handoutApi';
+import { topicContextKey } from '../../utils/syllabusTopicContext';
 
 /** Syllabus mavzusi tanlanganda boshqa modullarda qisqa ko‘rsatkich. */
 export default function HandoutTopicBanner() {
@@ -11,28 +12,30 @@ export default function HandoutTopicBanner() {
   const { openHandouts } = useContext(AppNavigationContext);
   const [items, setItems] = useState<TopicHandoutItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const topicKey = topicContextKey(topic);
+  const requestSeq = useRef(0);
 
   useEffect(() => {
-    if (!topic?.title) {
+    if (!topicKey) {
       setItems([]);
+      setLoading(false);
       return;
     }
-    let cancelled = false;
+    const seq = ++requestSeq.current;
     setLoading(true);
     (async () => {
       try {
-        const list = await fetchHandoutsForTopic(topic);
-        if (!cancelled) setItems(list);
+        const list = await fetchHandoutsForTopic(topic!);
+        if (seq !== requestSeq.current) return;
+        setItems(list);
       } catch {
-        if (!cancelled) setItems([]);
+        if (seq !== requestSeq.current) return;
+        setItems([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (seq === requestSeq.current) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [topic]);
+  }, [topicKey, topic]);
 
   if (!topic) return null;
 
@@ -52,7 +55,7 @@ export default function HandoutTopicBanner() {
             ) : items.length > 0 ? (
               t('banner.materialsCount', { count: items.length })
             ) : (
-              t('banner.noMaterialsAdmin')
+              t('handout.empty')
             )}
           </p>
         </div>

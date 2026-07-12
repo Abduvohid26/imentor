@@ -343,6 +343,90 @@ class PreparedContentApiTests(TestCase):
         self.assertEqual(subjects.status_code, 200)
         self.assertEqual(subjects.json()[0]['subject_name'], 'Anatomiya')
 
+    @override_settings(EXTERNAL_API_KEYS='ext-test-key-123')
+    def test_admin_and_external_test_stats(self):
+        from datetime import timedelta
+
+        from core.models import PreparedContent
+
+        admin_bundle = self._ensure_admin_user()
+        admin_access = admin_bundle['access']
+
+        hodim = self._register_user('998901114466', 'StrongPass123', first_name='Test', last_name='Teacher')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {hodim["access"]}')
+        create_resp = self.client.post(
+            '/api/v1/prepared-content/',
+            {
+                'kind': 'test',
+                'topic': 'Yurak anatomiyasi',
+                'topic_norm': '12::pi::m1',
+                'variant_label': 'PI',
+                'topic_code': 'm1',
+                'subject_name': 'Anatomiya',
+                'subject_code': 'ANAT',
+                'author_display_name': 'Test Teacher',
+                'payload': {
+                    'topic': 'Yurak anatomiyasi',
+                    'questions': [
+                        {
+                            'question': 'Q1',
+                            'options': ['a', 'b'],
+                            'correctOptionIndex': 0,
+                            'explanation': 'e',
+                        }
+                    ],
+                },
+            },
+            format='json',
+        )
+        self.assertEqual(create_resp.status_code, 201, create_resp.content)
+        self.assertEqual(create_resp.json()['variant_label'], 'PI')
+        self.assertEqual(create_resp.json()['topic_code'], 'm1')
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {admin_access}')
+        stats = self.client.get('/api/v1/admin/content-catalog/stats/?kind=test')
+        self.assertEqual(stats.status_code, 200)
+        body = stats.json()
+        self.assertGreaterEqual(body['totals']['test_count'], 1)
+        self.assertGreaterEqual(body['totals']['subjects_distinct'], 1)
+        self.assertTrue(any(row['subject_code'] == 'ANAT' for row in body['by_subject']))
+
+        blocked = self.client.get('/api/v1/external/tests/stats/')
+        self.assertEqual(blocked.status_code, 403)
+
+        self.client.credentials()
+        ext_blocked = self.client.get(
+            '/api/v1/external/tests/stats/',
+            HTTP_X_API_KEY='wrong-key',
+        )
+        self.assertEqual(ext_blocked.status_code, 403)
+
+        ext_stats = self.client.get(
+            '/api/v1/external/tests/stats/',
+            HTTP_X_API_KEY='ext-test-key-123',
+        )
+        self.assertEqual(ext_stats.status_code, 200)
+        self.assertEqual(ext_stats.json()['kind'], 'test')
+
+        recent_pk = create_resp.json()['id']
+        ext_list = self.client.get(
+            '/api/v1/external/tests/',
+            HTTP_X_API_KEY='ext-test-key-123',
+        )
+        self.assertEqual(ext_list.status_code, 200)
+        self.assertEqual(ext_list.json().get('results', ext_list.json()), [])
+
+        PreparedContent.objects.filter(pk=recent_pk).update(
+            created_at=timezone.now() - timedelta(hours=2)
+        )
+        ext_list2 = self.client.get(
+            '/api/v1/external/tests/',
+            HTTP_X_API_KEY='ext-test-key-123',
+        )
+        items = ext_list2.json().get('results', ext_list2.json())
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['variant_label'], 'PI')
+
     def test_login_preserves_server_role_from_db(self):
         Group.objects.get_or_create(name='hodim')
         Group.objects.get_or_create(name='startuper')

@@ -6,6 +6,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .content_catalog_service import (
     CATALOG_KINDS,
+    build_catalog_stats,
     catalog_item_summary,
     catalog_subjects_summary,
     filter_catalog_queryset,
@@ -90,6 +91,32 @@ class AdminContentCatalogDetailView(APIView):
         if not deleted:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminContentCatalogStatsView(APIView):
+    """Admin: test/keys bazasi statistikasi — fan, yo'nalish, mavzu, muallif."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request):
+        kind = (request.query_params.get('kind') or '').strip()
+        if kind and kind not in CATALOG_KINDS:
+            return Response({'detail': 'kind must be case or test.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(build_catalog_stats(published_only=False, kind=kind or None))
+
+
+class PublicContentCatalogStatsView(APIView):
+    """Ochiq statistika — faqat e'lon qilingan (1 soatdan eski) materiallar."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        kind = (request.query_params.get('kind') or '').strip()
+        if kind and kind not in CATALOG_KINDS:
+            return Response({'detail': 'kind must be case or test.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(build_catalog_stats(published_only=True, kind=kind or None))
 
 
 class PublicContentCatalogListView(APIView):

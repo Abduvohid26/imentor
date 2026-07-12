@@ -42,12 +42,19 @@ from .syllabus_catalog_views import (
 from .content_catalog_views import (
     AdminContentCatalogDetailView,
     AdminContentCatalogListView,
+    AdminContentCatalogStatsView,
     ContentCatalogDetailView,
     ContentCatalogListView,
     ContentCatalogSubjectsView,
     PublicContentCatalogDetailView,
     PublicContentCatalogListView,
+    PublicContentCatalogStatsView,
     PublicContentCatalogSubjectsView,
+)
+from .external_api_views import (
+    ExternalTestsDetailView,
+    ExternalTestsListView,
+    ExternalTestsStatsView,
 )
 from .clinical_group_views import (
     AdminClinicalGroupAssignAdminView,
@@ -100,10 +107,15 @@ urlpatterns = [
     path('v1/content-catalog/subjects/', ContentCatalogSubjectsView.as_view(), name='content-catalog-subjects'),
     path('v1/content-catalog/<int:pk>/', ContentCatalogDetailView.as_view(), name='content-catalog-detail'),
     path('v1/admin/content-catalog/', AdminContentCatalogListView.as_view(), name='admin-content-catalog-list'),
+    path('v1/admin/content-catalog/stats/', AdminContentCatalogStatsView.as_view(), name='admin-content-catalog-stats'),
     path('v1/admin/content-catalog/<int:pk>/', AdminContentCatalogDetailView.as_view(), name='admin-content-catalog-detail'),
     path('v1/public/content-catalog/', PublicContentCatalogListView.as_view(), name='public-content-catalog-list'),
+    path('v1/public/content-catalog/stats/', PublicContentCatalogStatsView.as_view(), name='public-content-catalog-stats'),
     path('v1/public/content-catalog/subjects/', PublicContentCatalogSubjectsView.as_view(), name='public-content-catalog-subjects'),
     path('v1/public/content-catalog/<int:pk>/', PublicContentCatalogDetailView.as_view(), name='public-content-catalog-detail'),
+    path('v1/external/tests/', ExternalTestsListView.as_view(), name='external-tests-list'),
+    path('v1/external/tests/stats/', ExternalTestsStatsView.as_view(), name='external-tests-stats'),
+    path('v1/external/tests/<int:pk>/', ExternalTestsDetailView.as_view(), name='external-tests-detail'),
     path('v1/admin/clinical-groups/', AdminClinicalGroupListCreateView.as_view(), name='admin-clinical-groups'),
     path('v1/admin/clinical-groups/<int:pk>/', AdminClinicalGroupDetailView.as_view(), name='admin-clinical-group-detail'),
     path(

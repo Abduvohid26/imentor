@@ -1,4 +1,5 @@
 import { HttpError } from '../api/httpClient';
+import { fetchWithTimeout } from './fetchWithTimeout';
 import { getBackendAccessToken } from './backendAuth';
 import { normTopicKey } from './preparedContentStore';
 import {
@@ -51,7 +52,7 @@ export async function getPresentationFileBlobUrl(id: number): Promise<string> {
   if (cached) return cached;
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
-  const res = await fetch(`${apiBaseUrl()}/v1/presentations/${id}/file/`, {
+  const res = await fetchWithTimeout(`${apiBaseUrl()}/v1/presentations/${id}/file/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status, null);
@@ -88,7 +89,7 @@ export async function fetchPresentationsForTopic(
   for (const norm of norms) {
     query.append('topic_norm', norm);
   }
-  const res = await fetch(`${apiBaseUrl()}/v1/presentations/?${query.toString()}`, {
+  const res = await fetchWithTimeout(`${apiBaseUrl()}/v1/presentations/?${query.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const text = await res.text();

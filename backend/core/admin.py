@@ -39,9 +39,19 @@ class ReadOnlyTimestampAdmin(admin.ModelAdmin):
 
 @admin.register(PreparedContent)
 class PreparedContentAdmin(ReadOnlyTimestampAdmin):
-    list_display = ("id", "owner_key", "kind", "topic", "created_at")
-    list_filter = ("kind",)
-    search_fields = ("owner_key", "topic", "topic_norm")
+    list_display = (
+        "id",
+        "kind",
+        "subject_name",
+        "variant_label",
+        "topic_code",
+        "topic",
+        "author_display_name",
+        "owner_key",
+        "created_at",
+    )
+    list_filter = ("kind", "subject_code", "variant_label")
+    search_fields = ("owner_key", "topic", "topic_norm", "subject_name", "author_display_name")
     readonly_fields = ("created_at",)
 
 

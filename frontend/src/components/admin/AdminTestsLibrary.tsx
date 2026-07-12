@@ -1,17 +1,39 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClipboardList, Trash2, RefreshCw, Loader2, Search, GraduationCap } from 'lucide-react';
+import {
+  ClipboardList,
+  Trash2,
+  RefreshCw,
+  Loader2,
+  Search,
+  GraduationCap,
+  BarChart3,
+  Users,
+  Layers,
+} from 'lucide-react';
 import { motion } from 'motion/react';
 import {
   deleteAdminCatalogItem,
   fetchAdminCatalogItems,
+  fetchAdminCatalogStats,
   groupCatalogBySubject,
   type CatalogItemSummary,
+  type CatalogStats,
 } from '../../utils/contentCatalogApi';
 import { useUiText } from '../../i18n/useUiText';
+
+function StatChip({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 min-w-[88px]">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="text-lg font-bold text-slate-900 tabular-nums">{value}</p>
+    </div>
+  );
+}
 
 export default function AdminTestsLibrary() {
   const { t, language } = useUiText();
   const [rows, setRows] = useState<CatalogItemSummary[]>([]);
+  const [stats, setStats] = useState<CatalogStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -21,9 +43,15 @@ export default function AdminTestsLibrary() {
     setLoading(true);
     setError(null);
     try {
-      setRows(await fetchAdminCatalogItems({ kind: 'test' }));
+      const [items, statData] = await Promise.all([
+        fetchAdminCatalogItems({ kind: 'test' }),
+        fetchAdminCatalogStats({ kind: 'test' }),
+      ]);
+      setRows(items);
+      setStats(statData);
     } catch {
       setRows([]);
+      setStats(null);
       setError(t('admin.error.loadFailed'));
     } finally {
       setLoading(false);
@@ -47,7 +75,6 @@ export default function AdminTestsLibrary() {
     [t, load],
   );
 
-  // Filtr uchun fanlar ro'yxati (mavjud testlardagi noyob fanlar)
   const fanOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const r of rows) {
@@ -62,7 +89,7 @@ export default function AdminTestsLibrary() {
     return rows.filter((r) => {
       if (fanFilter && r.subject_code !== fanFilter) return false;
       if (q) {
-        const hay = `${r.topic} ${r.author_display_name} ${r.subject_name}`.toLowerCase();
+        const hay = `${r.topic} ${r.author_display_name} ${r.subject_name} ${r.variant_label} ${r.topic_code}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -70,6 +97,8 @@ export default function AdminTestsLibrary() {
   }, [rows, search, fanFilter]);
 
   const grouped = useMemo(() => groupCatalogBySubject(filtered, language), [filtered, language]);
+
+  const totals = stats?.totals;
 
   return (
     <div className="w-full space-y-6 pb-16 px-3 sm:px-5 lg:px-6 py-4">
@@ -94,7 +123,78 @@ export default function AdminTestsLibrary() {
 
       {error && <p className="text-[13px] text-rose-600 font-medium">{error}</p>}
 
-      {/* Qidiruv + fan filtri */}
+      {totals && (
+        <div className="ios-glass rounded-2xl border border-white/60 p-4 space-y-4">
+          <div className="flex items-center gap-2 text-slate-800">
+            <BarChart3 size={18} className="text-indigo-600" />
+            <h2 className="font-bold text-[15px]">{t('admin.testStatsTitle')}</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <StatChip label={t('admin.statsTotalTests')} value={totals.test_count} />
+            <StatChip label={t('admin.statsQuestions')} value={totals.questions_total} />
+            <StatChip label={t('admin.statsSubjects')} value={totals.subjects_distinct} />
+            <StatChip label={t('admin.statsVariants')} value={totals.variants_distinct} />
+            <StatChip label={t('admin.statsTopics')} value={totals.topics_distinct} />
+            <StatChip label={t('admin.statsAuthors')} value={totals.authors_distinct} />
+            <StatChip label={t('admin.statsPendingPublish')} value={totals.pending_publish_count} />
+            <StatChip label={t('admin.statsLast7d')} value={totals.created_last_7d} />
+          </div>
+
+          {stats.by_subject.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                <GraduationCap size={14} /> {t('admin.statsBySubject')}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {stats.by_subject.map((row) => (
+                  <div key={row.subject_code || row.subject_name} className="rounded-xl border border-slate-100 bg-white/80 p-3">
+                    <p className="font-semibold text-slate-900 text-[13px] truncate">{row.subject_name || row.subject_code}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {row.test_count} {t('admin.statsTestsShort')} · {row.variants_distinct} {t('admin.statsVariantsShort')} · {row.topics_distinct} {t('admin.statsTopicsShort')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {stats.by_variant.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                <Layers size={14} /> {t('admin.statsByVariant')}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {stats.by_variant.slice(0, 12).map((row) => (
+                  <span
+                    key={`${row.subject_code}-${row.variant_label}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-900"
+                  >
+                    {row.subject_name}: {row.variant_label}
+                    <span className="text-indigo-500">({row.test_count})</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {stats.by_author.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                <Users size={14} /> {t('admin.statsByAuthor')}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {stats.by_author.slice(0, 6).map((row) => (
+                  <div key={row.owner_key} className="rounded-xl border border-slate-100 bg-white/80 px-3 py-2 flex justify-between gap-2">
+                    <span className="text-[13px] font-medium text-slate-800 truncate">{row.author_display_name}</span>
+                    <span className="text-[12px] font-bold text-slate-500 tabular-nums shrink-0">{row.test_count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -148,9 +248,20 @@ export default function AdminTestsLibrary() {
                 >
                   <div className="min-w-0">
                     <p className="font-semibold text-black/90 truncate">{row.topic}</p>
-                    <p className="text-[12px] text-black/45 mt-1">
-                      {row.author_display_name} · {new Date(row.created_at).toLocaleString()} ·{' '}
-                      {row.question_count} {t('admin.questions')}
+                    <p className="text-[12px] text-black/45 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span>{row.author_display_name}</span>
+                      {row.variant_label ? (
+                        <span className="inline-flex items-center gap-1 text-indigo-600/80">
+                          <Layers size={11} /> {row.variant_label}
+                          {row.topic_code ? ` · ${row.topic_code.toUpperCase()}` : ''}
+                        </span>
+                      ) : null}
+                      <span>
+                        {new Date(row.created_at).toLocaleString()} · {row.question_count} {t('admin.questions')}
+                      </span>
+                      {!row.is_published ? (
+                        <span className="text-amber-600 font-semibold">{t('admin.statsPendingBadge')}</span>
+                      ) : null}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 shrink-0">

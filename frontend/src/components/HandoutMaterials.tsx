@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -25,7 +25,7 @@ import StaffEmptyState from './staff/StaffEmptyState';
 import StaffErrorAlert from './staff/StaffErrorAlert';
 import StaffPanel from './staff/StaffPanel';
 import { staffBtnGhost } from './staff/staffUi';
-import { isTopicContextComplete } from '../utils/syllabusTopicContext';
+import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
 
 function HandoutFilePreview({
   item,
@@ -221,28 +221,36 @@ export default function HandoutMaterials() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const topicKey = topicContextKey(globalTopic);
+  const requestSeq = useRef(0);
 
   const loadHandouts = useCallback(async () => {
-    if (!globalTopic?.title) {
+    if (!topicKey || !globalTopic?.title) {
       setItems([]);
+      setLoading(false);
       return;
     }
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     try {
       const list = await fetchHandoutsForTopic(globalTopic);
+      if (seq !== requestSeq.current) return;
       setItems(list);
     } catch (e) {
+      if (seq !== requestSeq.current) return;
       setItems([]);
       if (e instanceof Error && e.message === 'no-backend-token') {
         setError(t('handout.errorLogin'));
+      } else if (e instanceof Error && e.message === 'request-timeout') {
+        setError(t('handout.errorLoad'));
       } else {
         setError(t('handout.errorLoad'));
       }
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [globalTopic, t]);
+  }, [topicKey, globalTopic, t]);
 
   useEffect(() => {
     void loadHandouts();

@@ -1,4 +1,5 @@
 import { HttpError, httpJson } from '../api/httpClient';
+import { fetchWithTimeout } from './fetchWithTimeout';
 import { unwrapPagedResults, type PagedResponse } from '../api/pagedResults';
 import { getBackendAccessToken } from './backendAuth';
 import { normTopicKey } from './preparedContentStore';
@@ -42,7 +43,7 @@ export async function getHandoutFileBlobUrl(id: number): Promise<string> {
   if (cached) return cached;
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
-  const res = await fetch(`${apiBaseUrl()}/v1/handouts/${id}/file/`, {
+  const res = await fetchWithTimeout(`${apiBaseUrl()}/v1/handouts/${id}/file/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status, null);
@@ -85,6 +86,13 @@ export async function fetchHandoutsForTopic(
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
   const lookupKeys = topicNormLookupKeys(topic);
+  if (
+    lookupKeys.length === 0 &&
+    (typeof topic === 'string' ||
+      !isTopicContextComplete(topic))
+  ) {
+    return [];
+  }
   const params = new URLSearchParams();
   if (typeof topic !== 'string' && isTopicContextComplete(topic)) {
     params.set('syllabus_id', String(topic.syllabusId));
@@ -92,7 +100,7 @@ export async function fetchHandoutsForTopic(
     params.set('topic_code', topic.id);
   }
   for (const key of lookupKeys) params.append('topic_norm', key);
-  const res = await fetch(`${apiBaseUrl()}/v1/handouts/?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${apiBaseUrl()}/v1/handouts/?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const text = await res.text();
