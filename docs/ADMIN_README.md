@@ -364,7 +364,19 @@ Fan, yo‘nalish, mavzu va muallif bo‘yicha hisobot (JWT admin).
 
 **Tashqi hamkor API (X-Api-Key):**
 
-Hamkor servislar testlarni o‘qishi uchun alohida endpointlar. JWT kerak emas.
+Hamkor servislar katalog (kafedra/fan nomlari) va testlarni o‘qishi uchun. JWT kerak emas.
+
+**Katalog** (syllabus tuzilmasi, savolsiz):
+
+```
+GET /api/v1/external/catalog/stats/
+GET /api/v1/external/catalog/departments/
+GET /api/v1/external/catalog/departments/<department_code>/
+GET /api/v1/external/catalog/subjects/
+GET /api/v1/external/catalog/subjects/<subject_code>/
+```
+
+**Testlar** (hodim yaratgan savollar):
 
 ```
 GET /api/v1/external/tests/stats/
@@ -372,9 +384,8 @@ GET /api/v1/external/tests/
 GET /api/v1/external/tests/<id>/?question_limit=20
 ```
 
+- Kafedra va fan **nomlari** (`department_name`, `subject_name`) barcha javoblarda
 - Savollar soni: **10–30** (platforma bilan bir xil)
-- `question_limit` — detail da nechta savol olish
-- `min_questions` / `max_questions` — ro‘yxatda filtrlash
 - Faqat **1 soatdan keyin e’lon** qilingan testlar
 
 Server `.env`:
@@ -513,6 +524,11 @@ GET    /api/v1/admin/content-catalog/
 GET    /api/v1/admin/content-catalog/stats/
 GET    /api/v1/admin/content-catalog/<pk>/
 DELETE /api/v1/admin/content-catalog/<pk>/
+GET    /api/v1/external/catalog/stats/                    # X-Api-Key — kafedra/fan stat
+GET    /api/v1/external/catalog/departments/              # X-Api-Key — kafedra nomlari
+GET    /api/v1/external/catalog/departments/<code>/       # X-Api-Key — kafedra + fanlar
+GET    /api/v1/external/catalog/subjects/                 # X-Api-Key — fanlar ro'yxati
+GET    /api/v1/external/catalog/subjects/<subject_code>/  # X-Api-Key — yo'nalish/mavzu
 GET    /api/v1/external/tests/stats/          # X-Api-Key (hamkor)
 GET    /api/v1/external/tests/                # X-Api-Key
 GET    /api/v1/external/tests/<pk>/           # X-Api-Key, ?question_limit=10..30

@@ -72,11 +72,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    entrypoint: ["/app/migrate-entrypoint.sh"]
+    entrypoint: ["sh", "/app/migrate-entrypoint.sh"]
     environment:
       <<: *backend-env
     volumes:
       - media_data:/app/media
+      - ./backend:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,8 +92,11 @@ services:
     environment:
       <<: *backend-env
       RUN_MIGRATIONS: "0"
+      MANBA_CATALOG_ROOT: /manba/fanlarning yonalishilari va unga mos manbalar
     volumes:
       - media_data:/app/media
+      - ./backend:/app
+      - ./manba:/manba:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -108,12 +112,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    entrypoint: ["/app/celery-entrypoint.sh"]
+    entrypoint: ["sh", "/app/celery-entrypoint.sh"]
     environment:
       <<: *backend-env
       RUN_MIGRATIONS: "0"
     volumes:
       - media_data:/app/media
+      - ./backend:/app
     depends_on:
       migrate:
         condition: service_completed_successfully

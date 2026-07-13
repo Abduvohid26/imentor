@@ -222,6 +222,8 @@ class SyllabusVariantSerializer(serializers.Serializer):
 
 class CourseSyllabusSerializer(serializers.ModelSerializer):
     variants = serializers.SerializerMethodField()
+    department_name = serializers.CharField(source="department.name", read_only=True, default="")
+    department_code = serializers.CharField(source="department.code", read_only=True, default="")
 
     class Meta:
         model = CourseSyllabus
@@ -229,6 +231,9 @@ class CourseSyllabusSerializer(serializers.ModelSerializer):
             "id",
             "subject_name",
             "subject_code",
+            "department",
+            "department_name",
+            "department_code",
             "description",
             "instruction_language",
             "file_name",
@@ -239,7 +244,7 @@ class CourseSyllabusSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "department_name", "department_code"]
 
     def get_variants(self, obj) -> list:
         if obj.variants:

@@ -19,6 +19,9 @@ export type CourseSyllabusRow = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  department?: number | null;
+  department_name?: string;
+  department_code?: string;
 };
 
 export type StaffCourseSelectionRow = {
@@ -57,7 +60,29 @@ function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
+export type SyllabusCatalogStats = {
+  departments_count: number;
+  subjects_count: number;
+  subjects_total: number;
+  variants_count: number;
+  topics_count: number;
+  by_department: {
+    name: string;
+    code: string;
+    subjects_count: number;
+  }[];
+};
+
 // ——— Admin: markaziy katalog ———
+
+export async function fetchAdminSyllabusCatalogStats(): Promise<SyllabusCatalogStats | null> {
+  const token = await getBackendAccessToken();
+  if (!token) return null;
+  return httpJson<SyllabusCatalogStats>(`${apiBaseUrl()}/v1/admin/course-syllabuses/stats/`, {
+    headers: authHeaders(token),
+    timeoutMs: 30000,
+  });
+}
 
 export async function fetchAdminCourseSyllabuses(): Promise<CourseSyllabusRow[]> {
   const token = await getBackendAccessToken();

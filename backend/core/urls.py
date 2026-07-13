@@ -33,6 +33,7 @@ from .video_views import (
 from .syllabus_catalog_views import (
     AdminCourseSyllabusDetailView,
     AdminCourseSyllabusListCreateView,
+    AdminSyllabusCatalogStatsView,
     AdminStaffCourseSelectionDetailView,
     AdminStaffCourseSelectionListCreateView,
     CourseSyllabusCatalogView,
@@ -52,6 +53,11 @@ from .content_catalog_views import (
     PublicContentCatalogSubjectsView,
 )
 from .external_api_views import (
+    ExternalCatalogDepartmentDetailView,
+    ExternalCatalogDepartmentsView,
+    ExternalCatalogStatsView,
+    ExternalCatalogSubjectDetailView,
+    ExternalCatalogSubjectsView,
     ExternalTestsDetailView,
     ExternalTestsListView,
     ExternalTestsStatsView,
@@ -116,6 +122,11 @@ urlpatterns = [
     path('v1/external/tests/', ExternalTestsListView.as_view(), name='external-tests-list'),
     path('v1/external/tests/stats/', ExternalTestsStatsView.as_view(), name='external-tests-stats'),
     path('v1/external/tests/<int:pk>/', ExternalTestsDetailView.as_view(), name='external-tests-detail'),
+    path('v1/external/catalog/stats/', ExternalCatalogStatsView.as_view(), name='external-catalog-stats'),
+    path('v1/external/catalog/departments/', ExternalCatalogDepartmentsView.as_view(), name='external-catalog-departments'),
+    path('v1/external/catalog/departments/<slug:department_code>/', ExternalCatalogDepartmentDetailView.as_view(), name='external-catalog-department-detail'),
+    path('v1/external/catalog/subjects/', ExternalCatalogSubjectsView.as_view(), name='external-catalog-subjects'),
+    path('v1/external/catalog/subjects/<path:subject_code>/', ExternalCatalogSubjectDetailView.as_view(), name='external-catalog-subject-detail'),
     path('v1/admin/clinical-groups/', AdminClinicalGroupListCreateView.as_view(), name='admin-clinical-groups'),
     path('v1/admin/clinical-groups/<int:pk>/', AdminClinicalGroupDetailView.as_view(), name='admin-clinical-group-detail'),
     path(
@@ -148,6 +159,7 @@ urlpatterns = [
     path('v1/syllabuses/', SyllabusDocumentListCreateView.as_view(), name='syllabuses'),
     path('v1/syllabuses/<int:pk>/', SyllabusDocumentDestroyView.as_view(), name='syllabus-detail'),
     path('v1/admin/course-syllabuses/', AdminCourseSyllabusListCreateView.as_view(), name='admin-course-syllabuses'),
+    path('v1/admin/course-syllabuses/stats/', AdminSyllabusCatalogStatsView.as_view(), name='admin-course-syllabus-stats'),
     path('v1/admin/course-syllabuses/<int:pk>/', AdminCourseSyllabusDetailView.as_view(), name='admin-course-syllabus-detail'),
     path('v1/course-syllabuses/catalog/', CourseSyllabusCatalogView.as_view(), name='course-syllabus-catalog'),
     path('v1/course-syllabuses/my/', StaffCourseSelectionListView.as_view(), name='staff-course-selections'),

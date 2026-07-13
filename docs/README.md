@@ -9,7 +9,8 @@
 | **API hujjatlari** | `/api/docs/` (Swagger UI) |
 | **Admin panel** | `/admin/` (telefon raqam orqali kirish) |
 | **Admin qo‘llanmasi (SPA)** | [docs/ADMIN_README.md](docs/ADMIN_README.md) — to‘liq flow, modullar, test checklist |
-| **Tashqi test API (partner)** | [docs/EXTERNAL_TESTS_API.txt](docs/EXTERNAL_TESTS_API.txt) — X-Api-Key, savol limiti 10–30 |
+| **Tashqi API (partner)** | [docs/EXTERNAL_TESTS_API.txt](docs/EXTERNAL_TESTS_API.txt) — katalog + testlar, X-Api-Key |
+| **To'liq oqim + integratsiya** | [docs/FULL_PLATFORM_FLOW.txt](docs/FULL_PLATFORM_FLOW.txt) — kafedra→fan→test→tashqi API |
 
 ---
 
@@ -419,9 +420,21 @@ Barcha endpointlar `/api/` prefiksi ostida. Versiyalangan API: `/api/v1/...`
 | GET | `/api/v1/content-catalog/` | JWT | Xodimlar kutubxonasi |
 | GET | `/api/v1/public/content-catalog/` | Ochiq | Ochiq katalog |
 
-### Tashqi test API (hamkor servislar)
+### Tashqi API (hamkor servislar)
 
 JWT emas — `X-Api-Key` header. To'liq hujjat: [docs/EXTERNAL_TESTS_API.txt](EXTERNAL_TESTS_API.txt)
+
+**Katalog** (kafedra/fan nomlari, mavzular — savolsiz):
+
+| Method | Endpoint | Auth | Tavsif |
+|---|---|---|---|
+| GET | `/api/v1/external/catalog/stats/` | X-Api-Key | Kafedra/fan/yo'nalish/mavzu statistikasi + nomlar |
+| GET | `/api/v1/external/catalog/departments/` | X-Api-Key | Kafedralar ro'yxati (code + name) |
+| GET | `/api/v1/external/catalog/departments/<code>/` | X-Api-Key | Kafedra + uning fanlari |
+| GET | `/api/v1/external/catalog/subjects/` | X-Api-Key | Fanlar ro'yxati |
+| GET | `/api/v1/external/catalog/subjects/<code>/` | X-Api-Key | Yo'nalishlar + mavzular |
+
+**Testlar** (hodim yaratgan savollar):
 
 | Method | Endpoint | Auth | Tavsif |
 |---|---|---|---|
@@ -431,9 +444,7 @@ JWT emas — `X-Api-Key` header. To'liq hujjat: [docs/EXTERNAL_TESTS_API.txt](EX
 
 Server `.env`: `IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2`
 
-Savol limiti: platforma bilan bir xil — **minimum 10, maksimum 30**.
-- Detail: `?question_limit=20` — faqat 20 ta savol qaytaradi
-- Ro'yxat: `?min_questions=15` — kamida 15 savolli testlar
+Namuna skript: `deploy/examples/external_partner_client.py`
 
 ### Infratuzilma
 

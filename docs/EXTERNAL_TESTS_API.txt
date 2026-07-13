@@ -1,44 +1,66 @@
-iMentor — Tashqi test bazasi API (partner integratsiya)
-======================================================
+iMentor — Tashqi API (partner integratsiya)
+============================================
 
-To'liq qo'llanma: tashqi servislar hodimlar yaratgan testlarni o'qishi uchun.
-Platformada test yaratish: 10–30 savol. Tashqi API ham shu chegarada ishlaydi.
+Hamkor tizimlar uchun to'liq qo'llanma.
+Ikki blok: (A) Syllabus katalogi — kafedra/fan nomlari va mavzular;
+           (B) Test bazasi — hodimlar yaratgan savollar.
 
+Autentifikatsiya:  Header  X-Api-Key: <kalit>   (JWT kerak emas)
+Server .env:       IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2
+Base URL (prod):   https://imentor.devflix.uz/api
+Base URL (local):  http://localhost:8080/api
 
-1. Umumiy ma'lumot
-------------------
-
-Maqsad
-  Hodimlar AI orqali yaratgan test savollarini tashqi tizimlarga ulash.
-
-Kim ishlatadi
-  Hamkor servislar, mobil ilovalar, LMS, ichki dashboardlar.
-
-Autentifikatsiya
-  JWT kerak emas. Faqat API kalit:
-
-    Header:  X-Api-Key: <sizning-kalitingiz>
-
-  Server .env:
-
-    IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2
-
-  Kalit yo'q / noto'g'ri / serverda sozlanmagan → HTTP 403
-
-Base URL
-  Production:  https://imentor.devflix.uz/api
-  Local dev:   http://localhost:8080/api
-
-E'lon qilish
-  Test yaratilgandan 1 soat keyin API da paydo bo'ladi.
-  1 soatdan yangi testlar ro'yxatda va detail da ko'rinmaydi (404).
+Kalit yo'q / noto'g'ri → HTTP 403
+Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
 
 
-2. Savollar soni chegarasi (10 – 30)
-------------------------------------
+================================================================================
+0. ENDPOINTLAR JADVALI (tez ko'rinish)
+================================================================================
 
-Platformada o'qituvchi test yaratganda 10 dan 30 gacha savol tanlaydi.
-Tashqi API ham shu qoidaga amal qiladi:
+  KATALOG (nomlar + tuzilma, savolsiz)
+  ───────────────────────────────────
+  GET  /v1/external/catalog/stats/
+  GET  /v1/external/catalog/departments/
+  GET  /v1/external/catalog/departments/<department_code>/
+  GET  /v1/external/catalog/subjects/
+  GET  /v1/external/catalog/subjects/<subject_code>/
+
+  TESTLAR (hodim yaratgan savollar)
+  ─────────────────────────────────
+  GET  /v1/external/tests/stats/
+  GET  /v1/external/tests/
+  GET  /v1/external/tests/<id>/
+       ?question_limit=10..30
+
+
+================================================================================
+1. IERARXIYA VA KALIT MAYDONLAR
+================================================================================
+
+  Kafedra  →  Fan  →  Yo'nalish  →  Mavzu  →  Test savollari
+
+  +------------------+--------------------------------------------------------+
+  | Maydon           | Ma'nosi                                                |
+  +------------------+--------------------------------------------------------+
+  | department_code  | Kafedra kodi (masalan: fiziologiya)                     |
+  | department_name  | Kafedra NOMI (masalan: Fiziologiya kafedrasi)          |
+  | subject_code     | Fan kodi (masalan: fiziologiya__anatomiya)              |
+  | subject_name     | Fan NOMI (masalan: Anatomiya)                           |
+  | variant_label    | Yo'nalish (PI, DI, TPI, XT, St, …)                     |
+  | topic_code       | Mavzu kodi (m1, l2, a3 — kichik harf)                  |
+  | topic            | Mavzu sarlavhasi (insan tilida)                         |
+  | syllabus_id      | Fan yozuvi PK (topic_norm dagi id bilan bir xil)        |
+  | topic_norm       | {syllabusId}::{variant}::{topicCode}  masalan 12::pi::m1|
+  +------------------+--------------------------------------------------------+
+
+  Eslatma: subject_code va department_code — integratsiya uchun barqaror
+  kalitlar. subject_name va department_name — foydalanuvchiga ko'rsatish uchun.
+
+
+================================================================================
+2. SAVOL SONI CHEGARASI (10 – 30)
+================================================================================
 
   +------------------+------------------------------------------+
   | Parametr         | Vazifa                                   |
@@ -49,213 +71,399 @@ Tashqi API ham shu qoidaga amal qiladi:
   | max_questions    | Ro'yxat: bazada ko'pi bilan N ta savol   |
   +------------------+------------------------------------------+
 
-  Noto'g'ri qiymat (masalan 5 yoki 40) → HTTP 400
+  Har bir test javobida:  "question_limit_bounds": { "min": 10, "max": 30 }
 
-  Agar bazada 12 ta savol saqlangan bo'lsa, question_limit=20 so'ralsa —
-  12 ta qaytariladi (kamroq bo'lsa ham xato emas).
 
-  Har bir javobda (list / detail / stats):
+================================================================================
+3. KATALOG API (A)
+================================================================================
 
+3.1  GET /v1/external/catalog/stats/
+────────────────────────────────────
+  Kafedra / fan / yo'nalish / mavzu sonlari + ro'yxatlar (nomlar bilan).
+
+  Javob namunasi:
+  {
+    "departments_count": 28,
+    "subjects_count": 230,
+    "variants_count": 281,
+    "topics_count": 4848,
+    "by_department": [
+      {
+        "name": "Fiziologiya kafedrasi",
+        "code": "fiziologiya",
+        "subjects_count": 12
+      }
+    ],
+    "by_subject": [
+      {
+        "id": 45,
+        "subject_code": "fiziologiya__anatomiya",
+        "subject_name": "Anatomiya",
+        "department_code": "fiziologiya",
+        "department_name": "Fiziologiya kafedrasi",
+        "instruction_language": "uz",
+        "variants_count": 3,
+        "topics_count": 42,
+        "variant_labels": ["PI", "DI", "TPI"]
+      }
+    ],
     "question_limit_bounds": { "min": 10, "max": 30 }
+  }
 
 
-3. Endpointlar
---------------
-
-3.1 Statistika
-  GET /v1/external/tests/stats/
-
-  Javob (asosiy maydonlar):
-    totals.test_count
-    totals.questions_total
-    totals.subjects_distinct
-    totals.variants_distinct
-    totals.topics_distinct
-    totals.authors_distinct
-    by_subject[]      — fan bo'yicha
-    by_variant[]      — fan + yo'nalish (PI, DI, TPI, ...)
-    by_topic[]        — mavzu bo'yicha
-    by_author[]       — muallif bo'yicha
-    recent[]          — oxirgi testlar (qisqa)
-    question_limit_bounds
-
-
-3.2 Testlar ro'yxati
-  GET /v1/external/tests/
-
-  Query parametrlar:
-    subject_code=ANAT     — fan kodi
-    variant_label=PI      — yo'nalish
-    topic_code=m1         — mavzu kodi (M1, L2, ...)
-    q=yurak               — qidiruv
-    author=Ali            — muallif
-    sort=subject|topic|newest
-    page=1                — default 1
-    page_size=50          — default 50, max 200
-    min_questions=15      — kamida 15 savolli testlar (10–30)
-    max_questions=30      — ko'pi bilan 30 savolli testlar (10–30)
+3.2  GET /v1/external/catalog/departments/
+──────────────────────────────────────────
+  Barcha kafedralar (kod + NOM).
 
   Javob:
-    {
-      "count": 120,
-      "page": 1,
-      "page_size": 50,
-      "question_limit_bounds": { "min": 10, "max": 30 },
-      "results": [
+  {
+    "results": [
+      { "code": "fiziologiya", "name": "Fiziologiya kafedrasi", "sort_order": 1 },
+      { "code": "anatomiya",   "name": "Anatomiya kafedrasi",   "sort_order": 2 }
+    ]
+  }
+
+
+3.3  GET /v1/external/catalog/departments/<department_code>/
+────────────────────────────────────────────────────────────
+  Bitta kafedra + uning barcha fanlari (nomlar bilan).
+
+  Javob namunasi:
+  {
+    "code": "fiziologiya",
+    "name": "Fiziologiya kafedrasi",
+    "sort_order": 1,
+    "subjects_count": 12,
+    "subjects": [
+      {
+        "id": 45,
+        "subject_code": "fiziologiya__anatomiya",
+        "subject_name": "Anatomiya",
+        "department_code": "fiziologiya",
+        "department_name": "Fiziologiya kafedrasi",
+        "variants_count": 3,
+        "topics_count": 42,
+        "variant_labels": ["PI", "DI", "TPI"]
+      }
+    ]
+  }
+
+
+3.4  GET /v1/external/catalog/subjects/
+───────────────────────────────────────
+  Fanlar ro'yxati (kafedra nomi bilan).
+
+  Query:
+    department_code=fiziologiya   — faqat shu kafedra fanlari
+    q=anatom                      — fan nomi/kodi bo'yicha qidiruv
+    page=1                        — default 1
+    page_size=50                  — default 50, max 200
+
+  Javob:
+  {
+    "count": 230,
+    "page": 1,
+    "page_size": 50,
+    "results": [
+      {
+        "id": 45,
+        "subject_code": "fiziologiya__anatomiya",
+        "subject_name": "Anatomiya",
+        "department_code": "fiziologiya",
+        "department_name": "Fiziologiya kafedrasi",
+        "instruction_language": "uz",
+        "variants_count": 3,
+        "topics_count": 42,
+        "variant_labels": ["PI", "DI", "TPI"]
+      }
+    ]
+  }
+
+
+3.5  GET /v1/external/catalog/subjects/<subject_code>/
+──────────────────────────────────────────────────────
+  Bitta fan: yo'nalishlar va mavzular (savolsiz).
+
+  Javob namunasi:
+  {
+    "id": 45,
+    "subject_code": "fiziologiya__anatomiya",
+    "subject_name": "Anatomiya",
+    "department_code": "fiziologiya",
+    "department_name": "Fiziologiya kafedrasi",
+    "instruction_language": "uz",
+    "variants_count": 3,
+    "topics_count": 42,
+    "variant_labels": ["PI", "DI", "TPI"],
+    "variants": [
+      {
+        "label": "PI",
+        "file_name": "Anatomiya(PI).pdf",
+        "topics": [
+          { "id": "M1", "title": "Yurak anatomiyasi" },
+          { "id": "M2", "title": "Miya anatomiyasi" }
+        ]
+      },
+      {
+        "label": "DI",
+        "file_name": "Anatomiya(DI).pdf",
+        "topics": [ ... ]
+      }
+    ]
+  }
+
+  Bu endpointdan oling: variant_label (PI) va topic_code (m1) — keyin test qidirish.
+
+
+================================================================================
+4. TESTLAR API (B)
+================================================================================
+
+4.1  GET /v1/external/tests/stats/
+──────────────────────────────────
+  E'lon qilingan testlar statistikasi (1 soatdan eski).
+
+  Javob (asosiy):
+    totals.test_count, totals.questions_total
+    totals.subjects_distinct, totals.variants_distinct, totals.topics_distinct
+    by_subject[]   — fan NOMI + kafedra NOMI + test_count
+    by_variant[]   — fan + yo'nalish + kafedra nomi
+    by_topic[]     — mavzu bo'yicha
+    by_author[]    — muallif bo'yicha
+    recent[]       — oxirgi testlar (qisqa meta)
+    question_limit_bounds
+
+  by_subject[] element namunasi:
+  {
+    "subject_code": "fiziologiya__anatomiya",
+    "subject_name": "Anatomiya",
+    "department_code": "fiziologiya",
+    "department_name": "Fiziologiya kafedrasi",
+    "test_count": 5,
+    "questions_total": 75,
+    "variants_distinct": 2,
+    "topics_distinct": 3
+  }
+
+
+4.2  GET /v1/external/tests/
+────────────────────────────
+  E'lon qilingan testlar ro'yxati (savolsiz — faqat meta).
+
+  Query:
+    subject_code=fiziologiya__anatomiya
+    variant_label=PI
+    topic_code=m1
+    syllabus_id=45
+    q=yurak
+    author=Ali
+    sort=subject|topic|newest
+    page=1
+    page_size=50          (max 200)
+    min_questions=10      (10–30)
+    max_questions=30      (10–30)
+
+  Javob — har bir element:
+  {
+    "id": 42,
+    "kind": "test",
+    "topic": "Yurak anatomiyasi",
+    "topic_norm": "45::pi::m1",
+    "subject_code": "fiziologiya__anatomiya",
+    "subject_name": "Anatomiya",
+    "department_code": "fiziologiya",
+    "department_name": "Fiziologiya kafedrasi",
+    "variant_label": "PI",
+    "topic_code": "m1",
+    "syllabus_id": 45,
+    "question_count": 25,
+    "author_display_name": "Dr. Ali",
+    "created_at": "2026-07-13T10:00:00+05:00",
+    "is_published": true,
+    "publish_at": "2026-07-13T11:00:00+05:00",
+    "document_id": "IM-000042-AB12CD34",
+    "verification_code": "A1B2C3D4E5F6G7H8"
+  }
+
+
+4.3  GET /v1/external/tests/<id>/
+─────────────────────────────────
+  Bitta test + savollar.
+
+  Query:
+    question_limit=20   — 10–30 oralig'ida (ixtiyoriy; yo'q = barcha savollar)
+    question_count=20   — alias
+
+  Javob (question_limit=20):
+  {
+    "id": 42,
+    "kind": "test",
+    "topic": "Yurak anatomiyasi",
+    "subject_code": "fiziologiya__anatomiya",
+    "subject_name": "Anatomiya",
+    "department_code": "fiziologiya",
+    "department_name": "Fiziologiya kafedrasi",
+    "variant_label": "PI",
+    "topic_code": "m1",
+    "syllabus_id": 45,
+    "question_count": 25,
+    "question_limit": 20,
+    "question_count_available": 25,
+    "question_count_returned": 20,
+    "question_limit_bounds": { "min": 10, "max": 30 },
+    "document_id": "IM-000042-AB12CD34",
+    "verification_code": "A1B2C3D4E5F6G7H8",
+    "payload": {
+      "topic": "Yurak anatomiyasi",
+      "questions": [
         {
-          "id": 42,
-          "topic": "Yurak anatomiyasi",
-          "subject_code": "ANAT",
-          "subject_name": "Anatomiya",
-          "variant_label": "PI",
-          "topic_code": "m1",
-          "question_count": 25,
-          "author_display_name": "Dr. Ali",
-          "created_at": "2026-07-13T10:00:00+05:00",
-          "document_id": "IM-000042-AB12CD34",
-          "verification_code": "A1B2C3D4E5F6G7H8"
+          "question": "45 yoshli bemor ...",
+          "options": ["A", "B", "C", "D", "E"],
+          "correctOptionIndex": 2,
+          "explanation": "To'g'ri javob tahlili ..."
         }
       ]
     }
-
-  Eslatma: ro'yxatda to'liq savollar (payload) yo'q — faqat meta.
-  Savollar uchun detail endpoint ishlating.
+  }
 
 
-3.3 Bitta test (savollar bilan)
-  GET /v1/external/tests/<id>/
-  GET /v1/external/tests/<id>/?question_limit=20
+================================================================================
+5. INTEGRATSIYA OQIMI (tavsiya etilgan ketma-ketlik)
+================================================================================
 
-  Parametrlar:
-    question_limit=20   — birinchi N ta savol (10–30)
-    question_count=20   — alias
+  1. Kalit olish
+     Administrator: IMENTOR_EXTERNAL_API_KEYS=hamkor-kalit
 
-  To'liq javob namunasi (question_limit=20):
+  2. Katalog hajmi
+     GET /v1/external/catalog/stats/
+     → 28 kafedra, 230 fan, 281 yo'nalish, 4848 mavzu
 
-    {
-      "id": 42,
-      "kind": "test",
-      "topic": "Yurak anatomiyasi",
-      "subject_code": "ANAT",
-      "subject_name": "Anatomiya",
-      "variant_label": "PI",
-      "topic_code": "m1",
-      "question_count": 25,
-      "question_limit": 20,
-      "question_count_available": 25,
-      "question_count_returned": 20,
-      "question_limit_bounds": { "min": 10, "max": 30 },
-      "document_id": "IM-000042-AB12CD34",
-      "verification_code": "A1B2C3D4E5F6G7H8",
-      "payload": {
-        "topic": "Yurak anatomiyasi",
-        "questions": [
-          {
-            "question": "45 yoshli bemor ...",
-            "options": ["A variant", "B variant", "C variant", "D variant", "E variant"],
-            "correctOptionIndex": 2,
-            "explanation": "To'g'ri javob tahlili ..."
-          }
-        ]
-      }
-    }
+  3. Kafedra nomlari
+     GET /v1/external/catalog/departments/
+     yoki
+     GET /v1/external/catalog/departments/fiziologiya/
+     → kafedra name + fanlar ro'yxati (subject_name bilan)
 
-  payload.questions — har bir savol:
-    question            — matn
-    options             — 5 ta variant (massiv)
-    correctOptionIndex  — 0..4
-    explanation         — tushuntirish
+  4. Fan va mavzu kodlari
+     GET /v1/external/catalog/subjects/fiziologiya__anatomiya/
+     → variant_label=PI, topic_code=m1
+
+  5. Test bormi?
+     GET /v1/external/tests/stats/
+     → by_subject da department_name + subject_name
+
+  6. Test id topish
+     GET /v1/external/tests/?subject_code=...&variant_label=PI&topic_code=m1
+
+  7. Savollarni import
+     GET /v1/external/tests/42/?question_limit=20
+
+  8. (Ixtiyoriy) Manba tasdiqlash
+     document_id + verification_code saqlash
 
 
-4. Integratsiya oqimi (tavsiya)
--------------------------------
+================================================================================
+6. curl MISOLLARI
+================================================================================
 
-  Qadam 1 — Kalit olish
-    Administrator IMENTOR_EXTERNAL_API_KEYS ga kalit qo'shadi.
+  # Katalog statistikasi (kafedra/fan nomlari bilan)
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/catalog/stats/"
 
-  Qadam 2 — Statistika
-    GET /v1/external/tests/stats/
-    Fanlar va hajmni ko'rish.
+  # Kafedralar ro'yxati (nom + kod)
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/catalog/departments/"
 
-  Qadam 3 — Ro'yxat
-    GET /v1/external/tests/?subject_code=ANAT&min_questions=10
-    Kerakli test id sini tanlash.
+  # Bitta kafedra + uning fanlari
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/catalog/departments/fiziologiya/"
 
-  Qadam 4 — Savollar
-    GET /v1/external/tests/42/?question_limit=15
-    O'z tizimingizga 15 ta savol import qilish.
+  # Fanlar (kafedra bo'yicha filter)
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/catalog/subjects/?department_code=fiziologiya&page_size=100"
 
-  Qadam 5 — Tasdiqlash (ixtiyoriy)
-    document_id va verification_code — hujjat manbasini tekshirish uchun.
+  # Fan tafsiloti (yo'nalish + mavzular)
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/catalog/subjects/fiziologiya__anatomiya/"
 
+  # Test statistikasi
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/tests/stats/"
 
-5. curl misollari
------------------
+  # Testlar (fan + yo'nalish + mavzu)
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/tests/?subject_code=fiziologiya__anatomiya&variant_label=PI&topic_code=m1"
 
-  Statistika:
-    curl -s -H "X-Api-Key: YOUR_KEY" \
-      "https://imentor.devflix.uz/api/v1/external/tests/stats/"
+  # Kamida 15 savolli testlar
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/tests/?min_questions=15"
 
-  Fan bo'yicha ro'yxat:
-    curl -s -H "X-Api-Key: YOUR_KEY" \
-      "https://imentor.devflix.uz/api/v1/external/tests/?subject_code=ANAT&page=1"
-
-  Kamida 15 savolli testlar:
-    curl -s -H "X-Api-Key: YOUR_KEY" \
-      "https://imentor.devflix.uz/api/v1/external/tests/?min_questions=15"
-
-  20 ta savol bilan bitta test:
-    curl -s -H "X-Api-Key: YOUR_KEY" \
-      "https://imentor.devflix.uz/api/v1/external/tests/42/?question_limit=20"
-
-  Limit siz (bazadagi barcha savollar):
-    curl -s -H "X-Api-Key: YOUR_KEY" \
-      "https://imentor.devflix.uz/api/v1/external/tests/42/"
+  # 20 ta savol bilan bitta test
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/tests/42/?question_limit=20"
 
 
-6. HTTP kodlar va xatolar
--------------------------
+================================================================================
+7. NAMUNA INTEGRATSIYA SKRIPTI
+================================================================================
+
+  deploy/examples/external_partner_client.py
+
+    export IMENTOR_API_BASE=https://imentor.devflix.uz/api
+    export IMENTOR_API_KEY=hamkor-kalit
+    python deploy/examples/external_partner_client.py
+
+  Skript ketma-ket: catalog/stats → departments → subjects → tests → savollar
+
+
+================================================================================
+8. HTTP KODLAR
+================================================================================
 
   200  — muvaffaqiyat
   400  — noto'g'ri question_limit / min_questions / max_questions
   403  — API kalit yo'q yoki noto'g'ri
-  404  — test topilmadi yoki hali 1 soat o'tmagan (e'lon qilinmagan)
-
-  400 namuna:
-    { "detail": "question_limit must be between 10 and 30." }
-
-  403 namuna:
-    { "detail": "Valid X-Api-Key header required." }
+         { "detail": "Valid X-Api-Key header required." }
+  404  — topilmadi yoki test hali e'lon qilinmagan (1 soat o'tmagan)
 
 
-7. Server sozlash (administrator)
----------------------------------
+================================================================================
+9. NIMA YUBORILMAYDI
+================================================================================
 
-  deploy/.env.production yoki backend .env:
+  - Keys / case study (faqat testlar)
+  - JWT, parol, telefon raqamlar
+  - PDF fayllar (faqat parsed mavzu ro'yxati)
+  - Ma'ruza, taqdimot kontenti
+  - 1 soatdan yangi testlar
+  - Admin ichki ma'lumotlar
+
+
+================================================================================
+10. SERVER SOZLASH (administrator)
+================================================================================
+
+  deploy/.env.production:
 
     IMENTOR_EXTERNAL_API_KEYS=hamkor-secret-kalit-2026
 
-  Bir nechta hamkor — vergul bilan:
+  Bir nechta hamkor:
 
     IMENTOR_EXTERNAL_API_KEYS=kalit-lms,kalit-mobile
 
-  Deploy dan keyin tekshirish:
+  Deploy dan keyin:
 
     curl -H "X-Api-Key: hamkor-secret-kalit-2026" \
-      "https://imentor.devflix.uz/api/v1/external/tests/stats/"
+      "https://imentor.devflix.uz/api/v1/external/catalog/stats/"
 
 
-8. Qo'shimcha eslatmalar
-------------------------
+================================================================================
+11. BOG'LIQ HUJJATLAR
+================================================================================
 
-  - JWT token kerak emas — faqat X-Api-Key.
-  - Faqat testlar (kind=test). Keys/case bu API da yo'q.
-  - Bir mavzuda bir nechta test versiyasi bo'lishi mumkin.
-  - topic_norm (yangi yozuvlar): {syllabusId}::{variant}::{topicCode}
-    Masalan: 12::pi::m1
-  - Savollar ketma-ket qaytariladi (birinchi N ta).
-  - Kalitni git, chat yoki ochiq repoda saqlamang.
+  docs/FULL_PLATFORM_FLOW.txt     — ichki oqim (import → hodim → test → API)
+  docs/README.md                — umumiy loyiha hujjati
+  docs/ADMIN_README.md            — administrator qo'llanmasi
 
-Aloqa
------
-  API kalit va texnik savollar uchun iMentor administratoriga murojaat qiling.
+Aloqa: API kalit va texnik savollar uchun iMentor administratoriga murojaat qiling.

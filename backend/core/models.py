@@ -39,6 +39,10 @@ class PreparedContent(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['owner_key', 'kind', 'topic_norm', '-created_at']),
+            models.Index(
+                fields=['kind', 'subject_code', 'variant_label', 'topic_code'],
+                name='core_prep_kind_subj_var_topic',
+            ),
         ]
 
     def __str__(self) -> str:
@@ -74,6 +78,25 @@ class SyllabusDocument(models.Model):
         return f"{self.owner_key}:{self.file_name}"
 
 
+class AcademicDepartment(models.Model):
+    """Kafedra — fan syllabus katalogining yuqori darajasi."""
+
+    name = models.CharField(max_length=255, unique=True, db_index=True)
+    code = models.CharField(max_length=64, unique=True, db_index=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Kafedra"
+        verbose_name_plural = "Kafedralar"
+        ordering = ["sort_order", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class CourseSyllabus(models.Model):
     """
     Administrator yuklaydigan markaziy fan syllabus (barcha o'qituvchilar uchun katalog).
@@ -90,6 +113,13 @@ class CourseSyllabus(models.Model):
 
     subject_name = models.CharField(max_length=255, db_index=True)
     subject_code = models.CharField(max_length=64, unique=True, db_index=True)
+    department = models.ForeignKey(
+        AcademicDepartment,
+        on_delete=models.PROTECT,
+        related_name="subjects",
+        null=True,
+        blank=True,
+    )
     description = models.CharField(max_length=512, blank=True)
     instruction_language = models.CharField(
         max_length=8,
@@ -112,6 +142,10 @@ class CourseSyllabus(models.Model):
         ordering = ['sort_order', 'subject_name']
         indexes = [
             models.Index(fields=['is_active', 'sort_order', 'subject_name']),
+            models.Index(
+                fields=['department', 'subject_name'],
+                name='core_course_dept_subj_idx',
+            ),
         ]
 
     def __str__(self) -> str:
@@ -556,7 +590,10 @@ class TopicVideo(models.Model):
         verbose_name_plural = "Mavzu videolari"
         ordering = ["sort_order", "created_at"]
         indexes = [
-            models.Index(fields=["topic_norm", "sort_order", "created_at"]),
+            models.Index(
+                fields=['topic_norm', 'sort_order', 'created_at'],
+                name='core_topicv_topic_n_6e0c9e_idx',
+            ),
         ]
 
     def __str__(self) -> str:

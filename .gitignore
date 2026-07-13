@@ -1,25 +1,69 @@
+# ——— Dependencies & build ———
 frontend/node_modules/
 frontend/build/
 frontend/dist/
-backend/.venv/
-backend/db.sqlite3
-backend/__pycache__/
-backend/**/__pycache__/
-backend/*.pyc
-backend/.pytest_cache/
-deploy/__pycache__/
-backend/.mypy_cache/
-backend/media/
-!backend/media/.gitkeep
 node_modules/
 build/
 dist/
 coverage/
 frontend/test-results/
 frontend/playwright-report/
-.DS_Store
-*.log
+
+# ——— Python / Django ———
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.pytest_cache/
+backend/.mypy_cache/
+deploy/__pycache__/
+*.egg-info/
+.eggs/
+htmlcov/
+.coverage
+.pytest_cache/
+
+# DB (local dev)
+backend/db.sqlite3
+backend/db.sqlite3-journal
+*.sqlite3
+
+# Django collectstatic (Docker migrate yaratadi — repoga kirmaydi)
+backend/staticfiles/
+
+# Tarjima: .po repoda, .mo build artifact
+backend/locale/**/*.mo
+
+# User uploads
+backend/media/
+!backend/media/.gitkeep
+
+# ——— Secrets & local env ———
 .env*
 !.env.example
+!backend/.env.example
+!frontend/.env.example
 !deploy/.env.production.example
-.claude
+!deploy/.env.deploy.local.example
+
+# SSH / TLS kalitlar
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+
+# ——— Katta mahalliy manbalar (PDF katalog) ———
+manba/
+
+# ——— IDE / OS ———
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+*.swp
+*.swo
+.claude/
+
+# Cursor lokal sozlamalar (repoga kerak emas)
+.cursor/

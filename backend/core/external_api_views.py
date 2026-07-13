@@ -67,6 +67,7 @@ class ExternalTestsListView(APIView):
             request.query_params,
         )
         qs = filter_by_stored_question_count(qs, min_questions=min_q, max_questions=max_q)
+        qs = qs.select_related('syllabus', 'syllabus__department')
         response = paginated_response(
             qs,
             request,
@@ -94,6 +95,7 @@ class ExternalTestsDetailView(APIView):
         item = (
             published_catalog_queryset()
             .filter(pk=pk, kind=PreparedContent.KIND_TEST)
+            .select_related('syllabus', 'syllabus__department')
             .first()
         )
         if not item:
@@ -126,3 +128,90 @@ class ExternalTestsStatsView(APIView):
             'max': TEST_QUESTION_LIMIT_MAX,
         }
         return Response(body)
+
+
+class ExternalCatalogStatsView(APIView):
+    """Kafedra → fan → yo'nalish → mavzu katalog statistikasi."""
+
+    authentication_classes = []
+    permission_classes = [HasExternalApiKey]
+
+    def get(self, request):
+        from .external_catalog_service import build_external_catalog_stats
+
+        body = build_external_catalog_stats()
+        body['question_limit_bounds'] = {
+            'min': TEST_QUESTION_LIMIT_MIN,
+            'max': TEST_QUESTION_LIMIT_MAX,
+        }
+        return Response(body)
+
+
+class ExternalCatalogDepartmentsView(APIView):
+    authentication_classes = []
+    permission_classes = [HasExternalApiKey]
+
+    def get(self, request):
+        from .external_catalog_service import external_departments_list
+
+        return Response({'results': external_departments_list()})
+
+
+class ExternalCatalogDepartmentDetailView(APIView):
+    """Bitta kafedra + uning fanlari (nomlar bilan)."""
+
+    authentication_classes = []
+    permission_classes = [HasExternalApiKey]
+
+    def get(self, request, department_code: str):
+        from .external_catalog_service import external_department_detail
+
+        detail = external_department_detail(department_code)
+        if not detail:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(detail)
+
+
+class ExternalCatalogSubjectsView(APIView):
+    authentication_classes = []
+    permission_classes = [HasExternalApiKey]
+
+    def get(self, request):
+        from .external_catalog_service import (
+            active_syllabus_queryset,
+            external_catalog_subject_summary,
+            filter_external_subjects,
+        )
+
+        qs = filter_external_subjects(active_syllabus_queryset(), request.query_params)
+        rows = []
+        for obj in qs:
+            summary = external_catalog_subject_summary(obj)
+            if summary['topics_count'] > 0:
+                rows.append(summary)
+        return paginated_response(
+            rows,
+            request,
+            default_page_size=50,
+            max_page_size=200,
+        )
+
+
+class ExternalCatalogSubjectDetailView(APIView):
+    authentication_classes = []
+    permission_classes = [HasExternalApiKey]
+
+    def get(self, request, subject_code: str):
+        from .external_catalog_service import (
+            active_syllabus_queryset,
+            external_catalog_subject_detail,
+        )
+
+        code = (subject_code or '').strip()
+        obj = active_syllabus_queryset().filter(subject_code=code).first()
+        if not obj:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        detail = external_catalog_subject_detail(obj)
+        if detail['topics_count'] <= 0:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(detail)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from django.db.models import Count, Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
@@ -11,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from .models import CourseSyllabus, StaffCourseSelection
+from .models import AcademicDepartment, CourseSyllabus, StaffCourseSelection
 from .pagination import paginated_response
 from .permissions import HasEducationRole, IsAdminRole, IsHodimRole
 from .phone import normalize_uz_phone_digits
@@ -94,6 +95,55 @@ class AdminCourseSyllabusListCreateView(APIView):
         _sync_legacy_fields(obj)
         obj.save(update_fields=["file_name", "topics"])
         return Response(CourseSyllabusSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+
+def build_syllabus_catalog_stats() -> dict:
+    """Kafedra → fan → yo'nalish → mavzu ierarxiyasi (bazadan)."""
+    by_department = list(
+        AcademicDepartment.objects.filter(is_active=True)
+        .annotate(subjects_count=Count('subjects', filter=Q(subjects__is_active=True)))
+        .order_by('sort_order', 'name')
+        .values('name', 'code', 'subjects_count')
+    )
+
+    active_qs = CourseSyllabus.objects.filter(is_active=True).only('variants', 'topics')
+    subjects_count = active_qs.count()
+    variants_count = 0
+    topics_count = 0
+    for obj in active_qs.iterator():
+        variants = obj.variants or []
+        if variants:
+            variants_count += len(variants)
+            for variant in variants:
+                topics_count += len(variant.get('topics') or [])
+        elif obj.topics:
+            variants_count += 1
+            topics_count += len(obj.topics)
+
+    return {
+        'departments_count': len(by_department),
+        'subjects_count': subjects_count,
+        'subjects_total': CourseSyllabus.objects.count(),
+        'variants_count': variants_count,
+        'topics_count': topics_count,
+        'by_department': [
+            {
+                'name': row['name'],
+                'code': row['code'],
+                'subjects_count': row['subjects_count'],
+            }
+            for row in by_department
+        ],
+    }
+
+
+class AdminSyllabusCatalogStatsView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response(build_syllabus_catalog_stats())
 
 
 class AdminCourseSyllabusDetailView(APIView):

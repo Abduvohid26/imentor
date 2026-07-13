@@ -6,6 +6,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .forms import PhoneAdminLoginForm
 from .models import (
+    AcademicDepartment,
     CampusBuilding,
     ClinicalGroup,
     ClinicalGroupMember,
@@ -37,6 +38,23 @@ class ReadOnlyTimestampAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at", "recorded_at", "submitted_at", "selected_at")
 
 
+@admin.register(AcademicDepartment)
+class AcademicDepartmentAdmin(ReadOnlyTimestampAdmin):
+    list_display = ("id", "name", "code", "sort_order", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "code")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(CourseSyllabus)
+class CourseSyllabusAdmin(ReadOnlyTimestampAdmin):
+    list_display = ("id", "subject_name", "department", "subject_code", "sort_order", "is_active", "created_at")
+    list_filter = ("is_active", "department", "instruction_language")
+    search_fields = ("subject_name", "subject_code", "department__name")
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("department",)
+
+
 @admin.register(PreparedContent)
 class PreparedContentAdmin(ReadOnlyTimestampAdmin):
     list_display = (
@@ -60,21 +78,6 @@ class SyllabusDocumentAdmin(ReadOnlyTimestampAdmin):
     list_display = ("id", "owner_key", "file_name", "external_id", "created_at")
     search_fields = ("owner_key", "file_name", "external_id")
     readonly_fields = ("created_at",)
-
-
-@admin.register(CourseSyllabus)
-class CourseSyllabusAdmin(ReadOnlyTimestampAdmin):
-    list_display = (
-        "subject_name",
-        "subject_code",
-        "instruction_language",
-        "is_active",
-        "sort_order",
-        "updated_at",
-    )
-    list_filter = ("is_active", "instruction_language")
-    search_fields = ("subject_name", "subject_code", "file_name")
-    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(StaffCourseSelection)

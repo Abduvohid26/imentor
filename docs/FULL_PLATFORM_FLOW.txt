@@ -1,0 +1,114 @@
+iMentor — To'liq platforma oqimi va tashqi API integratsiyasi
+===========================================================
+
+Bu hujjat iMentor ning ichki ishlash tartibi va hamkor tizimlar uchun
+tashqi API integratsiyasini bir joyda tushuntiradi.
+
+
+1. Ierarxiya (katalog)
+----------------------
+
+  Kafedra  →  Fan  →  Yo'nalish (PI, DI, TPI, …)  →  Mavzu (M1, L2, …)
+
+  Manba: `manba/fanlarning yonalishilari va unga mos manbalar/` PDF papkasi
+  Import: `python manage.py import_manba_catalog`
+  Bazada: AcademicDepartment + CourseSyllabus (variants[], topics[])
+
+
+2. Ichki oqim (hodim / o'qituvchi)
+----------------------------------
+
+  Qadam 1 — Administrator katalog import qiladi
+    docker compose exec backend python manage.py import_manba_catalog
+
+  Qadam 2 — Hodimga fan biriktiriladi (admin panel)
+    Admin → Fan biriktirish
+
+  Qadam 3 — Hodim darsda fan + yo'nalish + mavzu tanlaydi
+    GlobalTopicContext: syllabusId, variantLabel, topicCode
+
+  Qadam 4 — AI test yaratadi (10–30 savol)
+    TestQuestions.tsx → aiService.generateTests()
+
+  Qadam 5 — Test bazaga saqlanadi
+    POST /api/v1/prepared-content/  (JWT)
+    Maydonlar: kind=test, topic_norm={syllabusId}::{variant}::{topicCode},
+               subject_code, variant_label, topic_code, payload.questions[]
+
+  Qadam 6 — 1 soat kutish (e'lon kechikishi)
+    Shundan keyin test tashqi API va ochiq katalogda ko'rinadi
+
+
+3. Tashqi API oqimi (hamkor / LMS / mobil)
+------------------------------------------
+
+  Autentifikatsiya:  Header X-Api-Key: <kalit>
+  Sozlash:           IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  KATALOG (syllabus — mavzular ro'yxati, savolsiz)               │
+  ├─────────────────────────────────────────────────────────────────┤
+  │  GET /v1/external/catalog/stats/                                │
+  │  GET /v1/external/catalog/departments/                          │
+  │  GET /v1/external/catalog/departments/<department_code>/        │
+  │  GET /v1/external/catalog/subjects/?department_code=...&q=...   │
+  │  GET /v1/external/catalog/subjects/<subject_code>/            │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TESTLAR (hodim yaratgan savollar)                              │
+  ├─────────────────────────────────────────────────────────────────┤
+  │  GET /v1/external/tests/stats/                                  │
+  │  GET /v1/external/tests/?subject_code=&variant_label=&topic_code=│
+  │  GET /v1/external/tests/?syllabus_id=12                         │
+  │  GET /v1/external/tests/<id>/?question_limit=10..30             │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Tavsiya etilgan ketma-ketlik:
+
+    1) catalog/stats        — nechta kafedra, fan, yo'nalish, mavzu
+    2) catalog/departments  — kafedra ro'yxati
+    3) catalog/subjects     — fanlar (subject_code olish)
+    4) catalog/subjects/X/  — yo'nalishlar va mavzu kodlari (M1, L2)
+    5) tests/stats          — qaysi fanlarda test bor
+    6) tests/?subject_code=X&variant_label=PI&topic_code=m1
+    7) tests/<id>/?question_limit=20  — savollarni import qilish
+
+
+4. Kalit maydonlar (integratsiya uchun)
+---------------------------------------
+
+  subject_code     — fan kaliti (masalan: fiziologiya__anatomiya)
+  variant_label    — yo'nalish (PI, DI, TPI, XT, …)
+  topic_code       — mavzu kodi (m1, l2, … — kichik harf)
+  topic_norm       — {syllabusId}::{variant}::{topicCode}
+  syllabus_id      — CourseSyllabus PK (tests filter da)
+
+  Test savoli strukturasi (payload.questions[]):
+    question, options[5], correctOptionIndex (0–4), explanation
+
+
+5. Namuna integratsiya skripti
+-------------------------------
+
+  deploy/examples/external_partner_client.py
+
+    export IMENTOR_API_BASE=https://imentor.devflix.uz/api
+    export IMENTOR_API_KEY=hamkor-kalit
+    python deploy/examples/external_partner_client.py
+
+
+6. Admin panel
+--------------
+
+  Boshqaruv paneli — kafedra / fan / yo'nalish / mavzu sonlari (serverdan)
+  Test bazasi      — hodim yaratgan testlar statistikasi
+  Syllabus katalog — PDF import va tahrirlash
+
+
+7. Bog'liq hujjatlar
+--------------------
+
+  docs/EXTERNAL_TESTS_API.txt   — tashqi API to'liq reference
+  docs/ADMIN_README.md          — administrator qo'llanmasi
+  manba/README.txt              — katalog import

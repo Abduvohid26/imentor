@@ -460,6 +460,114 @@ class PreparedContentApiTests(TestCase):
         self.assertEqual(filtered_ok.status_code, 200)
         self.assertEqual(len(filtered_ok.json().get('results', [])), 1)
 
+    @override_settings(EXTERNAL_API_KEYS='ext-test-key-123')
+    def test_external_catalog_and_tests_flow(self):
+        from datetime import timedelta
+
+        from core.models import AcademicDepartment, CourseSyllabus, PreparedContent
+
+        dept = AcademicDepartment.objects.create(name='Anatomiya kafedrasi', code='anat-kaf', sort_order=1)
+        CourseSyllabus.objects.create(
+            subject_name='Anatomiya',
+            subject_code='ANAT-CAT',
+            department=dept,
+            variants=[
+                {
+                    'label': 'PI',
+                    'file_name': 'Anatomiya(PI).pdf',
+                    'topics': [
+                        {'id': 'M1', 'title': 'Yurak anatomiyasi', 'type': 'lecture'},
+                        {'id': 'M2', 'title': 'Miya anatomiyasi', 'type': 'lecture'},
+                    ],
+                }
+            ],
+            topics=[{'id': 'M1', 'title': 'Yurak anatomiyasi', 'type': 'lecture'}],
+        )
+
+        headers = {'HTTP_X_API_KEY': 'ext-test-key-123'}
+
+        cat_stats = self.client.get('/api/v1/external/catalog/stats/', **headers)
+        self.assertEqual(cat_stats.status_code, 200)
+        cat_body = cat_stats.json()
+        self.assertGreaterEqual(cat_body['departments_count'], 1)
+        self.assertGreaterEqual(cat_body['subjects_count'], 1)
+        self.assertGreaterEqual(cat_body['variants_count'], 1)
+        self.assertGreaterEqual(cat_body['topics_count'], 2)
+
+        depts = self.client.get('/api/v1/external/catalog/departments/', **headers)
+        self.assertEqual(depts.status_code, 200)
+        self.assertTrue(any(d['code'] == 'anat-kaf' for d in depts.json()['results']))
+
+        subjects = self.client.get(
+            '/api/v1/external/catalog/subjects/?department_code=anat-kaf',
+            **headers,
+        )
+        self.assertEqual(subjects.status_code, 200)
+        subj_rows = subjects.json()['results']
+        self.assertTrue(any(r['subject_code'] == 'ANAT-CAT' for r in subj_rows))
+
+        detail = self.client.get('/api/v1/external/catalog/subjects/ANAT-CAT/', **headers)
+        self.assertEqual(detail.status_code, 200)
+        detail_body = detail.json()
+        self.assertEqual(detail_body['subject_name'], 'Anatomiya')
+        self.assertEqual(detail_body['department_name'], 'Anatomiya kafedrasi')
+        self.assertEqual(detail_body['variants'][0]['label'], 'PI')
+        self.assertEqual(len(detail_body['variants'][0]['topics']), 2)
+
+        dept_detail = self.client.get('/api/v1/external/catalog/departments/anat-kaf/', **headers)
+        self.assertEqual(dept_detail.status_code, 200)
+        dept_body = dept_detail.json()
+        self.assertEqual(dept_body['name'], 'Anatomiya kafedrasi')
+        self.assertTrue(any(s['subject_code'] == 'ANAT-CAT' for s in dept_body['subjects']))
+
+        hodim = self._register_user('998901114477', 'StrongPass123', first_name='Cat', last_name='Teacher')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {hodim["access"]}')
+        create_resp = self.client.post(
+            '/api/v1/prepared-content/',
+            {
+                'kind': 'test',
+                'topic': 'Yurak anatomiyasi',
+                'topic_norm': f'{CourseSyllabus.objects.get(subject_code="ANAT-CAT").pk}::pi::m1',
+                'variant_label': 'PI',
+                'topic_code': 'm1',
+                'subject_name': 'Anatomiya',
+                'subject_code': 'ANAT-CAT',
+                'author_display_name': 'Cat Teacher',
+                'payload': {
+                    'topic': 'Yurak anatomiyasi',
+                    'questions': [
+                        {
+                            'question': f'Q{i}',
+                            'options': ['a', 'b', 'c', 'd', 'e'],
+                            'correctOptionIndex': 0,
+                            'explanation': 'ex',
+                        }
+                        for i in range(1, 11)
+                    ],
+                },
+            },
+            format='json',
+        )
+        self.assertEqual(create_resp.status_code, 201)
+        test_pk = create_resp.json()['id']
+        syllabus_id = CourseSyllabus.objects.get(subject_code='ANAT-CAT').pk
+
+        self.client.credentials()
+        PreparedContent.objects.filter(pk=test_pk).update(
+            created_at=timezone.now() - timedelta(hours=2)
+        )
+
+        by_syllabus = self.client.get(
+            f'/api/v1/external/tests/?syllabus_id={syllabus_id}&subject_code=ANAT-CAT&topic_code=m1',
+            **headers,
+        )
+        self.assertEqual(by_syllabus.status_code, 200)
+        self.assertEqual(len(by_syllabus.json()['results']), 1)
+        test_row = by_syllabus.json()['results'][0]
+        self.assertEqual(test_row['department_name'], 'Anatomiya kafedrasi')
+        self.assertEqual(test_row['department_code'], 'anat-kaf')
+        self.assertEqual(test_row['subject_name'], 'Anatomiya')
+
     def test_login_preserves_server_role_from_db(self):
         Group.objects.get_or_create(name='hodim')
         Group.objects.get_or_create(name='startuper')

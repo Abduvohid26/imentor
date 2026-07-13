@@ -166,13 +166,25 @@ def catalog_document_id(item: PreparedContent) -> str:
 
 def catalog_item_summary(item: PreparedContent, *, include_verification: bool = False) -> dict:
     variant_label, topic_code = enrich_catalog_meta(item)
+    dept_name = ''
+    dept_code = ''
+    catalog_subject_name = ''
+    syllabus = getattr(item, 'syllabus', None)
+    if syllabus is not None and getattr(syllabus, 'pk', None):
+        catalog_subject_name = (syllabus.subject_name or '').strip()
+        department = getattr(syllabus, 'department', None)
+        if department is not None and getattr(department, 'pk', None):
+            dept_name = department.name or ''
+            dept_code = department.code or ''
     data = {
         'id': item.id,
         'kind': item.kind,
         'topic': item.topic,
         'topic_norm': item.topic_norm,
-        'subject_name': item.subject_name or '',
+        'subject_name': item.subject_name or catalog_subject_name or '',
         'subject_code': item.subject_code or '',
+        'department_name': dept_name,
+        'department_code': dept_code,
         'variant_label': variant_label,
         'topic_code': topic_code,
         'syllabus_id': item.syllabus_id,
@@ -197,6 +209,13 @@ def filter_catalog_queryset(qs, params) -> object:
     subject_code = (params.get('subject_code') or '').strip()
     if subject_code:
         qs = qs.filter(subject_code=subject_code)
+
+    syllabus_id = (params.get('syllabus_id') or '').strip()
+    if syllabus_id:
+        try:
+            qs = qs.filter(syllabus_id=int(syllabus_id))
+        except (TypeError, ValueError):
+            pass
 
     variant_label = (params.get('variant_label') or '').strip()
     if variant_label:
@@ -389,18 +408,30 @@ def build_catalog_stats(*, published_only: bool = False, kind: str | None = None
     case_count = sum(1 for item in items if item.kind == PreparedContent.KIND_CASE)
     test_count = sum(1 for item in items if item.kind == PreparedContent.KIND_TEST)
 
+    from .external_catalog_service import syllabus_department_lookup
+
+    dept_lookup = syllabus_department_lookup()
+
+    def _apply_department_meta(row: dict) -> dict:
+        meta = dept_lookup.get(row.get('subject_code') or '', {})
+        row['department_name'] = meta.get('department_name', '')
+        row['department_code'] = meta.get('department_code', '')
+        if meta.get('subject_name') and not row.get('subject_name'):
+            row['subject_name'] = meta['subject_name']
+        return row
+
     def _finalize_subject(row: dict) -> dict:
         out = dict(row)
         out['variants_distinct'] = len(out.pop('variants_distinct'))
         out['topics_distinct'] = len(out.pop('topics_distinct'))
         out['total_count'] = out['case_count'] + out['test_count']
-        return out
+        return _apply_department_meta(out)
 
     def _finalize_variant(row: dict) -> dict:
         out = dict(row)
         out['topics_distinct'] = len(out.pop('topics_distinct'))
         out['total_count'] = out['case_count'] + out['test_count']
-        return out
+        return _apply_department_meta(out)
 
     by_subject = sorted(
         (_finalize_subject(row) for row in by_subject_map.values()),
