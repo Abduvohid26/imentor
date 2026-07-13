@@ -15,6 +15,8 @@ from .models import PreparedContent
 
 CATALOG_KINDS = (PreparedContent.KIND_CASE, PreparedContent.KIND_TEST)
 PUBLISH_DELAY = timedelta(hours=1)
+TEST_QUESTION_LIMIT_MIN = 10
+TEST_QUESTION_LIMIT_MAX = 30
 _TOPIC_NORM_RE = re.compile(r'^(\d+)::([^:]+)::(.+)$')
 
 
@@ -60,6 +62,91 @@ def question_count(item: PreparedContent) -> int:
     payload = item.payload if isinstance(item.payload, dict) else {}
     questions = payload.get('questions')
     return len(questions) if isinstance(questions, list) else 0
+
+
+def stored_question_count_from_payload(payload: dict | None) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    questions = payload.get('questions')
+    return len(questions) if isinstance(questions, list) else 0
+
+
+def parse_test_question_limit(value: str | None, *, param_name: str = 'question_limit') -> tuple[int | None, str | None]:
+    """Tashqi API: savollar soni 10–30 oralig'ida."""
+    if value is None or not str(value).strip():
+        return None, None
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None, (
+            f'{param_name} must be an integer between '
+            f'{TEST_QUESTION_LIMIT_MIN} and {TEST_QUESTION_LIMIT_MAX}.'
+        )
+    if parsed < TEST_QUESTION_LIMIT_MIN or parsed > TEST_QUESTION_LIMIT_MAX:
+        return None, (
+            f'{param_name} must be between '
+            f'{TEST_QUESTION_LIMIT_MIN} and {TEST_QUESTION_LIMIT_MAX}.'
+        )
+    return parsed, None
+
+
+def slice_test_payload(payload: dict | None, limit: int | None) -> tuple[dict, int, int]:
+    """
+    payload.questions ni limit bo'yicha qisqartiradi.
+    Qaytadi: (yangi payload, available_count, returned_count)
+    """
+    base = dict(payload) if isinstance(payload, dict) else {}
+    questions = base.get('questions')
+    if not isinstance(questions, list):
+        base['questions'] = []
+        return base, 0, 0
+    available = len(questions)
+    if limit is None:
+        return base, available, available
+    taken = questions[:limit]
+    base['questions'] = taken
+    return base, available, len(taken)
+
+
+def annotate_stored_question_count(qs):
+    from django.db import connection
+    from django.db.models import IntegerField
+    from django.db.models.expressions import RawSQL
+
+    if connection.vendor != 'postgresql':
+        return qs
+    return qs.annotate(
+        _stored_question_count=RawSQL(
+            "(CASE WHEN jsonb_typeof(payload->'questions') = 'array' "
+            "THEN jsonb_array_length(payload->'questions') ELSE 0 END)::integer",
+            [],
+            output_field=IntegerField(),
+        )
+    )
+
+
+def filter_by_stored_question_count(qs, *, min_questions: int | None = None, max_questions: int | None = None):
+    if min_questions is None and max_questions is None:
+        return qs
+    from django.db import connection
+
+    if connection.vendor == 'postgresql':
+        qs = annotate_stored_question_count(qs)
+        if min_questions is not None:
+            qs = qs.filter(_stored_question_count__gte=min_questions)
+        if max_questions is not None:
+            qs = qs.filter(_stored_question_count__lte=max_questions)
+        return qs
+
+    matching_pks = []
+    for item in qs.only('pk', 'payload'):
+        count = question_count(item)
+        if min_questions is not None and count < min_questions:
+            continue
+        if max_questions is not None and count > max_questions:
+            continue
+        matching_pks.append(item.pk)
+    return qs.filter(pk__in=matching_pks)
 
 
 def catalog_verification_code(item: PreparedContent) -> str:

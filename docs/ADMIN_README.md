@@ -354,6 +354,37 @@ flowchart TB
 
 **Test:** hodim hisobida case yarating → admin **Keys bazasi**da darhol paydo bo‘lishini tekshiring.
 
+**Admin statistika API:**
+
+```
+GET /api/v1/admin/content-catalog/stats/?kind=test
+```
+
+Fan, yo‘nalish, mavzu va muallif bo‘yicha hisobot (JWT admin).
+
+**Tashqi hamkor API (X-Api-Key):**
+
+Hamkor servislar testlarni o‘qishi uchun alohida endpointlar. JWT kerak emas.
+
+```
+GET /api/v1/external/tests/stats/
+GET /api/v1/external/tests/
+GET /api/v1/external/tests/<id>/?question_limit=20
+```
+
+- Savollar soni: **10–30** (platforma bilan bir xil)
+- `question_limit` — detail da nechta savol olish
+- `min_questions` / `max_questions` — ro‘yxatda filtrlash
+- Faqat **1 soatdan keyin e’lon** qilingan testlar
+
+Server `.env`:
+
+```
+IMENTOR_EXTERNAL_API_KEYS=hamkor-kalit-1,hamkor-kalit-2
+```
+
+To‘liq partner hujjati: [docs/EXTERNAL_TESTS_API.txt](EXTERNAL_TESTS_API.txt)
+
 ---
 
 ### 5.7 Startap arizalar
@@ -479,8 +510,12 @@ Quyidagi ro‘yxatni bosqichma-bosqich bajaring — admin panel to‘liq ishlash
 ```
 GET    /api/v1/admin/staff/
 GET    /api/v1/admin/content-catalog/
+GET    /api/v1/admin/content-catalog/stats/
 GET    /api/v1/admin/content-catalog/<pk>/
 DELETE /api/v1/admin/content-catalog/<pk>/
+GET    /api/v1/external/tests/stats/          # X-Api-Key (hamkor)
+GET    /api/v1/external/tests/                # X-Api-Key
+GET    /api/v1/external/tests/<pk>/           # X-Api-Key, ?question_limit=10..30
 GET    /api/v1/admin/clinical-groups/
 POST   /api/v1/admin/clinical-groups/
 GET    /api/v1/admin/clinical-groups/<pk>/

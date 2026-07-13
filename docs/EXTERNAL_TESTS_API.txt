@@ -1,138 +1,261 @@
-iMentor — Tashqi test bazasi API
-================================
+iMentor — Tashqi test bazasi API (partner integratsiya)
+======================================================
+
+To'liq qo'llanma: tashqi servislar hodimlar yaratgan testlarni o'qishi uchun.
+Platformada test yaratish: 10–30 savol. Tashqi API ham shu chegarada ishlaydi.
+
+
+1. Umumiy ma'lumot
+------------------
 
 Maqsad
-------
-Hodimlar yaratgan testlarni tashqi servislar o'qishi uchun REST API.
-Faqat e'lon qilingan testlar qaytariladi (yaratilgandan 1 soat keyin).
+  Hodimlar AI orqali yaratgan test savollarini tashqi tizimlarga ulash.
 
-
-Base URL
---------
-Production: https://imentor.devflix.uz/api
-Local dev:  http://localhost:8080/api
-
+Kim ishlatadi
+  Hamkor servislar, mobil ilovalar, LMS, ichki dashboardlar.
 
 Autentifikatsiya
-----------------
-Har bir so'rovda header:
+  JWT kerak emas. Faqat API kalit:
 
-  X-Api-Key: <sizning-kalitingiz>
+    Header:  X-Api-Key: <sizning-kalitingiz>
 
-Kalit server .env da:
+  Server .env:
 
-  IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2
+    IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2
 
-Kalit yo'q yoki noto'g'ri bo'lsa: HTTP 403
+  Kalit yo'q / noto'g'ri / serverda sozlanmagan → HTTP 403
 
+Base URL
+  Production:  https://imentor.devflix.uz/api
+  Local dev:   http://localhost:8080/api
 
-E'lon qilish qoidasi
---------------------
-Test yaratilgandan keyin 1 soat kutiladi, keyin API da ko'rinadi.
-Yangi testlar ro'yxatda darhol chiqmaydi.
-
-
-Endpointlar
------------
-
-1) Statistika
-   GET /v1/external/tests/stats/
-
-   Javob (qisqacha):
-   - totals.test_count          — jami testlar
-   - totals.questions_total   — jami savollar
-   - totals.subjects_distinct — fanlar soni
-   - totals.variants_distinct — yo'nalishlar soni
-   - totals.topics_distinct   — mavzular soni
-   - totals.authors_distinct  — mualliflar soni
-   - by_subject[]             — fan bo'yicha
-   - by_variant[]             — fan + yo'nalish bo'yicha
-   - by_topic[]               — mavzu bo'yicha (top 50)
-   - by_author[]              — muallif bo'yicha (top 30)
-   - recent[]                 — oxirgi 15 ta test
+E'lon qilish
+  Test yaratilgandan 1 soat keyin API da paydo bo'ladi.
+  1 soatdan yangi testlar ro'yxatda va detail da ko'rinmaydi (404).
 
 
-2) Testlar ro'yxati
-   GET /v1/external/tests/
+2. Savollar soni chegarasi (10 – 30)
+------------------------------------
 
-   Query parametrlar (ixtiyoriy):
-   - subject_code=ANAT        — fan kodi
-   - variant_label=PI       — yo'nalish
-   - topic_code=m1          — mavzu kodi (M1, L2, ...)
-   - q=yurak                — qidiruv (mavzu, fan, muallif)
-   - author=Ali             — muallif bo'yicha
-   - sort=subject|topic|newest
-   - page=1                 — sahifa (default 1)
-   - page_size=50           — hajm (default 50, max 200)
+Platformada o'qituvchi test yaratganda 10 dan 30 gacha savol tanlaydi.
+Tashqi API ham shu qoidaga amal qiladi:
 
-   Javob:
-   {
-     "count": 120,
-     "page": 1,
-     "page_size": 50,
-     "results": [ ... ]
-   }
+  +------------------+------------------------------------------+
+  | Parametr         | Vazifa                                   |
+  +------------------+------------------------------------------+
+  | question_limit   | Detail: nechta savol qaytarish (10–30)   |
+  | question_count   | question_limit bilan bir xil (alias)     |
+  | min_questions    | Ro'yxat: bazada kamida N ta savol        |
+  | max_questions    | Ro'yxat: bazada ko'pi bilan N ta savol   |
+  +------------------+------------------------------------------+
 
-   Har bir element:
-   - id, topic, topic_norm
-   - subject_name, subject_code
-   - variant_label, topic_code, syllabus_id
-   - author_display_name, owner_key
-   - question_count, created_at
-   - document_id, verification_code  (tasdiqlash uchun)
+  Noto'g'ri qiymat (masalan 5 yoki 40) → HTTP 400
+
+  Agar bazada 12 ta savol saqlangan bo'lsa, question_limit=20 so'ralsa —
+  12 ta qaytariladi (kamroq bo'lsa ham xato emas).
+
+  Har bir javobda (list / detail / stats):
+
+    "question_limit_bounds": { "min": 10, "max": 30 }
 
 
-3) Bitta test (to'liq savollar bilan)
-   GET /v1/external/tests/<id>/
+3. Endpointlar
+--------------
 
-   Javob: ro'yxat elementi + payload
+3.1 Statistika
+  GET /v1/external/tests/stats/
 
-   payload ichida:
-   {
-     "topic": "Yurak anatomiyasi",
-     "questions": [
-       {
-         "question": "...",
-         "options": ["A", "B", "C", "D"],
-         "correctOptionIndex": 0,
-         "explanation": "..."
-       }
-     ]
-   }
-
-
-Misol so'rovlar (curl)
-----------------------
-
-Statistika:
-  curl -s -H "X-Api-Key: YOUR_KEY" \
-    "https://imentor.devflix.uz/api/v1/external/tests/stats/"
-
-Fan bo'yicha ro'yxat:
-  curl -s -H "X-Api-Key: YOUR_KEY" \
-    "https://imentor.devflix.uz/api/v1/external/tests/?subject_code=ANAT&page=1"
-
-Bitta test:
-  curl -s -H "X-Api-Key: YOUR_KEY" \
-    "https://imentor.devflix.uz/api/v1/external/tests/42/"
+  Javob (asosiy maydonlar):
+    totals.test_count
+    totals.questions_total
+    totals.subjects_distinct
+    totals.variants_distinct
+    totals.topics_distinct
+    totals.authors_distinct
+    by_subject[]      — fan bo'yicha
+    by_variant[]      — fan + yo'nalish (PI, DI, TPI, ...)
+    by_topic[]        — mavzu bo'yicha
+    by_author[]       — muallif bo'yicha
+    recent[]          — oxirgi testlar (qisqa)
+    question_limit_bounds
 
 
-HTTP kodlar
------------
-200 — muvaffaqiyat
-403 — API kalit yo'q / noto'g'ri / serverda kalit sozlanmagan
-404 — test topilmadi yoki hali e'lon qilinmagan
+3.2 Testlar ro'yxati
+  GET /v1/external/tests/
+
+  Query parametrlar:
+    subject_code=ANAT     — fan kodi
+    variant_label=PI      — yo'nalish
+    topic_code=m1         — mavzu kodi (M1, L2, ...)
+    q=yurak               — qidiruv
+    author=Ali            — muallif
+    sort=subject|topic|newest
+    page=1                — default 1
+    page_size=50          — default 50, max 200
+    min_questions=15      — kamida 15 savolli testlar (10–30)
+    max_questions=30      — ko'pi bilan 30 savolli testlar (10–30)
+
+  Javob:
+    {
+      "count": 120,
+      "page": 1,
+      "page_size": 50,
+      "question_limit_bounds": { "min": 10, "max": 30 },
+      "results": [
+        {
+          "id": 42,
+          "topic": "Yurak anatomiyasi",
+          "subject_code": "ANAT",
+          "subject_name": "Anatomiya",
+          "variant_label": "PI",
+          "topic_code": "m1",
+          "question_count": 25,
+          "author_display_name": "Dr. Ali",
+          "created_at": "2026-07-13T10:00:00+05:00",
+          "document_id": "IM-000042-AB12CD34",
+          "verification_code": "A1B2C3D4E5F6G7H8"
+        }
+      ]
+    }
+
+  Eslatma: ro'yxatda to'liq savollar (payload) yo'q — faqat meta.
+  Savollar uchun detail endpoint ishlating.
 
 
-Eslatmalar
-----------
-- JWT token kerak emas — faqat X-Api-Key.
-- API faqat kind=test materiallarini qaytaradi (keys/case yo'q).
-- Bir mavzuda bir nechta test versiyasi bo'lishi mumkin (har generate = yangi yozuv).
-- topic_norm formati (yangi yozuvlar): {syllabusId}::{variant}::{topicCode}
-  Masalan: 12::pi::m1
+3.3 Bitta test (savollar bilan)
+  GET /v1/external/tests/<id>/
+  GET /v1/external/tests/<id>/?question_limit=20
 
-Aloqa / kalit
--------------
-API kalitini iMentor administratoridan oling.
-Kalitni git yoki ochiq kanallarda saqlamang.
+  Parametrlar:
+    question_limit=20   — birinchi N ta savol (10–30)
+    question_count=20   — alias
+
+  To'liq javob namunasi (question_limit=20):
+
+    {
+      "id": 42,
+      "kind": "test",
+      "topic": "Yurak anatomiyasi",
+      "subject_code": "ANAT",
+      "subject_name": "Anatomiya",
+      "variant_label": "PI",
+      "topic_code": "m1",
+      "question_count": 25,
+      "question_limit": 20,
+      "question_count_available": 25,
+      "question_count_returned": 20,
+      "question_limit_bounds": { "min": 10, "max": 30 },
+      "document_id": "IM-000042-AB12CD34",
+      "verification_code": "A1B2C3D4E5F6G7H8",
+      "payload": {
+        "topic": "Yurak anatomiyasi",
+        "questions": [
+          {
+            "question": "45 yoshli bemor ...",
+            "options": ["A variant", "B variant", "C variant", "D variant", "E variant"],
+            "correctOptionIndex": 2,
+            "explanation": "To'g'ri javob tahlili ..."
+          }
+        ]
+      }
+    }
+
+  payload.questions — har bir savol:
+    question            — matn
+    options             — 5 ta variant (massiv)
+    correctOptionIndex  — 0..4
+    explanation         — tushuntirish
+
+
+4. Integratsiya oqimi (tavsiya)
+-------------------------------
+
+  Qadam 1 — Kalit olish
+    Administrator IMENTOR_EXTERNAL_API_KEYS ga kalit qo'shadi.
+
+  Qadam 2 — Statistika
+    GET /v1/external/tests/stats/
+    Fanlar va hajmni ko'rish.
+
+  Qadam 3 — Ro'yxat
+    GET /v1/external/tests/?subject_code=ANAT&min_questions=10
+    Kerakli test id sini tanlash.
+
+  Qadam 4 — Savollar
+    GET /v1/external/tests/42/?question_limit=15
+    O'z tizimingizga 15 ta savol import qilish.
+
+  Qadam 5 — Tasdiqlash (ixtiyoriy)
+    document_id va verification_code — hujjat manbasini tekshirish uchun.
+
+
+5. curl misollari
+-----------------
+
+  Statistika:
+    curl -s -H "X-Api-Key: YOUR_KEY" \
+      "https://imentor.devflix.uz/api/v1/external/tests/stats/"
+
+  Fan bo'yicha ro'yxat:
+    curl -s -H "X-Api-Key: YOUR_KEY" \
+      "https://imentor.devflix.uz/api/v1/external/tests/?subject_code=ANAT&page=1"
+
+  Kamida 15 savolli testlar:
+    curl -s -H "X-Api-Key: YOUR_KEY" \
+      "https://imentor.devflix.uz/api/v1/external/tests/?min_questions=15"
+
+  20 ta savol bilan bitta test:
+    curl -s -H "X-Api-Key: YOUR_KEY" \
+      "https://imentor.devflix.uz/api/v1/external/tests/42/?question_limit=20"
+
+  Limit siz (bazadagi barcha savollar):
+    curl -s -H "X-Api-Key: YOUR_KEY" \
+      "https://imentor.devflix.uz/api/v1/external/tests/42/"
+
+
+6. HTTP kodlar va xatolar
+-------------------------
+
+  200  — muvaffaqiyat
+  400  — noto'g'ri question_limit / min_questions / max_questions
+  403  — API kalit yo'q yoki noto'g'ri
+  404  — test topilmadi yoki hali 1 soat o'tmagan (e'lon qilinmagan)
+
+  400 namuna:
+    { "detail": "question_limit must be between 10 and 30." }
+
+  403 namuna:
+    { "detail": "Valid X-Api-Key header required." }
+
+
+7. Server sozlash (administrator)
+---------------------------------
+
+  deploy/.env.production yoki backend .env:
+
+    IMENTOR_EXTERNAL_API_KEYS=hamkor-secret-kalit-2026
+
+  Bir nechta hamkor — vergul bilan:
+
+    IMENTOR_EXTERNAL_API_KEYS=kalit-lms,kalit-mobile
+
+  Deploy dan keyin tekshirish:
+
+    curl -H "X-Api-Key: hamkor-secret-kalit-2026" \
+      "https://imentor.devflix.uz/api/v1/external/tests/stats/"
+
+
+8. Qo'shimcha eslatmalar
+------------------------
+
+  - JWT token kerak emas — faqat X-Api-Key.
+  - Faqat testlar (kind=test). Keys/case bu API da yo'q.
+  - Bir mavzuda bir nechta test versiyasi bo'lishi mumkin.
+  - topic_norm (yangi yozuvlar): {syllabusId}::{variant}::{topicCode}
+    Masalan: 12::pi::m1
+  - Savollar ketma-ket qaytariladi (birinchi N ta).
+  - Kalitni git, chat yoki ochiq repoda saqlamang.
+
+Aloqa
+-----
+  API kalit va texnik savollar uchun iMentor administratoriga murojaat qiling.

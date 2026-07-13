@@ -9,6 +9,7 @@
 | **API hujjatlari** | `/api/docs/` (Swagger UI) |
 | **Admin panel** | `/admin/` (telefon raqam orqali kirish) |
 | **Admin qo‘llanmasi (SPA)** | [docs/ADMIN_README.md](docs/ADMIN_README.md) — to‘liq flow, modullar, test checklist |
+| **Tashqi test API (partner)** | [docs/EXTERNAL_TESTS_API.txt](docs/EXTERNAL_TESTS_API.txt) — X-Api-Key, savol limiti 10–30 |
 
 ---
 
@@ -417,6 +418,22 @@ Barcha endpointlar `/api/` prefiksi ostida. Versiyalangan API: `/api/v1/...`
 |---|---|---|---|
 | GET | `/api/v1/content-catalog/` | JWT | Xodimlar kutubxonasi |
 | GET | `/api/v1/public/content-catalog/` | Ochiq | Ochiq katalog |
+
+### Tashqi test API (hamkor servislar)
+
+JWT emas — `X-Api-Key` header. To'liq hujjat: [docs/EXTERNAL_TESTS_API.txt](EXTERNAL_TESTS_API.txt)
+
+| Method | Endpoint | Auth | Tavsif |
+|---|---|---|---|
+| GET | `/api/v1/external/tests/stats/` | X-Api-Key | Test bazasi statistikasi |
+| GET | `/api/v1/external/tests/` | X-Api-Key | E'lon qilingan testlar ro'yxati |
+| GET | `/api/v1/external/tests/<id>/` | X-Api-Key | Test + savollar (`?question_limit=10..30`) |
+
+Server `.env`: `IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2`
+
+Savol limiti: platforma bilan bir xil — **minimum 10, maksimum 30**.
+- Detail: `?question_limit=20` — faqat 20 ta savol qaytaradi
+- Ro'yxat: `?min_questions=15` — kamida 15 savolli testlar
 
 ### Infratuzilma
 

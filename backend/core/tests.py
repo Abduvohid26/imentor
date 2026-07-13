@@ -369,11 +369,12 @@ class PreparedContentApiTests(TestCase):
                     'topic': 'Yurak anatomiyasi',
                     'questions': [
                         {
-                            'question': 'Q1',
-                            'options': ['a', 'b'],
+                            'question': f'Q{i}',
+                            'options': ['a', 'b', 'c', 'd', 'e'],
                             'correctOptionIndex': 0,
-                            'explanation': 'e',
+                            'explanation': f'explanation {i}',
                         }
+                        for i in range(1, 16)
                     ],
                 },
             },
@@ -426,6 +427,38 @@ class PreparedContentApiTests(TestCase):
         items = ext_list2.json().get('results', ext_list2.json())
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]['variant_label'], 'PI')
+        self.assertEqual(items[0]['question_count'], 15)
+
+        bad_limit = self.client.get(
+            f'/api/v1/external/tests/{recent_pk}/?question_limit=5',
+            HTTP_X_API_KEY='ext-test-key-123',
+        )
+        self.assertEqual(bad_limit.status_code, 400)
+
+        limited = self.client.get(
+            f'/api/v1/external/tests/{recent_pk}/?question_limit=12',
+            HTTP_X_API_KEY='ext-test-key-123',
+        )
+        self.assertEqual(limited.status_code, 200)
+        limited_body = limited.json()
+        self.assertEqual(limited_body['question_limit'], 12)
+        self.assertEqual(limited_body['question_count_available'], 15)
+        self.assertEqual(limited_body['question_count_returned'], 12)
+        self.assertEqual(len(limited_body['payload']['questions']), 12)
+
+        filtered = self.client.get(
+            '/api/v1/external/tests/?min_questions=20',
+            HTTP_X_API_KEY='ext-test-key-123',
+        )
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(filtered.json().get('results', []), [])
+
+        filtered_ok = self.client.get(
+            '/api/v1/external/tests/?min_questions=10&max_questions=15',
+            HTTP_X_API_KEY='ext-test-key-123',
+        )
+        self.assertEqual(filtered_ok.status_code, 200)
+        self.assertEqual(len(filtered_ok.json().get('results', [])), 1)
 
     def test_login_preserves_server_role_from_db(self):
         Group.objects.get_or_create(name='hodim')
