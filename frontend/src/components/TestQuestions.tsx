@@ -164,6 +164,7 @@ export default function TestQuestions() {
   const studentSessionId = (queryParams.get('sid') || queryParams.get('id') || '').trim();
 
   const [topic, setTopic] = useState(globalTopic ? globalTopic.title : '');
+  const [questionCount, setQuestionCount] = useState(10);
   const [loading, setLoading] = useState(false);
   const [testSession, setTestSession] = useState<TestSession | null>(null);
   const [versions, setVersions] = useState<PreparedContentSummary[]>([]);
@@ -542,7 +543,8 @@ export default function TestQuestions() {
     setLoading(true);
     setError(null);
     try {
-      const data = await aiService.generateTests(topic, 10, language);
+      const count = Math.min(30, Math.max(10, questionCount));
+      const data = await aiService.generateTests(topic, count, language);
       await savePreparedContent('test', topic, data, buildPreparedContentMeta(globalTopic));
       refreshVersions();
       const list = listPreparedForTopic('test', globalTopic ?? topic);
@@ -764,17 +766,21 @@ export default function TestQuestions() {
   return (
     <StaffPageLayout spacious>
       <ContentTopicToolbar
-        moduleLabel={t('test.teacherBadge')}
+        moduleLabel={t('test.teacherBadge', { count: questionCount })}
         topic={staffTopic}
         topicValue={topic}
         onTopicChange={setTopic}
         topicLabel={t('test.topicLabel')}
         topicPlaceholder={t('test.topicPlaceholder')}
-        createLabel={t('test.create')}
+        createLabel={t('test.create', { count: questionCount })}
         loading={loading}
         onCreate={() => void handleGenerate()}
         lockTopicFromSyllabus={Boolean(staffTopic)}
         hint={t('test.heroSubtitle')}
+        questionCount={questionCount}
+        onQuestionCountChange={setQuestionCount}
+        questionCountMin={10}
+        questionCountMax={30}
         versions={versions}
         activeVersionId={activeVersionId}
         onSelectVersion={handleSelectVersion}
@@ -782,7 +788,12 @@ export default function TestQuestions() {
       />
 
       {error && <StaffErrorAlert message={error} />}
-      {loading && <StaffLoading label={t('test.generating')} hint={t('test.generatingHint')} />}
+      {loading && (
+        <StaffLoading
+          label={t('test.generating')}
+          hint={t('test.generatingHint', { count: questionCount })}
+        />
+      )}
 
         {testSession && !loading && (
           <motion.div 

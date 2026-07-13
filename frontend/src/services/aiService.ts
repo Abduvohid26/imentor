@@ -643,6 +643,7 @@ export const aiService = {
 
   async generateTests(topic: string, count: number = 10, language: AppLanguage = 'uz'): Promise<TestSession> {
     assertOpenAiApiKey();
+    const safeCount = Math.min(30, Math.max(10, Math.round(count) || 10));
     const outLang = languageName(language);
     const avoid = previousTestAvoidBlock(topic);
     const generate = async (requestedCount: number, shortMode: boolean, strict: boolean): Promise<TestSession> => {
@@ -675,20 +676,20 @@ export const aiService = {
     try {
       let data: TestSession;
       try {
-        data = await generate(count, false, false);
+        data = await generate(safeCount, false, false);
       } catch {
-        data = await generate(Math.min(count, 10), true, true);
+        data = await generate(Math.min(safeCount, 10), true, true);
       }
-      if (isWeakTestSession(data, count)) {
-        data = await generate(Math.min(count, 10), true, true);
+      if (isWeakTestSession(data, safeCount)) {
+        data = await generate(Math.min(safeCount, 10), true, true);
       }
-      if (isWeakTestSession(data, count)) {
-        data = await generateChunked(Math.min(count, 12));
+      if (isWeakTestSession(data, safeCount)) {
+        data = await generateChunked(safeCount);
       }
-      return normalizeTestSession(topic, data, count);
+      return normalizeTestSession(topic, data, safeCount);
     } catch (error) {
       try {
-        return await generateChunked(Math.min(count, 12));
+        return await generateChunked(safeCount);
       } catch (fallbackError) {
         console.error("Test generation failed:", fallbackError);
         throw fallbackError;

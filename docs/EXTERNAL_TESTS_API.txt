@@ -1,0 +1,138 @@
+iMentor — Tashqi test bazasi API
+================================
+
+Maqsad
+------
+Hodimlar yaratgan testlarni tashqi servislar o'qishi uchun REST API.
+Faqat e'lon qilingan testlar qaytariladi (yaratilgandan 1 soat keyin).
+
+
+Base URL
+--------
+Production: https://imentor.devflix.uz/api
+Local dev:  http://localhost:8080/api
+
+
+Autentifikatsiya
+----------------
+Har bir so'rovda header:
+
+  X-Api-Key: <sizning-kalitingiz>
+
+Kalit server .env da:
+
+  IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2
+
+Kalit yo'q yoki noto'g'ri bo'lsa: HTTP 403
+
+
+E'lon qilish qoidasi
+--------------------
+Test yaratilgandan keyin 1 soat kutiladi, keyin API da ko'rinadi.
+Yangi testlar ro'yxatda darhol chiqmaydi.
+
+
+Endpointlar
+-----------
+
+1) Statistika
+   GET /v1/external/tests/stats/
+
+   Javob (qisqacha):
+   - totals.test_count          — jami testlar
+   - totals.questions_total   — jami savollar
+   - totals.subjects_distinct — fanlar soni
+   - totals.variants_distinct — yo'nalishlar soni
+   - totals.topics_distinct   — mavzular soni
+   - totals.authors_distinct  — mualliflar soni
+   - by_subject[]             — fan bo'yicha
+   - by_variant[]             — fan + yo'nalish bo'yicha
+   - by_topic[]               — mavzu bo'yicha (top 50)
+   - by_author[]              — muallif bo'yicha (top 30)
+   - recent[]                 — oxirgi 15 ta test
+
+
+2) Testlar ro'yxati
+   GET /v1/external/tests/
+
+   Query parametrlar (ixtiyoriy):
+   - subject_code=ANAT        — fan kodi
+   - variant_label=PI       — yo'nalish
+   - topic_code=m1          — mavzu kodi (M1, L2, ...)
+   - q=yurak                — qidiruv (mavzu, fan, muallif)
+   - author=Ali             — muallif bo'yicha
+   - sort=subject|topic|newest
+   - page=1                 — sahifa (default 1)
+   - page_size=50           — hajm (default 50, max 200)
+
+   Javob:
+   {
+     "count": 120,
+     "page": 1,
+     "page_size": 50,
+     "results": [ ... ]
+   }
+
+   Har bir element:
+   - id, topic, topic_norm
+   - subject_name, subject_code
+   - variant_label, topic_code, syllabus_id
+   - author_display_name, owner_key
+   - question_count, created_at
+   - document_id, verification_code  (tasdiqlash uchun)
+
+
+3) Bitta test (to'liq savollar bilan)
+   GET /v1/external/tests/<id>/
+
+   Javob: ro'yxat elementi + payload
+
+   payload ichida:
+   {
+     "topic": "Yurak anatomiyasi",
+     "questions": [
+       {
+         "question": "...",
+         "options": ["A", "B", "C", "D"],
+         "correctOptionIndex": 0,
+         "explanation": "..."
+       }
+     ]
+   }
+
+
+Misol so'rovlar (curl)
+----------------------
+
+Statistika:
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/tests/stats/"
+
+Fan bo'yicha ro'yxat:
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/tests/?subject_code=ANAT&page=1"
+
+Bitta test:
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/tests/42/"
+
+
+HTTP kodlar
+-----------
+200 — muvaffaqiyat
+403 — API kalit yo'q / noto'g'ri / serverda kalit sozlanmagan
+404 — test topilmadi yoki hali e'lon qilinmagan
+
+
+Eslatmalar
+----------
+- JWT token kerak emas — faqat X-Api-Key.
+- API faqat kind=test materiallarini qaytaradi (keys/case yo'q).
+- Bir mavzuda bir nechta test versiyasi bo'lishi mumkin (har generate = yangi yozuv).
+- topic_norm formati (yangi yozuvlar): {syllabusId}::{variant}::{topicCode}
+  Masalan: 12::pi::m1
+
+Aloqa / kalit
+-------------
+API kalitini iMentor administratoridan oling.
+Kalitni git yoki ochiq kanallarda saqlamang.

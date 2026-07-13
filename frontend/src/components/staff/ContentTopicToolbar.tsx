@@ -24,6 +24,11 @@ type Props = {
   /** Syllabus mavzusi bo'lsa — input yashirin, faqat chip header */
   lockTopicFromSyllabus?: boolean;
   extra?: React.ReactNode;
+  questionCount?: number;
+  onQuestionCountChange?: (value: number) => void;
+  questionCountMin?: number;
+  questionCountMax?: number;
+  questionCountLabel?: string;
 };
 
 function formatWhen(ts: number, locale: string): string {
@@ -53,10 +58,55 @@ export default function ContentTopicToolbar({
   versionsTitle,
   lockTopicFromSyllabus = false,
   extra,
+  questionCount,
+  onQuestionCountChange,
+  questionCountMin = 10,
+  questionCountMax = 30,
+  questionCountLabel,
 }: Props) {
   const { t, locale } = useUiText();
   const resolvedVersionsTitle = versionsTitle ?? t('toolbar.saved');
   const showTopicInput = !lockTopicFromSyllabus || !topic;
+  const showQuestionCount = onQuestionCountChange != null && questionCount != null;
+  const resolvedCountLabel = questionCountLabel ?? t('test.questionCountLabel');
+
+  const questionCountField = showQuestionCount ? (
+    <div className="space-y-1.5 shrink-0 w-full sm:w-[7.5rem]">
+      <label className={staffLabel} htmlFor="staff-question-count">
+        {resolvedCountLabel}
+      </label>
+      <input
+        id="staff-question-count"
+        type="number"
+        min={questionCountMin}
+        max={questionCountMax}
+        step={1}
+        value={questionCount}
+        onChange={(e) => {
+          const raw = Number.parseInt(e.target.value, 10);
+          if (Number.isNaN(raw)) return;
+          onQuestionCountChange(Math.min(questionCountMax, Math.max(questionCountMin, raw)));
+        }}
+        className={`${staffInput} tabular-nums`}
+        disabled={loading}
+      />
+      <p className="text-[10px] text-black/40 leading-tight">
+        {t('test.questionCountRange', { min: questionCountMin, max: questionCountMax })}
+      </p>
+    </div>
+  ) : null;
+
+  const createButton = (
+    <button
+      type="button"
+      onClick={onCreate}
+      disabled={loading || !topicValue.trim()}
+      className={`${staffBtnPrimary} h-11 shrink-0`}
+    >
+      {loading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+      {createLabel}
+    </button>
+  );
 
   return (
     <StaffTopicHeader moduleLabel={moduleLabel} topic={topic} hint={hint}>
@@ -73,29 +123,15 @@ export default function ContentTopicToolbar({
                 className={staffInput}
               />
             </div>
-            <button
-              type="button"
-              onClick={onCreate}
-              disabled={loading || !topicValue.trim()}
-              className={`${staffBtnPrimary} h-11 shrink-0`}
-            >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-              {createLabel}
-            </button>
+            {questionCountField}
+            {createButton}
           </div>
         )}
 
         {!showTopicInput && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onCreate}
-              disabled={loading || !topicValue.trim()}
-              className={staffBtnPrimary}
-            >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-              {createLabel}
-            </button>
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+            {questionCountField}
+            {createButton}
           </div>
         )}
 
