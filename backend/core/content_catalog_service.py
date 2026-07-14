@@ -20,12 +20,33 @@ TEST_QUESTION_LIMIT_MAX = 30
 _TOPIC_NORM_RE = re.compile(r'^(\d+)::([^:]+)::(.+)$')
 
 
+def effective_subject_code(item: PreparedContent) -> str:
+    """subject_code yoki syllabus FK orqali barqaror fan kodi."""
+    code = (item.subject_code or '').strip()
+    if code:
+        return code
+    syllabus = getattr(item, 'syllabus', None)
+    if syllabus is not None:
+        return (getattr(syllabus, 'subject_code', None) or '').strip()
+    return ''
+
+
+def effective_subject_name(item: PreparedContent) -> str:
+    name = (item.subject_name or '').strip()
+    if name:
+        return name
+    syllabus = getattr(item, 'syllabus', None)
+    if syllabus is not None:
+        return (getattr(syllabus, 'subject_name', None) or '').strip()
+    return ''
+
+
 def published_catalog_queryset():
     cutoff = timezone.now() - PUBLISH_DELAY
     return PreparedContent.objects.filter(
         kind__in=CATALOG_KINDS,
         created_at__lte=cutoff,
-    )
+    ).select_related('syllabus', 'syllabus__department')
 
 
 def is_published(item: PreparedContent) -> bool:
@@ -181,8 +202,8 @@ def catalog_item_summary(item: PreparedContent, *, include_verification: bool = 
         'kind': item.kind,
         'topic': item.topic,
         'topic_norm': item.topic_norm,
-        'subject_name': item.subject_name or catalog_subject_name or '',
-        'subject_code': item.subject_code or '',
+        'subject_name': item.subject_name or catalog_subject_name or effective_subject_name(item) or '',
+        'subject_code': effective_subject_code(item) or item.subject_code or '',
         'department_name': dept_name,
         'department_code': dept_code,
         'variant_label': variant_label,
@@ -208,7 +229,7 @@ def filter_catalog_queryset(qs, params) -> object:
 
     subject_code = (params.get('subject_code') or '').strip()
     if subject_code:
-        qs = qs.filter(subject_code=subject_code)
+        qs = qs.filter(Q(subject_code=subject_code) | Q(syllabus__subject_code=subject_code))
 
     syllabus_id = (params.get('syllabus_id') or '').strip()
     if syllabus_id:
@@ -289,7 +310,7 @@ def build_catalog_stats(*, published_only: bool = False, kind: str | None = None
 
     base_qs = PreparedContent.objects.filter(_kind_filter(kind))
     if published_only:
-        base_qs = base_qs.filter(created_at__lte=cutoff)
+        base_qs = base_qs.filter(created_at__lte=cutoff).select_related('syllabus', 'syllabus__department')
 
     items = list(base_qs.order_by('-created_at'))
     questions_total = sum(question_count(item) for item in items)
@@ -318,8 +339,8 @@ def build_catalog_stats(*, published_only: bool = False, kind: str | None = None
 
     for item in items:
         variant, topic_code = enrich_catalog_meta(item)
-        subj_code = item.subject_code or ''
-        subj_name = item.subject_name or ''
+        subj_code = effective_subject_code(item)
+        subj_name = effective_subject_name(item) or item.subject_name or ''
         qc = question_count(item)
         pub = is_published(item)
 

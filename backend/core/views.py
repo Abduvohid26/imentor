@@ -209,6 +209,7 @@ class PreparedContentV1View(PreparedContentView):
         if syllabus:
             save_kwargs["syllabus"] = syllabus
             save_kwargs["subject_name"] = syllabus.subject_name
+            save_kwargs["subject_code"] = subject_code or syllabus.subject_code
 
         variant_label = (serializer.validated_data.get("variant_label") or "").strip()
         topic_code = (serializer.validated_data.get("topic_code") or "").strip()
