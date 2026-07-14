@@ -496,7 +496,16 @@ class PreparedContentApiTests(TestCase):
 
         depts = self.client.get('/api/v1/external/catalog/departments/', **headers)
         self.assertEqual(depts.status_code, 200)
-        self.assertTrue(any(d['code'] == 'anat-kaf' for d in depts.json()['results']))
+        dept_body = depts.json()
+        self.assertGreaterEqual(dept_body['count'], 1)
+        self.assertIn('next_step', dept_body)
+        self.assertTrue(any(d['code'] == 'anat-kaf' and d['subjects_count'] >= 1 for d in dept_body['results']))
+
+        dept_subjects = self.client.get('/api/v1/external/catalog/departments/anat-kaf/subjects/', **headers)
+        self.assertEqual(dept_subjects.status_code, 200)
+        ds_body = dept_subjects.json()
+        self.assertEqual(ds_body['department']['name'], 'Anatomiya kafedrasi')
+        self.assertTrue(any(r['subject_code'] == 'ANAT-CAT' for r in ds_body['results']))
 
         subjects = self.client.get(
             '/api/v1/external/catalog/subjects/?department_code=anat-kaf',

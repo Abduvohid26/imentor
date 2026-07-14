@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from .models import AcademicDepartment, CourseSyllabus
 from .syllabus_catalog_views import build_syllabus_catalog_stats
@@ -126,11 +126,36 @@ def build_external_catalog_stats() -> dict:
 
 
 def external_departments_list():
+    """Kafedra ro'yxati — partner UI: birinchi qadam (kafedra tanlash)."""
     return list(
         AcademicDepartment.objects.filter(is_active=True)
+        .annotate(
+            subjects_count=Count(
+                'subjects',
+                filter=Q(subjects__is_active=True),
+            )
+        )
         .order_by('sort_order', 'name')
-        .values('code', 'name', 'sort_order')
+        .values('code', 'name', 'sort_order', 'subjects_count')
     )
+
+
+def external_department_subjects_paginated(department_code: str, request) -> dict | None:
+    """Tanlangan kafedra fanlari — partner UI: ikkinchi qadam."""
+    from .pagination import paginate_items
+
+    code = (department_code or '').strip()
+    if not AcademicDepartment.objects.filter(is_active=True, code=code).exists():
+        return None
+    dept = AcademicDepartment.objects.filter(is_active=True, code=code).first()
+    rows = external_catalog_subjects_for_department(code)
+    payload = paginate_items(rows, request, default_page_size=50, max_page_size=200)
+    payload['department'] = {
+        'code': dept.code,
+        'name': dept.name,
+        'sort_order': dept.sort_order,
+    }
+    return payload
 
 
 def active_syllabus_queryset():

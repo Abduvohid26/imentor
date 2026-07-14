@@ -57,14 +57,21 @@ def main() -> None:
     catalog_stats = request_json('/v1/external/catalog/stats/')
     print(json.dumps(catalog_stats, ensure_ascii=False, indent=2))
 
-    print('\n=== 2. Kafedralar ===')
-    departments = request_json('/v1/external/catalog/departments/')
-    for dept in departments.get('results', [])[:5]:
-        print(f"  - {dept['name']} ({dept['code']})")
+  print('\n=== 2. Kafedralar (1-qadam: tanlash) ===')
+  departments = request_json('/v1/external/catalog/departments/')
+  print(f"  Jami: {departments.get('count', 0)}")
+  for dept in departments.get('results', [])[:5]:
+    print(f"  - {dept['name']} ({dept['code']}) — {dept.get('subjects_count', 0)} fan")
 
-    print('\n=== 3. Fanlar (birinchi sahifa) ===')
-    subjects = request_json('/v1/external/catalog/subjects/', params={'page_size': 5})
-    rows = subjects.get('results', [])
+  if not departments.get('results'):
+    print('  Kafedra topilmadi')
+    return
+
+  dept_code = departments['results'][0]['code']
+  dept_name = departments['results'][0]['name']
+  print(f"\n=== 3. Fanlar — tanlangan kafedra: {dept_name} ===")
+  subjects = request_json(f'/v1/external/catalog/departments/{dept_code}/subjects/', params={'page_size': 10})
+  rows = subjects.get('results', [])
     if not rows:
         print('  Fan topilmadi')
         return

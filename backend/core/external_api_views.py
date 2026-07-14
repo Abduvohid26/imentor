@@ -148,13 +148,39 @@ class ExternalCatalogStatsView(APIView):
 
 
 class ExternalCatalogDepartmentsView(APIView):
+    """
+    1-qadam: kafedra ro'yxati (code + name + fanlar soni).
+    Keyin: GET .../departments/<code>/subjects/ — shu kafedra fanlari.
+    """
+
     authentication_classes = []
     permission_classes = [HasExternalApiKey]
 
     def get(self, request):
         from .external_catalog_service import external_departments_list
 
-        return Response({'results': external_departments_list()})
+        rows = external_departments_list()
+        return Response({
+            'count': len(rows),
+            'results': rows,
+            'next_step': 'GET /v1/external/catalog/departments/<department_code>/subjects/',
+        })
+
+
+class ExternalCatalogDepartmentSubjectsView(APIView):
+    """2-qadam: tanlangan kafedra fanlari (subject_code + subject_name)."""
+
+    authentication_classes = []
+    permission_classes = [HasExternalApiKey]
+
+    def get(self, request, department_code: str):
+        from .external_catalog_service import external_department_subjects_paginated
+
+        payload = external_department_subjects_paginated(department_code, request)
+        if payload is None:
+            return Response({'detail': 'Department not found.'}, status=status.HTTP_404_NOT_FOUND)
+        payload['next_step'] = 'GET /v1/external/catalog/subjects/<subject_code>/'
+        return Response(payload)
 
 
 class ExternalCatalogDepartmentDetailView(APIView):

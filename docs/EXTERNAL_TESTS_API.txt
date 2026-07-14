@@ -22,8 +22,9 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   ───────────────────────────────────
   GET  /v1/external/catalog/stats/
   GET  /v1/external/catalog/departments/
+  GET  /v1/external/catalog/departments/<department_code>/subjects/   ← 2-qadam: fanlar
   GET  /v1/external/catalog/departments/<department_code>/
-  GET  /v1/external/catalog/subjects/
+  GET  /v1/external/catalog/subjects/?department_code=...
   GET  /v1/external/catalog/subjects/<subject_code>/
 
   TESTLAR (hodim yaratgan savollar)
@@ -114,28 +115,41 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
 
 3.2  GET /v1/external/catalog/departments/
 ──────────────────────────────────────────
-  Barcha kafedralar (kod + NOM).
+  **1-QADAM — Kafedra tanlash** (partner dropdown).
 
   Javob:
   {
+    "count": 28,
+    "next_step": "GET /v1/external/catalog/departments/<department_code>/subjects/",
     "results": [
-      { "code": "fiziologiya", "name": "Fiziologiya kafedrasi", "sort_order": 1 },
-      { "code": "anatomiya",   "name": "Anatomiya kafedrasi",   "sort_order": 2 }
+      {
+        "code": "fiziologiya",
+        "name": "Fiziologiya kafedrasi",
+        "sort_order": 1,
+        "subjects_count": 12
+      }
     ]
   }
 
 
-3.3  GET /v1/external/catalog/departments/<department_code>/
-────────────────────────────────────────────────────────────
-  Bitta kafedra + uning barcha fanlari (nomlar bilan).
+3.3  GET /v1/external/catalog/departments/<department_code>/subjects/
+────────────────────────────────────────────────────────────────────
+  **2-QADAM — Tanlangan kafedra fanlari** (ikkinchi dropdown).
 
-  Javob namunasi:
+  Misol: GET .../departments/fiziologiya/subjects/
+
+  Javob:
   {
-    "code": "fiziologiya",
-    "name": "Fiziologiya kafedrasi",
-    "sort_order": 1,
-    "subjects_count": 12,
-    "subjects": [
+    "count": 12,
+    "page": 1,
+    "page_size": 50,
+    "department": {
+      "code": "fiziologiya",
+      "name": "Fiziologiya kafedrasi",
+      "sort_order": 1
+    },
+    "next_step": "GET /v1/external/catalog/subjects/<subject_code>/",
+    "results": [
       {
         "id": 45,
         "subject_code": "fiziologiya__anatomiya",
@@ -150,40 +164,25 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   }
 
 
-3.4  GET /v1/external/catalog/subjects/
+3.4  GET /v1/external/catalog/departments/<department_code>/
+────────────────────────────────────────────────────────────
+  Kafedra + fanlar bitta javobda (3.3 alternativasi).
+
+
+3.5  GET /v1/external/catalog/subjects/
 ───────────────────────────────────────
-  Fanlar ro'yxati (kafedra nomi bilan).
+  Fanlar ro'yxati. `department_code` bilan filter — 2-qadam alternativasi.
 
   Query:
     department_code=fiziologiya   — faqat shu kafedra fanlari
     q=anatom                      — fan nomi/kodi bo'yicha qidiruv
-    page=1                        — default 1
-    page_size=50                  — default 50, max 200
-
-  Javob:
-  {
-    "count": 230,
-    "page": 1,
-    "page_size": 50,
-    "results": [
-      {
-        "id": 45,
-        "subject_code": "fiziologiya__anatomiya",
-        "subject_name": "Anatomiya",
-        "department_code": "fiziologiya",
-        "department_name": "Fiziologiya kafedrasi",
-        "instruction_language": "uz",
-        "variants_count": 3,
-        "topics_count": 42,
-        "variant_labels": ["PI", "DI", "TPI"]
-      }
-    ]
-  }
+    page=1
+    page_size=50
 
 
-3.5  GET /v1/external/catalog/subjects/<subject_code>/
+3.6  GET /v1/external/catalog/subjects/<subject_code>/
 ──────────────────────────────────────────────────────
-  Bitta fan: yo'nalishlar va mavzular (savolsiz).
+  **3-QADAM** — Yo'nalishlar va mavzular (savolsiz).
 
   Javob namunasi:
   {

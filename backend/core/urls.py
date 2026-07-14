@@ -53,6 +53,7 @@ from .content_catalog_views import (
     PublicContentCatalogSubjectsView,
 )
 from .external_api_views import (
+    ExternalCatalogDepartmentSubjectsView,
     ExternalCatalogDepartmentDetailView,
     ExternalCatalogDepartmentsView,
     ExternalCatalogStatsView,
@@ -124,6 +125,11 @@ urlpatterns = [
     path('v1/external/tests/<int:pk>/', ExternalTestsDetailView.as_view(), name='external-tests-detail'),
     path('v1/external/catalog/stats/', ExternalCatalogStatsView.as_view(), name='external-catalog-stats'),
     path('v1/external/catalog/departments/', ExternalCatalogDepartmentsView.as_view(), name='external-catalog-departments'),
+    path(
+        'v1/external/catalog/departments/<slug:department_code>/subjects/',
+        ExternalCatalogDepartmentSubjectsView.as_view(),
+        name='external-catalog-department-subjects',
+    ),
     path('v1/external/catalog/departments/<slug:department_code>/', ExternalCatalogDepartmentDetailView.as_view(), name='external-catalog-department-detail'),
     path('v1/external/catalog/subjects/', ExternalCatalogSubjectsView.as_view(), name='external-catalog-subjects'),
     path('v1/external/catalog/subjects/<path:subject_code>/', ExternalCatalogSubjectDetailView.as_view(), name='external-catalog-subject-detail'),

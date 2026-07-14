@@ -4,6 +4,11 @@ set -e
 MEDIA_DIR="${DJANGO_MEDIA_ROOT:-/app/media}"
 mkdir -p "$MEDIA_DIR"
 
+# docker compose run backend python manage.py ... — bir martalik buyruqlar
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
 if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
   python manage.py migrate --noinput
 fi
