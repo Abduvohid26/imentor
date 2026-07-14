@@ -231,6 +231,14 @@ def filter_catalog_queryset(qs, params) -> object:
     if subject_code:
         qs = qs.filter(Q(subject_code=subject_code) | Q(syllabus__subject_code=subject_code))
 
+    department_code = (params.get('department_code') or '').strip()
+    if department_code:
+        qs = qs.filter(
+            Q(syllabus__department__code=department_code)
+            | Q(subject_code=department_code)
+            | Q(syllabus__subject_code__startswith=f'{department_code}__')
+        )
+
     syllabus_id = (params.get('syllabus_id') or '').strip()
     if syllabus_id:
         try:
