@@ -18,6 +18,7 @@ import {
   OPENAI_CHAT,
   OPENAI_FAST,
   assertOpenAiApiKey,
+  type BookContext,
   openaiJson,
   openaiText,
 } from './openaiClient';
@@ -88,6 +89,15 @@ export interface TestQuestion {
   options: string[];
   correctOptionIndex: number;
   explanation: string;
+  /** Har bir variant uchun alohida izoh: nega to'g'ri yoki nega xato (options bilan bir xil uzunlik) */
+  optionExplanations?: string[];
+  references?: MedicalReference[];
+}
+
+/** Bitta tildagi test tarkibi — asosiy TestSession bilan bir xil shakl, faqat translations'siz */
+export interface TestSessionContent {
+  topic: string;
+  questions: TestQuestion[];
   references?: MedicalReference[];
 }
 
@@ -98,6 +108,8 @@ export interface TestSession {
   references?: MedicalReference[];
   createdAt?: number;
   authorUid?: string;
+  /** Qolgan 2 tildagi tarjimalar — asosiy til `topic`/`questions`da, boshqalari shu yerda (uz/ru/en to'liq to'plami) */
+  translations?: Partial<Record<AppLanguage, TestSessionContent>>;
 }
 
 export interface LectureNote {
@@ -355,15 +367,18 @@ async function generateSingleCaseQuestion(
   language: AppLanguage,
   keywordFocus: string,
   avoid: string,
+  subjectCode?: string,
 ): Promise<CaseStudyQuestion> {
   const outLang = languageName(language);
   const structure = buildCaseStructurePrompt(topic);
+  const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
   const request = (strict: boolean) =>
     openaiJson<{ scenario?: string; answer?: string; references?: MedicalReference[]; focus?: string }>({
       model: OPENAI_CHAT,
       system:
         `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} Return ONLY valid JSON object: ` +
         `{"scenario":"...","answer":"...","references":[{"title":"...","url":"https://..."}]}. ` +
+        `If book excerpts (manba context) were given, cite them inside "answer" text as "(Manba: kitob nomi, sahifa-bet)" — never outside the JSON. ` +
         `Language: ${outLang}. focus="${focus}". ${MEDICAL_REFERENCES_AI_RULES}`,
       user:
         `${structure}${keywordFocus}${avoid}\n\n` +
@@ -374,6 +389,7 @@ async function generateSingleCaseQuestion(
       maxTokens: 3072,
       temperature: strict ? 0.4 : 0.58,
       parse: (t) => parseJSONSafe(t),
+      bookContext,
     });
 
   let raw: { scenario?: string; answer?: string; references?: MedicalReference[]; focus?: string };
@@ -457,11 +473,15 @@ function normalizeTestSession(topic: string, data: TestSession, requestedCount: 
           ? q.correctOptionIndex
           : 0;
       const refs = normalizeMedicalReferences(q.references, topic);
+      const optionExplanations = (q.optionExplanations || []).slice(0, 5).map((e) => (e || '').trim());
+      while (optionExplanations.length < 5) optionExplanations.push('');
+      const hasOptionExplanations = optionExplanations.some((e) => e.length > 0);
       return {
         question: (q.question || '').trim(),
         options: options.map((o) => (o || '').trim()),
         explanation: (q.explanation || '').trim(),
         correctOptionIndex,
+        ...(hasOptionExplanations ? { optionExplanations } : {}),
         ...(refs.length ? { references: refs } : {}),
       };
     });
@@ -473,6 +493,86 @@ function normalizeTestSession(topic: string, data: TestSession, requestedCount: 
     questions,
     references: mergeReferences(sessionRefs, allQRefs),
   };
+}
+
+const ALL_TEST_LANGUAGES: AppLanguage[] = ['uz', 'ru', 'en'];
+
+/** Tayyor testni boshqa tilga tarjima qiladi — faktlar/to'g'ri javob o'zgarmaydi, faqat matn. */
+async function translateTestSession(
+  content: TestSessionContent,
+  targetLang: AppLanguage,
+): Promise<TestSessionContent> {
+  const outLang = languageName(targetLang);
+  const source = {
+    topic: content.topic,
+    questions: content.questions.map((q) => ({
+      question: q.question,
+      options: q.options,
+      correctOptionIndex: q.correctOptionIndex,
+      explanation: q.explanation,
+      optionExplanations: q.optionExplanations,
+    })),
+  };
+  const translated = await openaiJson<{ topic?: string; questions?: TestQuestion[] }>({
+    model: OPENAI_FAST,
+    system:
+      'You are a precise medical translator. Translate the given JSON test into ' +
+      `${outLang}. Keep the EXACT same JSON structure, keys, array lengths and order. ` +
+      'NEVER change correctOptionIndex or any number. Translate every text field ' +
+      '(topic, question, options, explanation, optionExplanations) naturally, including any ' +
+      'inline citation phrase like "(Manba: kitob, sahifa-bet)" — translate the label word too ' +
+      `("Manba" → "Источник" for Russian, "Source" for English), keeping the book title and page number unchanged. ` +
+      'Return ONLY valid JSON, no markdown fences.',
+    user: JSON.stringify(source),
+    maxTokens: 6144,
+    temperature: 0.15,
+    parse: (t) => parseJSONSafe(t),
+  });
+
+  const questions: TestQuestion[] = content.questions.map((original, i) => {
+    const t = translated.questions?.[i];
+    return {
+      question: (t?.question || original.question).trim(),
+      options: (t?.options?.length === original.options.length ? t.options : original.options).map((o) =>
+        (o || '').trim(),
+      ),
+      correctOptionIndex: original.correctOptionIndex,
+      explanation: (t?.explanation || original.explanation || '').trim(),
+      ...(original.optionExplanations
+        ? {
+            optionExplanations: (
+              t?.optionExplanations?.length === original.optionExplanations.length
+                ? t.optionExplanations
+                : original.optionExplanations
+            ).map((e) => (e || '').trim()),
+          }
+        : {}),
+      ...(original.references ? { references: original.references } : {}),
+    };
+  });
+
+  return {
+    topic: (translated.topic || content.topic).trim(),
+    questions,
+    references: content.references,
+  };
+}
+
+/** Test'ni asosiy tilda generatsiya qilgandan keyin qolgan 2 tilga parallel tarjima qiladi. */
+async function attachTestTranslations(session: TestSession, primaryLang: AppLanguage): Promise<TestSession> {
+  const remaining = ALL_TEST_LANGUAGES.filter((l) => l !== primaryLang);
+  const results = await Promise.allSettled(
+    remaining.map((lang) => translateTestSession(session, lang)),
+  );
+  const translations: Partial<Record<AppLanguage, TestSessionContent>> = {};
+  results.forEach((res, i) => {
+    if (res.status === 'fulfilled') {
+      translations[remaining[i]] = res.value;
+    } else {
+      console.warn(`Test translation to ${remaining[i]} failed:`, res.reason);
+    }
+  });
+  return Object.keys(translations).length ? { ...session, translations } : session;
 }
 
 function normalizePresentationDeck(
@@ -516,9 +616,13 @@ async function requestPresentationDeckFromAi(params: {
   mode: 'generate' | 'enhance';
   sourceFileName?: string;
   sourceText?: string;
+  subjectCode?: string;
 }): Promise<PresentationDeck> {
   assertOpenAiApiKey();
   const outLang = languageName(params.language);
+  const bookContext: BookContext | undefined = params.subjectCode
+    ? { subjectCode: params.subjectCode, topicQuery: params.topicTitle }
+    : undefined;
   const kind = params.topicType === 'practical' ? 'amaliy mashg\'ulot' : 'ma\'ruza';
   const fallbackTitle = `${params.topicId} — ${params.topicTitle}`;
   const enhanceBlock =
@@ -552,6 +656,7 @@ async function requestPresentationDeckFromAi(params: {
         maxTokens: attempt.maxTokens,
         temperature: attempt.temperature,
         parse: (t) => parseJSONSafe<Partial<PresentationDeck>>(t),
+        bookContext,
       });
       return normalizePresentationDeck(raw, fallbackTitle);
     } catch (error) {
@@ -584,23 +689,26 @@ export const aiService = {
   async generateCaseStudy(
     topic: string,
     language: AppLanguage = 'uz',
-    keywords: string[] = []
+    keywords: string[] = [],
+    subjectCode?: string,
   ): Promise<CaseStudySession> {
     try {
       assertOpenAiApiKey();
       const outLang = languageName(language);
       const avoid = previousCaseAvoidBlock(topic);
       const keywordFocus = buildCaseKeywordsFocusPrompt(keywords);
+      const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
 
       const requestBatch = async (strict: boolean): Promise<CaseStudySession> => {
         const structure = buildCaseStructurePrompt(topic);
         return openaiJson({
           model: OPENAI_CHAT,
-          system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: {topic, references:[...], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[...]}]}. Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Til: ${outLang}. ${MEDICAL_REFERENCES_AI_RULES}`,
+          system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: {topic, references:[...], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[...]}]}. Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Manba konteksti berilgan bo'lsa, "answer" matni ichida "(Manba: kitob nomi, sahifa-bet)" deb ko'rsating — JSON'dan tashqariga chiqarmang. Til: ${outLang}. ${MEDICAL_REFERENCES_AI_RULES}`,
           user: `${structure}${keywordFocus}${avoid}\n\nHar scenario 2-4 paragraf. Har answer fokusga mos. Javob oxirida [1][2] iqtiboslar. ${strict ? 'Maksimal sifat, faqat valid JSON.' : ''}`,
           maxTokens: 8192,
           temperature: strict ? 0.45 : 0.6,
           parse: (t) => parseJSONSafe<CaseStudySession>(t),
+          bookContext,
         });
       };
 
@@ -608,7 +716,7 @@ export const aiService = {
       try {
         questions = await Promise.all(
           CASE_STUDY_FOCUS_ORDER.map((focus) =>
-            generateSingleCaseQuestion(topic, focus, language, keywordFocus, avoid),
+            generateSingleCaseQuestion(topic, focus, language, keywordFocus, avoid, subjectCode),
           ),
         );
       } catch (parallelError) {
@@ -641,20 +749,27 @@ export const aiService = {
     }
   },
 
-  async generateTests(topic: string, count: number = 10, language: AppLanguage = 'uz'): Promise<TestSession> {
+  async generateTests(
+    topic: string,
+    count: number = 10,
+    language: AppLanguage = 'uz',
+    subjectCode?: string,
+  ): Promise<TestSession> {
     assertOpenAiApiKey();
     const safeCount = Math.min(30, Math.max(10, Math.round(count) || 10));
     const outLang = languageName(language);
     const avoid = previousTestAvoidBlock(topic);
+    const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
     const generate = async (requestedCount: number, shortMode: boolean, strict: boolean): Promise<TestSession> => {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[{title,authors,year,publisher,url}], questions:[{question, options[5], correctOptionIndex, explanation, references:[...]}]}. Til: ${outLang}. ${MEDICAL_REFERENCES_AI_RULES}`,
-        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap — oxirida [1][2] iqtiboslar. ${strict ? 'Faqat valid JSON.' : ''}`,
-        maxTokens: 4096,
+        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[{title,authors,year,publisher,url}], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[...]}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Agar sizga darslik parchalari (manba konteksti) berilgan bo'lsa, shu parchalardan foydalangan har bir explanation/optionExplanations gapining oxiriga "(Manba: kitob nomi, sahifa-bet)" qo'shing — buni hech qachon JSON'dan tashqariga chiqarmang, faqat shu matn maydonlari ICHIDA yozing. Til: ${outLang}. ${MEDICAL_REFERENCES_AI_RULES}`,
+        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap — oxirida [1][2] iqtiboslar. optionExplanations: har bir variant uchun aniq, o'sha variantga xos 1 gapli sabab, manba asosida bo'lsa oxiriga (Manba: ..., ...-bet) qo'sh. ${strict ? 'Faqat valid JSON.' : ''}`,
+        maxTokens: 6144,
         temperature: strict ? 0.42 : 0.68,
         parse: (t) => parseJSONSafe<TestSession>(t),
+        bookContext,
       });
       return normalizeTestSession(topic, parsed, requestedCount);
     };
@@ -673,40 +788,51 @@ export const aiService = {
       return normalizeTestSession(topic, { topic, questions: merged }, safeTotal);
     };
 
-    try {
-      let data: TestSession;
+    const base = await (async (): Promise<TestSession> => {
       try {
-        data = await generate(safeCount, false, false);
-      } catch {
-        data = await generate(Math.min(safeCount, 10), true, true);
+        let data: TestSession;
+        try {
+          data = await generate(safeCount, false, false);
+        } catch {
+          data = await generate(Math.min(safeCount, 10), true, true);
+        }
+        if (isWeakTestSession(data, safeCount)) {
+          data = await generate(Math.min(safeCount, 10), true, true);
+        }
+        if (isWeakTestSession(data, safeCount)) {
+          data = await generateChunked(safeCount);
+        }
+        return normalizeTestSession(topic, data, safeCount);
+      } catch (error) {
+        try {
+          return await generateChunked(safeCount);
+        } catch (fallbackError) {
+          console.error("Test generation failed:", fallbackError);
+          throw fallbackError;
+        }
       }
-      if (isWeakTestSession(data, safeCount)) {
-        data = await generate(Math.min(safeCount, 10), true, true);
-      }
-      if (isWeakTestSession(data, safeCount)) {
-        data = await generateChunked(safeCount);
-      }
-      return normalizeTestSession(topic, data, safeCount);
-    } catch (error) {
-      try {
-        return await generateChunked(safeCount);
-      } catch (fallbackError) {
-        console.error("Test generation failed:", fallbackError);
-        throw fallbackError;
-      }
-    }
+    })();
+
+    return attachTestTranslations(base, language);
   },
 
-  async generateLectureNotes(topic: string, description: string = '', language: AppLanguage = 'uz'): Promise<LectureNote> {
+  async generateLectureNotes(
+    topic: string,
+    description: string = '',
+    language: AppLanguage = 'uz',
+    subjectCode?: string,
+  ): Promise<LectureNote> {
     try {
       assertOpenAiApiKey();
       const outLang = languageName(language);
+      const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
       const content = await openaiText({
         model: OPENAI_CHAT,
         system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. Kirish, 3-4 bo'lim, klinik qo'llash, xulosa. Matn ichida muhim faktlar yonida [manba](url) havolalari. ${LECTURE_REFERENCES_AI_RULES} Til: ${outLang}.`,
         user: `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. Batafsil ma'ruza matni. Har bo'limda ilmiy dalillar va havolalar bo'lsin.`,
         maxTokens: 8192,
         temperature: 0.4,
+        bookContext,
       });
 
       return {
@@ -760,6 +886,7 @@ export const aiService = {
     mode: 'generate' | 'enhance';
     sourceFileName?: string;
     sourceText?: string;
+    subjectCode?: string;
   }): Promise<PresentationDeck> {
     return requestPresentationDeckFromAi(params);
   },

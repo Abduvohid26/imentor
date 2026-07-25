@@ -16,6 +16,7 @@ import {
 import { motion } from 'motion/react';
 import { aiService, TestSession, TestQuestion } from '../services/aiService';
 import { AppLanguageContext, GlobalTopicContext } from '../App';
+import type { AppLanguage } from '../i18n/language';
 import { useUiText } from '../i18n/useUiText';
 import { getCurrentLocalUser, normalizeUserRole } from '../utils/localStaffAuth';
 import { appendTestToLibrary } from '../utils/staffContentLibrary';
@@ -169,6 +170,24 @@ export default function TestQuestions() {
   const [testSession, setTestSession] = useState<TestSession | null>(null);
   const [versions, setVersions] = useState<PreparedContentSummary[]>([]);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+  const [viewLang, setViewLang] = useState<AppLanguage>(language);
+
+  useEffect(() => {
+    setViewLang(language);
+  }, [language]);
+
+  const availableTestLangs = useMemo<AppLanguage[]>(() => {
+    if (!testSession) return [];
+    const langs = new Set<AppLanguage>(['uz', 'ru', 'en']);
+    return [...langs].filter((l) => l === language || testSession.translations?.[l]);
+  }, [testSession, language]);
+
+  const displayedTest = useMemo(() => {
+    if (!testSession) return null;
+    if (viewLang === language) return testSession;
+    const translated = testSession.translations?.[viewLang];
+    return translated ? { ...testSession, ...translated } : testSession;
+  }, [testSession, viewLang, language]);
 
   const refreshVersions = React.useCallback(() => {
     const lookup = globalTopic ?? topic;
@@ -544,7 +563,7 @@ export default function TestQuestions() {
     setError(null);
     try {
       const count = Math.min(30, Math.max(10, questionCount));
-      const data = await aiService.generateTests(topic, count, language);
+      const data = await aiService.generateTests(topic, count, language, globalTopic.subjectCode);
       await savePreparedContent('test', topic, data, buildPreparedContentMeta(globalTopic));
       refreshVersions();
       const list = listPreparedForTopic('test', globalTopic ?? topic);
@@ -795,16 +814,32 @@ export default function TestQuestions() {
         />
       )}
 
-        {testSession && !loading && (
-          <motion.div 
+        {testSession && displayedTest && !loading && (
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
             <StaffPanel className="p-5 sm:p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <h2 className={`text-xl font-bold ${STAFF_HEADING}`}>{testSession.topic}</h2>
+                <h2 className={`text-xl font-bold ${STAFF_HEADING}`}>{displayedTest.topic}</h2>
                 <div className="flex flex-wrap gap-2 shrink-0">
+                  {availableTestLangs.length > 1 && (
+                    <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0">
+                      {availableTestLangs.map((l) => (
+                        <button
+                          key={l}
+                          type="button"
+                          onClick={() => setViewLang(l)}
+                          className={`px-3 py-1.5 text-xs font-semibold uppercase ${
+                            viewLang === l ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                          }`}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <StaffToolbarButton onClick={() => void handleDownloadTestPdf()} disabled={downloadingTestPdf}>
                     {downloadingTestPdf ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
                     {t('test.downloadTestPdf')}
@@ -822,8 +857,8 @@ export default function TestQuestions() {
                   </StaffToolbarButton>
                 </div>
               </div>
-              {testSession.references && testSession.references.length > 0 && (
-                <MedicalReferencesList references={testSession.references} />
+              {displayedTest.references && displayedTest.references.length > 0 && (
+                <MedicalReferencesList references={displayedTest.references} />
               )}
 
               {sessionClosed && (
@@ -962,7 +997,7 @@ export default function TestQuestions() {
               </div>
             ) : (
               <div className="space-y-6">
-                {testSession.questions.map((q, i) => (
+                {displayedTest.questions.map((q, i) => (
                   <div key={i} className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100">
                     <div className="flex items-start gap-4 mb-6">
                       <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg shrink-0">
@@ -971,23 +1006,31 @@ export default function TestQuestions() {
                       <p className="text-lg text-gray-800 font-bold leading-relaxed">{q.question}</p>
                     </div>
                     <div className="space-y-2">
-                      {q.options.map((option, optIdx) => (
-                        <div
-                          key={optIdx}
-                          className={`p-3 rounded-xl border ${
-                            optIdx === q.correctOptionIndex
-                              ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
-                              : 'border-gray-200 bg-white text-gray-700'
-                          }`}
-                        >
-                          {String.fromCharCode(65 + optIdx)}) {option}
-                          {optIdx === q.correctOptionIndex && (
-                            <span className="ml-2 inline-flex items-center text-xs font-semibold">
-                              <CheckCircle2 size={14} className="mr-1" /> {t('test.correctAnswer')}
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                      {q.options.map((option, optIdx) => {
+                        const optionExplanation = q.optionExplanations?.[optIdx]?.trim();
+                        return (
+                          <div
+                            key={optIdx}
+                            className={`p-3 rounded-xl border ${
+                              optIdx === q.correctOptionIndex
+                                ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
+                                : 'border-gray-200 bg-white text-gray-700'
+                            }`}
+                          >
+                            <div>
+                              {String.fromCharCode(65 + optIdx)}) {option}
+                              {optIdx === q.correctOptionIndex && (
+                                <span className="ml-2 inline-flex items-center text-xs font-semibold">
+                                  <CheckCircle2 size={14} className="mr-1" /> {t('test.correctAnswer')}
+                                </span>
+                              )}
+                            </div>
+                            {optionExplanation && (
+                              <p className="mt-1 text-sm opacity-80">{optionExplanation}</p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                     <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
                       <h4 className="font-semibold text-blue-800 mb-1 flex items-center gap-2">

@@ -286,6 +286,7 @@ export default function PresentationMaterials() {
         mode: items.length > 0 ? 'enhance' : 'generate',
         sourceFileName: items[0]?.file_name,
         sourceText,
+        subjectCode: globalTopic.subjectCode,
       });
       const file = await buildPresentationPptxFile(deck);
       if (!file.size) {

@@ -80,11 +80,14 @@ async function extractTextFromPdfBase64(pdfBase64: string): Promise<string> {
   return pageTexts.join('\n');
 }
 
+export type BookContext = { subjectCode: string; topicQuery: string };
+
 async function chatViaBackend(params: {
   model: string;
   messages: ChatMessage[];
   maxTokens: number;
   temperature?: number;
+  bookContext?: BookContext;
 }): Promise<string> {
   const call = async (token: string) =>
     httpJson<{ content?: string; detail?: string }>(`${apiBaseUrl()}/v1/education-ai/completion/`, {
@@ -95,6 +98,9 @@ async function chatViaBackend(params: {
         messages: params.messages,
         max_tokens: params.maxTokens,
         temperature: params.temperature ?? 0.35,
+        ...(params.bookContext?.subjectCode
+          ? { subject_code: params.bookContext.subjectCode, topic_query: params.bookContext.topicQuery }
+          : {}),
       },
       timeoutMs: 180_000,
     });
@@ -175,6 +181,7 @@ async function chatCompletion(params: {
   messages: ChatMessage[];
   maxTokens: number;
   temperature?: number;
+  bookContext?: BookContext;
 }): Promise<string> {
   const msgs: ChatMessage[] = [];
   const sys = params.system.trim();
@@ -188,6 +195,7 @@ async function chatCompletion(params: {
       messages: msgs,
       maxTokens: params.maxTokens,
       temperature: params.temperature,
+      bookContext: params.bookContext,
     });
   }
   return chatViaDirectApi({
@@ -204,6 +212,7 @@ export async function openaiText(opts: {
   user: string;
   maxTokens?: number;
   temperature?: number;
+  bookContext?: BookContext;
 }): Promise<string> {
   return chatCompletion({
     model: opts.model ?? OPENAI_CHAT,
@@ -211,6 +220,7 @@ export async function openaiText(opts: {
     messages: [{ role: 'user', content: opts.user }],
     maxTokens: opts.maxTokens ?? 4096,
     temperature: opts.temperature,
+    bookContext: opts.bookContext,
   });
 }
 
@@ -221,6 +231,7 @@ export async function openaiJson<T>(opts: {
   maxTokens?: number;
   temperature?: number;
   parse: (text: string) => T;
+  bookContext?: BookContext;
 }): Promise<T> {
   const text = await chatCompletion({
     model: opts.model ?? OPENAI_CHAT,
@@ -228,6 +239,7 @@ export async function openaiJson<T>(opts: {
     messages: [{ role: 'user', content: opts.user }],
     maxTokens: opts.maxTokens ?? 8192,
     temperature: opts.temperature ?? 0.3,
+    bookContext: opts.bookContext,
   });
   return opts.parse(text);
 }

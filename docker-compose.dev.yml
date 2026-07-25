@@ -28,6 +28,7 @@ x-backend-env: &backend-env
   DJANGO_CSRF_COOKIE_SECURE: "False"
   DJANGO_ALLOW_LEGACY_PREPARED_CONTENT_API: "True"
   DJANGO_ALLOW_OPEN_REGISTRATION: "True"
+  IMENTOR_EXTERNAL_API_KEYS: ${IMENTOR_EXTERNAL_API_KEYS:-dev-partner-key}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   ADMIN_PHONE: ${ADMIN_PHONE:-998907863888}
   ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -38,7 +39,7 @@ x-backend-env: &backend-env
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-imentor}
       POSTGRES_USER: ${POSTGRES_USER:-imentor}
@@ -78,6 +79,7 @@ services:
     volumes:
       - media_data:/app/media
       - ./backend:/app
+      - ./books:/books:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,6 +99,7 @@ services:
       - media_data:/app/media
       - ./backend:/app
       - ./manba:/manba:ro
+      - ./books:/books:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -119,6 +122,7 @@ services:
     volumes:
       - media_data:/app/media
       - ./backend:/app
+      - ./books:/books:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

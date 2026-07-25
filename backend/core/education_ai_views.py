@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .ai_async import dispatch_ai_job
+from .book_retrieval import format_book_context_message, retrieve_book_context
 from .education_ai_utils import clip_education_messages
 from .openai_client import OPENAI_CHAT
 from .permissions import HasEducationRole
@@ -23,6 +24,8 @@ class EducationAiCompletionSerializer(serializers.Serializer):
     messages = serializers.ListField(child=serializers.JSONField(), allow_empty=False)
     max_tokens = serializers.IntegerField(required=False, default=4096, min_value=256, max_value=16384)
     temperature = serializers.FloatField(required=False, default=0.35, min_value=0.0, max_value=1.5)
+    subject_code = serializers.CharField(required=False, allow_blank=True, default="")
+    topic_query = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class EducationAiCompletionResponseSerializer(serializers.Serializer):
@@ -53,6 +56,14 @@ class EducationAiCompletionView(APIView):
         messages = clip_education_messages(data["messages"])
         if not messages:
             return Response({"detail": "Xabarlar bo‘sh."}, status=status.HTTP_400_BAD_REQUEST)
+
+        subject_code = (data.get("subject_code") or "").strip()
+        topic_query = (data.get("topic_query") or "").strip()
+        if subject_code and topic_query:
+            book_chunks = retrieve_book_context(subject_code, topic_query)
+            context_message = format_book_context_message(book_chunks)
+            if context_message:
+                messages = [{"role": "system", "content": context_message}] + messages
 
         payload = {
             "model": data.get("model") or OPENAI_CHAT,

@@ -93,11 +93,21 @@ def external_catalog_subjects_for_department(department_code: str) -> list[dict]
 
 
 def external_department_detail(department_code: str) -> dict | None:
+    """Kafedra + uning barcha fanlari, har biri to'liq (yo'nalish + mavzular bilan).
+
+    Partner uchun bitta chaqiruvda kafedra → fan → yo'nalish → mavzu — alohida
+    subjects/<subject_code>/ so'roviga ehtiyoj qolmaydi.
+    """
     code = (department_code or '').strip()
     dept = AcademicDepartment.objects.filter(is_active=True, code=code).first()
     if not dept:
         return None
-    subjects = external_catalog_subjects_for_department(code)
+    qs = active_syllabus_queryset().filter(department__code=code)
+    subjects = []
+    for obj in qs:
+        detail = external_catalog_subject_detail(obj)
+        if detail['topics_count'] > 0:
+            subjects.append(detail)
     return {
         'code': dept.code,
         'name': dept.name,

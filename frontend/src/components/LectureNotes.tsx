@@ -115,7 +115,7 @@ export default function LectureNotes() {
     setLoading(true);
     setError(null);
     try {
-      const data = await aiService.generateLectureNotes(topic, description, language);
+      const data = await aiService.generateLectureNotes(topic, description, language, globalTopic?.subjectCode);
       setLectureSession(data);
       setEditedContent(data.content);
       globalLecture.setContent(data.content);

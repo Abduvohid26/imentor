@@ -1,4 +1,5 @@
 from django.db import models
+from pgvector.django import VectorField
 
 
 class PreparedContent(models.Model):
@@ -803,3 +804,65 @@ class ClinicalGroupPayment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.clinic.name} — {self.period_label} ({self.amount_uzs} UZS)"
+
+
+def book_upload_to(instance: "SubjectBook", filename: str) -> str:
+    import re
+
+    safe = re.sub(r"[^\w.\-]", "_", filename)[:200]
+    return f"books/{instance.department_id}/{safe}"
+
+
+class SubjectBook(models.Model):
+    """Kafedraga bog'langan darslik (RAG manba materiali)."""
+
+    department = models.ForeignKey(
+        AcademicDepartment,
+        on_delete=models.CASCADE,
+        related_name="books",
+    )
+    title = models.CharField(max_length=512)
+    source_archive = models.CharField(max_length=255, blank=True, default="")
+    file = models.FileField(upload_to=book_upload_to, max_length=512, blank=True)
+    language = models.CharField(max_length=8, blank=True, default="")
+    page_count = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Fan darsligi"
+        verbose_name_plural = "Fan darsliklari"
+        ordering = ["department__sort_order", "title"]
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class BookChunk(models.Model):
+    """SubjectBook matnidan olingan chunk + embedding (pgvector, RAG retrieval uchun)."""
+
+    book = models.ForeignKey(SubjectBook, on_delete=models.CASCADE, related_name="chunks")
+    department = models.ForeignKey(
+        AcademicDepartment,
+        on_delete=models.CASCADE,
+        related_name="book_chunks",
+        db_index=True,
+    )
+    chunk_index = models.PositiveIntegerField()
+    page_start = models.PositiveIntegerField()
+    page_end = models.PositiveIntegerField()
+    text = models.TextField()
+    embedding = VectorField(dimensions=1536)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Kitob chunk'i"
+        verbose_name_plural = "Kitob chunk'lari"
+        ordering = ["book_id", "chunk_index"]
+        indexes = [
+            models.Index(fields=["department"]),
+            models.Index(fields=["book", "chunk_index"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.book.title}#{self.chunk_index} ({self.page_start}-{self.page_end})"

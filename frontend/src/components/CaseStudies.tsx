@@ -116,7 +116,7 @@ export default function CaseStudies() {
     setLoading(true);
     setError(null);
     try {
-      const data = await aiService.generateCaseStudy(currentTopic, contentLanguage, parsedKeywords);
+      const data = await aiService.generateCaseStudy(currentTopic, contentLanguage, parsedKeywords, globalTopic?.subjectCode);
       await savePreparedContent('case', currentTopic, data, buildPreparedContentMeta(globalTopic));
       refreshVersions();
       const list = listPreparedForTopic('case', currentTopic);

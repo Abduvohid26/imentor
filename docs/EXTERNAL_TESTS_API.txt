@@ -21,11 +21,11 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   KATALOG (nomlar + tuzilma, savolsiz)
   ───────────────────────────────────
   GET  /v1/external/catalog/stats/
-  GET  /v1/external/catalog/departments/
-  GET  /v1/external/catalog/departments/<department_code>/subjects/   ← 2-qadam: fanlar
-  GET  /v1/external/catalog/departments/<department_code>/
-  GET  /v1/external/catalog/subjects/?department_code=...
-  GET  /v1/external/catalog/subjects/<subject_code>/
+  GET  /v1/external/catalog/departments/                              ← 1-qadam: kafedralar
+  GET  /v1/external/catalog/departments/<department_code>/            ← 2-qadam: fanlar + yo'nalish + mavzular (TO'LIQ, bitta javobda)
+  GET  /v1/external/catalog/subjects/<subject_code>/                  ← (ixtiyoriy) bitta fan, subject_code oldindan ma'lum bo'lsa
+  GET  /v1/external/catalog/subjects/?department_code=...             ← (ixtiyoriy) qisqa ro'yxat/qidiruv, summary
+  GET  /v1/external/catalog/departments/<department_code>/subjects/   ← (ixtiyoriy) sahifalangan summary ro'yxat
 
   TESTLAR (hodim yaratgan savollar)
   ─────────────────────────────────
@@ -132,87 +132,74 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   }
 
 
-3.3  GET /v1/external/catalog/departments/<department_code>/subjects/
-────────────────────────────────────────────────────────────────────
-  **2-QADAM — Tanlangan kafedra fanlari** (ikkinchi dropdown).
+3.3  GET /v1/external/catalog/departments/<department_code>/
+────────────────────────────────────────────────────────────
+  **2-QADAM — Kafedra + BARCHA fanlari, TO'LIQ** (yo'nalish + mavzular bilan
+  birga, bitta javobda). Alohida subjects/<subject_code>/ so'rovi shart emas —
+  shu javobning o'zida har bir fan uchun `variants[].topics[]` allaqachon bor.
 
-  Misol: GET .../departments/fiziologiya/subjects/
+  Misol: GET .../departments/fiziologiya/
 
   Javob:
   {
-    "count": 12,
-    "page": 1,
-    "page_size": 50,
-    "department": {
-      "code": "fiziologiya",
-      "name": "Fiziologiya kafedrasi",
-      "sort_order": 1
-    },
-    "next_step": "GET /v1/external/catalog/subjects/<subject_code>/",
-    "results": [
+    "code": "fiziologiya",
+    "name": "Fiziologiya kafedrasi",
+    "sort_order": 1,
+    "subjects_count": 6,
+    "subjects": [
       {
         "id": 45,
         "subject_code": "fiziologiya__anatomiya",
         "subject_name": "Anatomiya",
         "department_code": "fiziologiya",
         "department_name": "Fiziologiya kafedrasi",
+        "instruction_language": "uz",
         "variants_count": 3,
         "topics_count": 42,
-        "variant_labels": ["PI", "DI", "TPI"]
+        "variant_labels": ["PI", "DI", "TPI"],
+        "variants": [
+          {
+            "label": "PI",
+            "file_name": "Anatomiya(PI).pdf",
+            "topics": [
+              { "id": "M1", "title": "Yurak anatomiyasi" },
+              { "id": "M2", "title": "Miya anatomiyasi" }
+            ]
+          },
+          {
+            "label": "DI",
+            "file_name": "Anatomiya(DI).pdf",
+            "topics": [ ... ]
+          }
+        ]
       }
     ]
   }
 
+  Bu endpointdan olasiz: subject_code, variant_label (PI), topic_code (m1) —
+  keyin to'g'ridan-to'g'ri test qidirishga o'tasiz (4-bo'lim).
 
-3.4  GET /v1/external/catalog/departments/<department_code>/
+
+3.4  GET /v1/external/catalog/subjects/<subject_code>/
 ────────────────────────────────────────────────────────────
-  Kafedra + fanlar bitta javobda (3.3 alternativasi).
+  Bitta fan, to'liq (3.3 dagi bitta "subjects[]" elementi bilan bir xil shakl).
+  `subject_code`ni oldindan bilsangiz (masalan avvalgi so'rovdan saqlab
+  qo'ygan bo'lsangiz) — kafedra bo'yicha qidirmasdan to'g'ridan-to'g'ri shu
+  fanni olish uchun ishlatiladi.
+
+  Misol: GET .../subjects/fiziologiya__anatomiya/
 
 
 3.5  GET /v1/external/catalog/subjects/
 ───────────────────────────────────────
-  Fanlar ro'yxati. `department_code` bilan filter — 2-qadam alternativasi.
+  Fanlar ro'yxati (summary — variants/topics'siz, faqat sonlar). Ko'p fanli
+  kafedralarda tez ko'rish yoki qidiruv uchun.
 
   Query:
     department_code=fiziologiya   — faqat shu kafedra fanlari
     q=anatom                      — fan nomi/kodi bo'yicha qidiruv
     page=1
     page_size=50
-
-
-3.6  GET /v1/external/catalog/subjects/<subject_code>/
-──────────────────────────────────────────────────────
-  **3-QADAM** — Yo'nalishlar va mavzular (savolsiz).
-
-  Javob namunasi:
-  {
-    "id": 45,
-    "subject_code": "fiziologiya__anatomiya",
-    "subject_name": "Anatomiya",
-    "department_code": "fiziologiya",
-    "department_name": "Fiziologiya kafedrasi",
-    "instruction_language": "uz",
-    "variants_count": 3,
-    "topics_count": 42,
-    "variant_labels": ["PI", "DI", "TPI"],
-    "variants": [
-      {
-        "label": "PI",
-        "file_name": "Anatomiya(PI).pdf",
-        "topics": [
-          { "id": "M1", "title": "Yurak anatomiyasi" },
-          { "id": "M2", "title": "Miya anatomiyasi" }
-        ]
-      },
-      {
-        "label": "DI",
-        "file_name": "Anatomiya(DI).pdf",
-        "topics": [ ... ]
-      }
-    ]
-  }
-
-  Bu endpointdan oling: variant_label (PI) va topic_code (m1) — keyin test qidirish.
 
 
 ================================================================================
@@ -320,11 +307,50 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
           "question": "45 yoshli bemor ...",
           "options": ["A", "B", "C", "D", "E"],
           "correctOptionIndex": 2,
-          "explanation": "To'g'ri javob tahlili ..."
+          "explanation": "To'g'ri javob tahlili ...",
+          "optionExplanations": [
+            "A nega xato — qisqa sabab",
+            "B nega xato — qisqa sabab",
+            "C (to'g'ri javob) nega to'g'ri — qisqa sabab",
+            "D nega xato — qisqa sabab",
+            "E nega xato — qisqa sabab"
+          ]
         }
-      ]
+      ],
+      "translations": {
+        "ru": {
+          "topic": "Анатомия сердца",
+          "questions": [
+            {
+              "question": "Пациент 45 лет ...",
+              "options": ["А", "Б", "В", "Г", "Д"],
+              "correctOptionIndex": 2,
+              "explanation": "Анализ правильного ответа ...",
+              "optionExplanations": ["...", "...", "...", "...", "..."]
+            }
+          ]
+        },
+        "en": {
+          "topic": "Heart anatomy",
+          "questions": [ "... (xuddi shu tuzilma, inglizcha) ..." ]
+        }
+      }
     }
   }
+
+  Eslatma: "optionExplanations" — options bilan bir xil tartibda, har bir variant
+  uchun alohida qisqa izoh (nega to'g'ri / nega xato). Eski testlarda (bu maydon
+  qo'shilishidan oldin yaratilgan) bu maydon bo'lmasligi mumkin — ixtiyoriy
+  maydon sifatida ishlating.
+
+  Eslatma: "translations" — test yaratilgan tildan (topic/questions'dagi asosiy
+  til) TASHQARI qolgan 2 tildagi to'liq versiyalar (uz/ru/en — jami 3 til,
+  har doim shu uchtasi). Har bir til kaliti ostida xuddi shu shakl:
+  {topic, questions[]}. correctOptionIndex barcha tillarda bir xil (faqat matn
+  tarjima qilingan, faktlar o'zgarmagan). Agar tarjima muvaffaqiyatsiz bo'lsa
+  (kamdan-kam), shu til kaliti "translations" ichida bo'lmasligi mumkin — buni
+  ixtiyoriy/qisman to'liq maydon sifatida ishlating. Eski testlarda (bu funksiya
+  qo'shilishidan oldin yaratilgan) "translations" umuman bo'lmaydi.
 
 
 ================================================================================
@@ -338,15 +364,14 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
      GET /v1/external/catalog/stats/
      → 28 kafedra, 230 fan, 281 yo'nalish, 4848 mavzu
 
-  3. Kafedra nomlari
+  3. Kafedra ro'yxati
      GET /v1/external/catalog/departments/
-     yoki
-     GET /v1/external/catalog/departments/fiziologiya/
-     → kafedra name + fanlar ro'yxati (subject_name bilan)
+     → kafedra name + code ro'yxati
 
-  4. Fan va mavzu kodlari
-     GET /v1/external/catalog/subjects/fiziologiya__anatomiya/
-     → variant_label=PI, topic_code=m1
+  4. Fan, yo'nalish, mavzu — bitta so'rovda
+     GET /v1/external/catalog/departments/fiziologiya/
+     → shu kafedradagi barcha fanlar + har biri uchun variant_label (PI) va
+       topic_code (m1) — subjects/<subject_code>/ ga alohida murojaat kerak emas
 
   5. Test bormi?
      GET /v1/external/tests/stats/

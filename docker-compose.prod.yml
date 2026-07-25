@@ -51,7 +51,7 @@ x-backend-env: &backend-env
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-imentor}
       POSTGRES_USER: ${POSTGRES_USER:-imentor}
@@ -90,6 +90,7 @@ services:
       <<: *backend-env
     volumes:
       - media_data:/app/media
+      - ./books:/books:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,6 +107,7 @@ services:
       RUN_MIGRATIONS: "0"
     volumes:
       - media_data:/app/media
+      - ./books:/books:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

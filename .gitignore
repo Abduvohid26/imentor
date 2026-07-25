@@ -54,6 +54,7 @@ id_rsa.pub
 
 # ——— Katta mahalliy manbalar (PDF katalog) ———
 manba/
+books/
 
 # ——— IDE / OS ———
 .DS_Store

@@ -13,9 +13,12 @@ from typing import Any
 from django.conf import settings
 
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings"
 OPENAI_CHAT = "gpt-4o"
 OPENAI_FAST = "gpt-4o-mini"
 OPENAI_REASONER = "gpt-4o"
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
+OPENAI_EMBEDDING_DIMENSIONS = 1536
 
 _MODEL_ALIASES = {
     "deepseek-chat": OPENAI_CHAT,
@@ -53,10 +56,16 @@ def _is_rate_limited(message: str) -> bool:
     return bool(re.search(r"\b429\b|rate.?limit|overloaded", message, re.I))
 
 
-def _http_post(api_key: str, payload: dict[str, Any], *, timeout_sec: int = 180) -> dict[str, Any]:
+def _http_post(
+    api_key: str,
+    payload: dict[str, Any],
+    *,
+    url: str = OPENAI_CHAT_URL,
+    timeout_sec: int = 180,
+) -> dict[str, Any]:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
-        OPENAI_CHAT_URL,
+        url,
         data=data,
         headers={
             "Content-Type": "application/json",
@@ -135,6 +144,48 @@ def generate_openai_text(
             raise
 
     raise OpenAiClientError(last_err or "Unknown OpenAI error")
+
+
+def create_embeddings(
+    api_key: str,
+    texts: list[str],
+    *,
+    model: str = OPENAI_EMBEDDING_MODEL,
+    batch_size: int = 96,
+    timeout_sec: int = 120,
+    max_429_retries: int = 6,
+) -> list[list[float]]:
+    """Matnlar ro'yxati uchun embedding vektorlarini hisoblaydi (batch bo'yicha, 429'da retry)."""
+    out: list[list[float]] = []
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        resp: dict[str, Any] | None = None
+        for attempt in range(max(1, max_429_retries)):
+            try:
+                resp = _http_post(
+                    api_key,
+                    {"model": model, "input": batch},
+                    url=OPENAI_EMBEDDINGS_URL,
+                    timeout_sec=timeout_sec,
+                )
+                break
+            except OpenAiClientError as e:
+                msg = str(e)
+                if _is_rate_limited(msg) and attempt + 1 < max_429_retries:
+                    time.sleep(_parse_retry_after_seconds(msg))
+                    continue
+                raise
+        assert resp is not None
+        data = resp.get("data")
+        if not isinstance(data, list) or len(data) != len(batch):
+            raise OpenAiClientError("Embedding javobi noto'g'ri formatda")
+        ordered = sorted(data, key=lambda item: item.get("index", 0))
+        for item in ordered:
+            embedding = item.get("embedding")
+            if not isinstance(embedding, list):
+                raise OpenAiClientError("Embedding qiymati topilmadi")
+            out.append(embedding)
+    return out
 
 
 # Eski nomlar (import mosligi)
