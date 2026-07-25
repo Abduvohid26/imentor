@@ -56,6 +56,11 @@ def _is_rate_limited(message: str) -> bool:
     return bool(re.search(r"\b429\b|rate.?limit|overloaded", message, re.I))
 
 
+def _is_transient_error(message: str) -> bool:
+    """429 (rate limit) yoki 5xx (OpenAI server xatosi, vaqtinchalik) — qayta urinishga arziydi."""
+    return _is_rate_limited(message) or bool(re.search(r"\bHTTP 5\d\d\b", message))
+
+
 def _http_post(
     api_key: str,
     payload: dict[str, Any],
@@ -155,7 +160,7 @@ def create_embeddings(
     timeout_sec: int = 120,
     max_429_retries: int = 6,
 ) -> list[list[float]]:
-    """Matnlar ro'yxati uchun embedding vektorlarini hisoblaydi (batch bo'yicha, 429'da retry)."""
+    """Matnlar ro'yxati uchun embedding vektorlarini hisoblaydi (batch bo'yicha, 429/5xx'da retry)."""
     out: list[list[float]] = []
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
@@ -171,7 +176,7 @@ def create_embeddings(
                 break
             except OpenAiClientError as e:
                 msg = str(e)
-                if _is_rate_limited(msg) and attempt + 1 < max_429_retries:
+                if _is_transient_error(msg) and attempt + 1 < max_429_retries:
                     time.sleep(_parse_retry_after_seconds(msg))
                     continue
                 raise
