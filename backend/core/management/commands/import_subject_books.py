@@ -34,6 +34,8 @@ DEPARTMENT_ALIASES: dict[str, str] = {}
 ARCHIVE_PREFIX_RE = re.compile(r"^\d+\.\s*")
 CHUNK_TARGET_CHARS = 1100
 CHUNK_MIN_CHARS = 300
+# OpenAI embedding limiti 8192 token (~4 belgi/token) — xavfsiz zaxira bilan qattiq chegara.
+CHUNK_MAX_CHARS = 4000
 EMBED_BATCH = 96
 
 
@@ -58,7 +60,12 @@ def extract_pdf_text_pages(pdf_path: Path) -> list[str]:
 
 
 def build_chunks(pages: list[str]) -> list[tuple[int, int, str]]:
-    """[(page_start, page_end, text)] — sahifalarni ~CHUNK_TARGET_CHARS gacha guruhlaydi."""
+    """[(page_start, page_end, text)] — sahifalarni ~CHUNK_TARGET_CHARS gacha guruhlaydi.
+
+    Hech bir chunk CHUNK_MAX_CHARS'dan oshmaydi (OpenAI embedding token limiti uchun
+    qattiq chegara) — juda katta sahifalar (masalan pdftotext sahifa ajratmagan
+    hollarda) o'zi ham bo'laklarga bo'linadi.
+    """
     chunks: list[tuple[int, int, str]] = []
     buf_text = ""
     buf_start: int | None = None
@@ -74,15 +81,31 @@ def build_chunks(pages: list[str]) -> list[tuple[int, int, str]]:
         text = raw_page.strip()
         if not text:
             continue
+
+        if len(text) > CHUNK_MAX_CHARS:
+            flush()
+            for i in range(0, len(text), CHUNK_MAX_CHARS):
+                piece = text[i : i + CHUNK_MAX_CHARS].strip()
+                if piece:
+                    chunks.append((page_idx, page_idx, piece))
+            continue
+
+        if buf_text and len(buf_text) + len(text) + 2 > CHUNK_MAX_CHARS:
+            flush()
         if buf_start is None:
             buf_start = page_idx
         buf_end = page_idx
         buf_text = f"{buf_text}\n\n{text}" if buf_text else text
         if len(buf_text) >= CHUNK_TARGET_CHARS:
             flush()
+
     if buf_text and len(buf_text) < CHUNK_MIN_CHARS and chunks:
         prev_start, _prev_end, prev_text = chunks[-1]
-        chunks[-1] = (prev_start, buf_end, f"{prev_text}\n\n{buf_text.strip()}")
+        merged = f"{prev_text}\n\n{buf_text.strip()}"
+        if len(merged) <= CHUNK_MAX_CHARS:
+            chunks[-1] = (prev_start, buf_end, merged)
+        else:
+            flush()
     else:
         flush()
     return chunks
@@ -123,7 +146,7 @@ class Command(BaseCommand):
         if not archives:
             raise CommandError(f"7z arxiv topilmadi: {root} (only={only!r})")
 
-        stats = {"archives": 0, "books": 0, "books_skipped": 0, "chunks": 0}
+        stats = {"archives": 0, "books": 0, "books_skipped": 0, "books_failed": 0, "chunks": 0}
 
         for archive_path in archives:
             self._import_archive(
@@ -196,26 +219,31 @@ class Command(BaseCommand):
                         continue
 
                 self.stdout.write(f"  [pdf] {title} ({pdf_path.stat().st_size / 1_000_000:.1f} MB)")
-                pages = extract_pdf_text_pages(pdf_path)
-                chunks = build_chunks(pages)
-                if not chunks:
-                    self.stdout.write(self.style.WARNING(f"    matn topilmadi: {title}"))
-                    continue
+                try:
+                    pages = extract_pdf_text_pages(pdf_path)
+                    chunks = build_chunks(pages)
+                    if not chunks:
+                        self.stdout.write(self.style.WARNING(f"    matn topilmadi: {title}"))
+                        continue
 
-                if dry_run:
-                    self.stdout.write(f"    -> {len(chunks)} chunk, {len(pages)} sahifa")
-                    continue
+                    if dry_run:
+                        self.stdout.write(f"    -> {len(chunks)} chunk, {len(pages)} sahifa")
+                        continue
 
-                self._save_book(
-                    department=department,
-                    archive_name=archive_path.name,
-                    title=title,
-                    pdf_path=pdf_path,
-                    page_count=len(pages),
-                    chunks=chunks,
-                    api_key=api_key,
-                    stats=stats,
-                )
+                    self._save_book(
+                        department=department,
+                        archive_name=archive_path.name,
+                        title=title,
+                        pdf_path=pdf_path,
+                        page_count=len(pages),
+                        chunks=chunks,
+                        api_key=api_key,
+                        stats=stats,
+                    )
+                except Exception as exc:  # noqa: BLE001 — bitta kitob xatosi butun importni to'xtatmasin
+                    stats["books_failed"] += 1
+                    self.stdout.write(self.style.ERROR(f"    [XATO] {title}: {exc}"))
+                    continue
 
     def _extract_7z(self, archive_path: Path, dest_dir: Path) -> None:
         try:
