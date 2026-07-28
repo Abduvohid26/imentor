@@ -102,7 +102,7 @@ async function chatViaBackend(params: {
           ? { subject_code: params.bookContext.subjectCode, topic_query: params.bookContext.topicQuery }
           : {}),
       },
-      timeoutMs: 180_000,
+      timeoutMs: 290_000,
     });
 
   let token = await ensureBackendAccessToken().catch(async () => {

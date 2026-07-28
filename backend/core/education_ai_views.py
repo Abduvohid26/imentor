@@ -76,4 +76,5 @@ class EducationAiCompletionView(APIView):
             kind="education_completion",
             payload=payload,
             task=run_education_ai_completion,
+            timeout=280.0,
         )

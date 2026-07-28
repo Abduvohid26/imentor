@@ -80,7 +80,7 @@ def run_education_ai_completion(self, job_id: str, payload: dict[str, Any]) -> N
             ),
             "stream": False,
         }
-        resp = _http_post(api_key, body, timeout_sec=180)
+        resp = _http_post(api_key, body, timeout_sec=270)
         content = _extract_text(resp)
         mark_ai_job_completed(job_id, {"content": content})
     except (OpenAiClientError, ValueError, TypeError) as e:
