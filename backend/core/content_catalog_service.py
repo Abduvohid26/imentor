@@ -159,8 +159,10 @@ def filter_by_stored_question_count(qs, *, min_questions: int | None = None, max
             qs = qs.filter(_stored_question_count__lte=max_questions)
         return qs
 
+    # SQLite test DB: qs may already use select_related; .only() on that queryset raises FieldError.
+    scan_qs = PreparedContent.objects.filter(pk__in=qs.values_list('pk', flat=True)).only('pk', 'payload')
     matching_pks = []
-    for item in qs.only('pk', 'payload'):
+    for item in scan_qs:
         count = question_count(item)
         if min_questions is not None and count < min_questions:
             continue

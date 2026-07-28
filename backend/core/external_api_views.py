@@ -67,7 +67,6 @@ class ExternalTestsListView(APIView):
             request.query_params,
         )
         qs = filter_by_stored_question_count(qs, min_questions=min_q, max_questions=max_q)
-        qs = qs.select_related('syllabus', 'syllabus__department')
         response = paginated_response(
             qs,
             request,
@@ -92,12 +91,7 @@ class ExternalTestsDetailView(APIView):
         if err:
             return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
 
-        item = (
-            published_catalog_queryset()
-            .filter(pk=pk, kind=PreparedContent.KIND_TEST)
-            .select_related('syllabus', 'syllabus__department')
-            .first()
-        )
+        item = published_catalog_queryset().filter(pk=pk, kind=PreparedContent.KIND_TEST).first()
         if not item:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 

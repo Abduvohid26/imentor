@@ -222,17 +222,28 @@ class HandoutApiTests(ApiTestMixin, TestCase):
         self.client = APIClient()
 
     def test_upload_list_download_delete_handout(self) -> None:
-        access = self._register("998901114030")["access"]
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        hodim = self._register("998901114030")["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {hodim}")
         pdf = SimpleUploadedFile("handout.pdf", MINIMAL_PDF, content_type="application/pdf")
-        upload = self.client.post(
+        blocked = self.client.post(
             "/api/v1/handouts/",
             {"topic": "Bronxial astma", "topic_norm": "bronxial astma", "file": pdf},
+            format="multipart",
+        )
+        self.assertEqual(blocked.status_code, 403, blocked.content)
+
+        admin = self._admin_token()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin}")
+        pdf2 = SimpleUploadedFile("handout.pdf", MINIMAL_PDF, content_type="application/pdf")
+        upload = self.client.post(
+            "/api/v1/admin/handouts/",
+            {"topic": "Bronxial astma", "topic_norm": "bronxial astma", "file": pdf2},
             format="multipart",
         )
         self.assertEqual(upload.status_code, 201, upload.content)
         handout_id = upload.json()["id"]
 
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {hodim}")
         listing = self.client.get("/api/v1/handouts/?topic_norm=bronxial%20astma")
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(len(listing.json()), 1)
@@ -240,15 +251,16 @@ class HandoutApiTests(ApiTestMixin, TestCase):
         file_resp = self.client.get(f"/api/v1/handouts/{handout_id}/file/")
         self.assertEqual(file_resp.status_code, 200)
 
-        delete = self.client.delete(f"/api/v1/handouts/{handout_id}/")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin}")
+        delete = self.client.delete(f"/api/v1/admin/handouts/{handout_id}/")
         self.assertEqual(delete.status_code, 204)
 
     def test_handout_rejects_invalid_extension(self) -> None:
-        access = self._register("998901114031")["access"]
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        admin = self._admin_token()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin}")
         bad = SimpleUploadedFile("evil.exe", b"MZ", content_type="application/octet-stream")
         resp = self.client.post(
-            "/api/v1/handouts/",
+            "/api/v1/admin/handouts/",
             {"topic": "Test", "topic_norm": "test", "file": bad},
             format="multipart",
         )

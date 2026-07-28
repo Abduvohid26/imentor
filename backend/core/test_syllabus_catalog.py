@@ -103,12 +103,27 @@ class SyllabusCatalogApiTests(TestCase):
         phone = "998901112401"
         token = self._register(phone)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
-        resp = self.client.post(
+        blocked = self.client.post(
             "/api/v1/course-syllabuses/my/",
             {"syllabus_id": self.syllabus.id},
             format="json",
         )
-        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(blocked.status_code, 403, blocked.content)
+
+        admin = self._admin_token()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin}")
+        assign = self.client.post(
+            "/api/v1/admin/staff-course-selections/",
+            {
+                "phone_digits": phone,
+                "syllabus_id": self.syllabus.id,
+                "variant_labels": ["Asosiy"],
+            },
+            format="json",
+        )
+        self.assertEqual(assign.status_code, 201, assign.content)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
         list_resp = self.client.get("/api/v1/course-syllabuses/my/")
         self.assertEqual(list_resp.status_code, 200, list_resp.content)
         self.assertEqual(len(list_resp.json()), 1)
@@ -120,8 +135,18 @@ class SyllabusCatalogApiTests(TestCase):
     def test_hodim_delete_selection(self) -> None:
         phone = "998901112402"
         token = self._register(phone)
-        StaffCourseSelection.objects.create(owner_key=phone, syllabus=self.syllabus)
+        selection = StaffCourseSelection.objects.create(
+            owner_key=phone,
+            syllabus=self.syllabus,
+            variant_label="Asosiy",
+        )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
-        resp = self.client.delete(f"/api/v1/course-syllabuses/my/{self.syllabus.id}/")
+        blocked = self.client.delete(f"/api/v1/course-syllabuses/my/{self.syllabus.id}/")
+        self.assertEqual(blocked.status_code, 403, blocked.content)
+        self.assertEqual(StaffCourseSelection.objects.filter(owner_key=phone).count(), 1)
+
+        admin = self._admin_token()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin}")
+        resp = self.client.delete(f"/api/v1/admin/staff-course-selections/{selection.pk}/")
         self.assertEqual(resp.status_code, 204, resp.content)
         self.assertEqual(StaffCourseSelection.objects.filter(owner_key=phone).count(), 0)
