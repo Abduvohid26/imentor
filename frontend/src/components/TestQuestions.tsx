@@ -833,7 +833,7 @@ export default function TestQuestions() {
                           type="button"
                           onClick={() => setViewLang(l)}
                           className={`px-3 py-1.5 text-xs font-semibold uppercase ${
-                            viewLang === l ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                            viewLang === l ? 'bg-[#083047] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
                           }`}
                         >
                           {l}
