@@ -563,7 +563,8 @@ export default function TestQuestions() {
     setError(null);
     try {
       const count = Math.min(30, Math.max(10, questionCount));
-      const data = await aiService.generateTests(topic, count, language, globalTopic.subjectCode);
+      const contentLanguage = globalTopic.instructionLanguage ?? language;
+      const data = await aiService.generateTests(topic, count, contentLanguage, globalTopic.subjectCode);
       await savePreparedContent('test', topic, data, buildPreparedContentMeta(globalTopic));
       refreshVersions();
       const list = listPreparedForTopic('test', globalTopic ?? topic);

@@ -282,7 +282,7 @@ export default function PresentationMaterials() {
         topicType: globalTopic.type,
         subjectName: globalTopic.subjectName,
         variantLabel: globalTopic.variantLabel,
-        language,
+        language: globalTopic.instructionLanguage ?? language,
         mode: items.length > 0 ? 'enhance' : 'generate',
         sourceFileName: items[0]?.file_name,
         sourceText,
