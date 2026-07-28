@@ -608,7 +608,7 @@ function normalizePresentationDeck(
     })
     .filter((s): s is NonNullable<typeof s> => Boolean(s));
 
-  if (slides.length >= 4) return { title, slides: slides.slice(0, 16) };
+  if (slides.length >= 4) return { title, slides: slides.slice(0, 28) };
 
   return {
     title,
@@ -654,8 +654,8 @@ async function requestPresentationDeckFromAi(params: {
     `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}`;
 
   const attempts: Array<{ maxTokens: number; temperature: number }> = [
-    { maxTokens: 6144, temperature: 0.55 },
-    { maxTokens: 4096, temperature: 0.4 },
+    { maxTokens: 12000, temperature: 0.55 },
+    { maxTokens: 8000, temperature: 0.4 },
   ];
 
   for (const attempt of attempts) {
@@ -665,13 +665,18 @@ async function requestPresentationDeckFromAi(params: {
         system:
           `${SYS_MEDICAL} Return ONLY valid JSON: ` +
           '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
-          '8-12 slides for university medical class. Each slide 3-6 concise bullets. Language: ' +
+          'Dars uchun TO\'LIQ va BATAFSIL taqdimot kerak — kamida 16-22 ta slayd (kirish, har bir asosiy ' +
+          'kichik mavzu/tasnif/mexanizm uchun alohida slayd, klinik ahamiyati, xulosa). Har bir slaydda 5-8 ta ' +
+          'aniq va informativ bullet (juda qisqa/umumiy emas — har biri to\'liq fikr). Har bir slaydning ' +
+          '"notes" maydoni kamida 2-3 gap — o\'qituvchi shu slaydni tushuntirishda foydalanadigan qo\'shimcha ' +
+          'tafsilot bo\'lishi kerak, nafaqat bullet\'larni takrorlash. Language: ' +
           outLang + '. ' +
           (bookContext
-            ? 'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Faqat shu darslik ' +
-              'parchalaridagi ma\'lumotlarga asoslaning, tashqi/umumiy bilimingizdan fakt qo\'shmang. ' +
-              'Har bir slaydning "notes" maydoni oxiriga foydalangan manbani "(Manba: kitob nomi, sahifa-bet)" ' +
-              'formatida qo\'shing.'
+            ? 'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Berilgan darslik ' +
+              'parchalaridagi barcha tegishli tafsilotlardan to\'liq foydalaning — qisqartirmasdan, kengaytirib ' +
+              'tushuntiring. Faqat shu darslik parchalaridagi ma\'lumotlarga asoslaning, tashqi/umumiy ' +
+              'bilimingizdan fakt qo\'shmang. Har bir slaydning "notes" maydoni oxiriga foydalangan manbani ' +
+              '"(Manba: kitob nomi, sahifa-bet)" formatida qo\'shing.'
             : 'MAJBURIY: tashqi havola, DOI, PubMed yoki o\'ylab topilgan manba ko\'rsatmang — bullets/notes ' +
               'ichida hech qanday link yoki manba nomi yozmang.'),
         user: userPrompt,
@@ -847,13 +852,22 @@ export const aiService = {
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
       const content = await openaiText({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. Kirish, 3-4 bo'lim, klinik qo'llash, xulosa. ${
-          bookContext
-            ? 'Matn ichida muhim faktlar yonida "(Manba: kitob nomi, sahifa-bet)" formatida ko\'rsating — hech qachon "manba" so\'zini yolg\'iz, qavs/havolasiz qoldirmang.'
+        system: `${SYS_MEDICAL} Ma'ruza faqat Markdown, universitet darajasida TO'LIQ va BATAFSIL bo'lishi shart — ` +
+          'qisqa konspekt emas, real 45-60 daqiqalik ma\'ruzaga yetadigan hajmda yozing. ' +
+          'Tuzilma: Kirish (mavzuning ahamiyati va rejasi), kamida 5-7 asosiy bo\'lim (har biri kamida 3-5 ' +
+          'to\'liq paragraf — ta\'riflar, mexanizmlar, tasniflar, misollar bilan), Klinik qo\'llash / amaliy ahamiyati ' +
+          '(kamida 2-3 paragraf, real holatlar bilan), Xulosa. Har bir bo\'lim ostida kerak bo\'lsa pastki sarlavhalar ' +
+          '(###) va ro\'yxatlar bilan tuzilmani boyiting — sayoz yoki umumiy gaplar bilan cheklanmang, chuqur ' +
+          'tushuntiring. ' +
+          (bookContext
+            ? 'Berilgan darslik parchalaridagi BARCHA tegishli tafsilotlardan to\'liq foydalaning — parchalarni ' +
+              'qisqartirib emas, kengaytirib, o\'z so\'zlaringiz bilan chuqur tushuntirib yozing. Matn ichida muhim ' +
+              'faktlar yonida "(Manba: kitob nomi, sahifa-bet)" formatida ko\'rsating — hech qachon "manba" so\'zini ' +
+              'yolg\'iz, qavs/havolasiz qoldirmang.'
             : 'Matn ichida muhim faktlar yonida [manba](url) havolalari.'
-        } ${textReferencesRule(Boolean(bookContext))} Til: ${outLang}.`,
-        user: `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. Batafsil ma'ruza matni. Har bo'limda ilmiy dalillar va havolalar bo'lsin.`,
-        maxTokens: 8192,
+          ) + ` ${textReferencesRule(Boolean(bookContext))} Til: ${outLang}.`,
+        user: `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. To'liq, chuqur va batafsil ma'ruza matni — qisqa xulosa emas, haqiqiy darsga tayyor materialdek yozing.`,
+        maxTokens: 16000,
         temperature: 0.4,
         bookContext,
       });
