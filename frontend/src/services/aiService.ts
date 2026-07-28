@@ -828,7 +828,7 @@ export const aiService = {
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
       const content = await openaiText({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. Kirish, 3-4 bo'lim, klinik qo'llash, xulosa. Matn ichida muhim faktlar yonida [manba](url) havolalari. ${LECTURE_REFERENCES_AI_RULES} Til: ${outLang}.`,
+        system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. Kirish, 3-4 bo'lim, klinik qo'llash, xulosa. Matn ichida muhim faktlar yonida manba ko'rsating: agar tashqi manba (URL bilan) bo'lsa [sarlavha](url) formatida; agar sizga berilgan darslik parchasidan (kitob nomi + sahifa, URL'siz) olingan bo'lsa "(Manba: kitob nomi, sahifa-bet)" formatida — hech qachon "manba" so'zini yolg'iz, qavs/havolasiz qoldirmang. ${LECTURE_REFERENCES_AI_RULES} Til: ${outLang}.`,
         user: `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. Batafsil ma'ruza matni. Har bo'limda ilmiy dalillar va havolalar bo'lsin.`,
         maxTokens: 8192,
         temperature: 0.4,
