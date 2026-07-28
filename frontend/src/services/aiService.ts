@@ -419,17 +419,23 @@ async function generateSingleCaseQuestion(
     raw = await request(true);
   }
 
+  const refFallbackTopic = bookContext ? undefined : topic;
   return {
     scenario: (raw.scenario || '').trim(),
     answer: (raw.answer || '').trim(),
     focus: normalizeCaseFocus(raw.focus, CASE_STUDY_FOCUS_ORDER.indexOf(focus)),
-    ...(normalizeMedicalReferences(raw.references, topic).length
-      ? { references: normalizeMedicalReferences(raw.references, topic) }
+    ...(normalizeMedicalReferences(raw.references, refFallbackTopic).length
+      ? { references: normalizeMedicalReferences(raw.references, refFallbackTopic) }
       : {}),
   };
 }
 
-function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudySession {
+function normalizeCaseSession(
+  topic: string,
+  data: CaseStudySession,
+  hasBookContext = false,
+): CaseStudySession {
+  const refFallbackTopic = hasBookContext ? undefined : topic;
   const rawQuestions = [...(data.questions || [])].slice(0, 3);
   while (rawQuestions.length < 3) {
     const focus = CASE_STUDY_FOCUS_ORDER[rawQuestions.length];
@@ -451,7 +457,7 @@ function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudyS
         "(4) dalillarga asoslangan davolash rejasi va monitoring;",
         "(5) bemor xavfsizligi hamda keyingi kuzatuv rejasi.",
       ].join(' ');
-      const refs = normalizeMedicalReferences(q.references, topic);
+      const refs = normalizeMedicalReferences(q.references, refFallbackTopic);
       const focus = normalizeCaseFocus((q as CaseStudyQuestion).focus, i);
       return {
         scenario: scenario.length >= 120 ? scenario : fallbackScenario,
@@ -460,7 +466,7 @@ function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudyS
         ...(refs.length ? { references: refs } : {}),
       };
     });
-  const sessionRefs = normalizeMedicalReferences(data.references, topic);
+  const sessionRefs = normalizeMedicalReferences(data.references, refFallbackTopic);
   const allQRefs = cleanedQuestions.flatMap((q) => q.references || []);
   return {
     topic: (data.topic || topic || '').trim() || topic,
@@ -482,7 +488,13 @@ function isWeakTestSession(data: TestSession | null | undefined, requestedCount:
   return badQuestions.length > Math.max(1, Math.floor(data.questions.length * 0.35));
 }
 
-function normalizeTestSession(topic: string, data: TestSession, requestedCount: number): TestSession {
+function normalizeTestSession(
+  topic: string,
+  data: TestSession,
+  requestedCount: number,
+  hasBookContext = false,
+): TestSession {
+  const refFallbackTopic = hasBookContext ? undefined : topic;
   const questions = (data.questions || [])
     .slice(0, requestedCount)
     .map((q) => {
@@ -492,7 +504,7 @@ function normalizeTestSession(topic: string, data: TestSession, requestedCount: 
         typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0 && q.correctOptionIndex < 5
           ? q.correctOptionIndex
           : 0;
-      const refs = normalizeMedicalReferences(q.references, topic);
+      const refs = normalizeMedicalReferences(q.references, refFallbackTopic);
       const optionExplanations = (q.optionExplanations || []).slice(0, 5).map((e) => (e || '').trim());
       while (optionExplanations.length < 5) optionExplanations.push('');
       const hasOptionExplanations = optionExplanations.some((e) => e.length > 0);
@@ -505,7 +517,7 @@ function normalizeTestSession(topic: string, data: TestSession, requestedCount: 
         ...(refs.length ? { references: refs } : {}),
       };
     });
-  const sessionRefs = normalizeMedicalReferences(data.references, topic);
+  const sessionRefs = normalizeMedicalReferences(data.references, refFallbackTopic);
   const allQRefs = questions.flatMap((q) => q.references || []);
   return {
     ...data,
@@ -760,14 +772,14 @@ export const aiService = {
       }
 
       const sessionRefs = mergeReferences(
-        ...questions.map((q) => normalizeMedicalReferences(q.references, topic)),
+        ...questions.map((q) => normalizeMedicalReferences(q.references, bookContext ? undefined : topic)),
       );
       const data: CaseStudySession = {
         topic,
         questions,
         references: sessionRefs,
       };
-      const normalized = normalizeCaseSession(topic, data);
+      const normalized = normalizeCaseSession(topic, data, Boolean(bookContext));
       return keywords.length ? { ...normalized, keywords } : normalized;
     } catch (error) {
       console.error("Case study generation failed:", error);
@@ -797,7 +809,7 @@ export const aiService = {
         parse: (t) => parseJSONSafe<TestSession>(t),
         bookContext,
       });
-      return normalizeTestSession(topic, parsed, requestedCount);
+      return normalizeTestSession(topic, parsed, requestedCount, Boolean(bookContext));
     };
 
     const generateChunked = async (total: number): Promise<TestSession> => {
@@ -811,7 +823,7 @@ export const aiService = {
         merged.push(...(part.questions || []).slice(0, current));
         remaining -= current;
       }
-      return normalizeTestSession(topic, { topic, questions: merged }, safeTotal);
+      return normalizeTestSession(topic, { topic, questions: merged }, safeTotal, Boolean(bookContext));
     };
 
     const base = await (async (): Promise<TestSession> => {
@@ -828,7 +840,7 @@ export const aiService = {
         if (isWeakTestSession(data, safeCount)) {
           data = await generateChunked(safeCount);
         }
-        return normalizeTestSession(topic, data, safeCount);
+        return normalizeTestSession(topic, data, safeCount, Boolean(bookContext));
       } catch (error) {
         try {
           return await generateChunked(safeCount);
