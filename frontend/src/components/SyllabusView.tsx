@@ -32,7 +32,6 @@ import {
   type SyllabusTopicContext,
 } from '../utils/syllabusTopicContext';
 import {
-  applyInstructionLanguage,
   instructionLanguageBadge,
   resolveSyllabusInstructionLanguage,
 } from '../utils/syllabusInstructionLanguage';
@@ -56,7 +55,7 @@ export default function SyllabusView({
   onOpenLectures,
   onOpenHandouts,
 }: SyllabusViewProps) {
-  const { language, setLanguage } = React.useContext(AppLanguageContext);
+  const { language } = React.useContext(AppLanguageContext);
   const { t } = useUiText();
   const steps = [t('syllabus.step1'), t('syllabus.step2'), t('syllabus.step3')];
 
@@ -151,7 +150,6 @@ export default function SyllabusView({
     variantLabel: string,
   ) => {
     const instructionLanguage = resolveSyllabusInstructionLanguage(syllabus);
-    applyInstructionLanguage(instructionLanguage, setLanguage);
     onSelectTopic(
       buildTopicContext(topic, syllabus.id, syllabus.subject_name, syllabus.subject_code, variantLabel, instructionLanguage),
     );

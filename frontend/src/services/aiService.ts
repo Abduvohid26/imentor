@@ -671,7 +671,13 @@ async function requestPresentationDeckFromAi(params: {
           `${SYS_MEDICAL} Return ONLY valid JSON: ` +
           '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
           '8-12 slides for university medical class. Each slide 3-6 concise bullets. Language: ' +
-          outLang + '.',
+          outLang + '. ' +
+          (bookContext
+            ? 'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Faqat shu darslik ' +
+              'parchalaridagi ma\'lumotlarga asoslaning, tashqi/umumiy bilimingizdan fakt qo\'shmang. ' +
+              'Har bir slaydning "notes" maydoni oxiriga foydalangan manbani "(Manba: kitob nomi, sahifa-bet)" ' +
+              'formatida qo\'shing.'
+            : ''),
         user: userPrompt,
         maxTokens: attempt.maxTokens,
         temperature: attempt.temperature,

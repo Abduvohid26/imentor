@@ -47,6 +47,7 @@ import { clearBackendAuthTokens, getBackendAccessToken, setUnauthorizedHandler, 
 import { resolveProfilePhotoUrl } from './utils/profilePhotoApi';
 import {
   type AppLanguage,
+  getAppLanguage,
   localeForLanguage,
   setAppLanguage as persistAppLanguage,
   languageLabel,
@@ -281,7 +282,7 @@ export default function App() {
     loadPersistedSelectedTopic(),
   );
   const [latestLectureContent, setLatestLectureContent] = useState('');
-  const [language, setLanguage] = useState<AppLanguage>(() => 'uz');
+  const [language, setLanguage] = useState<AppLanguage>(() => getAppLanguage());
   const [notifications, setNotifications] = useState<AppNotification[]>(readStoredNotifications);
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsPanelRef = useRef<HTMLDivElement | null>(null);
@@ -483,10 +484,6 @@ export default function App() {
   const handleSelectTopic = (topic: SyllabusTopicContext) => {
     setSelectedTopic(topic);
     persistSelectedTopic(topic);
-    if (topic.instructionLanguage) {
-      setLanguage(topic.instructionLanguage);
-      persistAppLanguage(topic.instructionLanguage);
-    }
     addNotification(
       translate(language, 'shell.topicSelectedTitle'),
       translate(language, 'shell.topicSelectedBody', {
@@ -505,10 +502,6 @@ export default function App() {
   const handleOpenLectures = (topic: SyllabusTopicContext) => {
     setSelectedTopic(topic);
     persistSelectedTopic(topic);
-    if (topic.instructionLanguage) {
-      setLanguage(topic.instructionLanguage);
-      persistAppLanguage(topic.instructionLanguage);
-    }
     setActiveView('lectures');
   };
 
