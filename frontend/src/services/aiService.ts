@@ -39,32 +39,35 @@ import {
 } from '../utils/generationVariety';
 import { listPreparedForTopic, loadPreparedById } from '../utils/preparedContentStore';
 import { normalizeCaseFocus } from '../utils/caseFocusLabels';
-import {
-  LECTURE_REFERENCES_AI_RULES,
-  MEDICAL_REFERENCES_AI_RULES,
-  mergeReferences,
-  normalizeMedicalReferences,
-  type MedicalReference,
-} from '../utils/medicalReferences';
+import { type MedicalReference } from '../utils/medicalReferences';
 
-// Kitob (bookContext) mavjud bo'lsa, tashqi (DOI/PubMed) adabiyotlar ro'yxati talab qilinmaydi —
-// bular ko'pincha AI tomonidan o'ylab topiladi (haqiqiy maqolaga bog'lanmasligi mumkin) va
-// foydalanuvchi faqat darslikka asoslangan kontent so'ragan.
-const NO_EXTERNAL_REFS_JSON_RULE =
+// Hech qachon tashqi (DOI/PubMed/veb) havola yoki "Foydalanilgan adabiyotlar" ro'yxati so'ralmaydi —
+// bular ko'pincha AI tomonidan o'ylab topiladi (haqiqiy maqolaga bog'lanmasligi mumkin). Kitob
+// konteksti bo'lsa — manba matn ichida (Manba: kitob, sahifa-bet) ko'rinishida ko'rsatiladi;
+// bo'lmasa — hech qanday manba/havola ko'rsatilmaydi, faqat mazmun.
+const NO_EXTERNAL_REFS_JSON_RULE_BOOK =
   'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Tashqi adabiyot/DOI/PubMed ' +
   'havolalari QO\'SHMANG — "references" maydonini bo\'sh massiv [] qoldiring. Manba faqat matn ichida ' +
   '(Manba: kitob nomi, sahifa-bet) ko\'rinishida bo\'lsin.';
-const NO_EXTERNAL_REFS_TEXT_RULE =
+const NO_EXTERNAL_REFS_JSON_RULE_NOBOOK =
+  'MAJBURIY: tashqi adabiyot/DOI/PubMed/veb havolalari yoki o\'ylab topilgan manbalar QO\'SHMANG — ' +
+  '"references" maydonini bo\'sh massiv [] qoldiring. Hech qanday manba ko\'rsatmasdan, faqat ' +
+  'mazmunning o\'ziga tayanib yozing.';
+const NO_EXTERNAL_REFS_TEXT_RULE_BOOK =
   'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Oxirida ' +
   '"## Foydalanilgan adabiyotlar" bo\'limini YOZMANG va tashqi (DOI/PubMed) havolalar qo\'shmang — ' +
   'faqat matn ichida (Manba: kitob nomi, sahifa-bet) ko\'rsating.';
+const NO_EXTERNAL_REFS_TEXT_RULE_NOBOOK =
+  'MAJBURIY: oxirida "## Foydalanilgan adabiyotlar" bo\'limini YOZMANG, tashqi (DOI/PubMed/veb) ' +
+  'havolalar yoki o\'ylab topilgan manbalar qo\'shmang — hech qanday link/manba ko\'rsatmasdan, ' +
+  'faqat mazmunning o\'ziga tayanib yozing.';
 
 function jsonReferencesRule(hasBookContext: boolean): string {
-  return hasBookContext ? NO_EXTERNAL_REFS_JSON_RULE : MEDICAL_REFERENCES_AI_RULES;
+  return hasBookContext ? NO_EXTERNAL_REFS_JSON_RULE_BOOK : NO_EXTERNAL_REFS_JSON_RULE_NOBOOK;
 }
 
 function textReferencesRule(hasBookContext: boolean): string {
-  return hasBookContext ? NO_EXTERNAL_REFS_TEXT_RULE : LECTURE_REFERENCES_AI_RULES;
+  return hasBookContext ? NO_EXTERNAL_REFS_TEXT_RULE_BOOK : NO_EXTERNAL_REFS_TEXT_RULE_NOBOOK;
 }
 
 function previousCaseAvoidBlock(topic: string): string {
@@ -398,7 +401,7 @@ async function generateSingleCaseQuestion(
       model: OPENAI_CHAT,
       system:
         `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} Return ONLY valid JSON object: ` +
-        `{"scenario":"...","answer":"...","references":${hasBookContext ? '[]' : '[{"title":"...","url":"https://..."}]'}}. ` +
+        `{"scenario":"...","answer":"...","references":[]}. ` +
         `If book excerpts (manba context) were given, cite them inside "answer" text as "(Manba: kitob nomi, sahifa-bet)" — never outside the JSON. ` +
         `Language: ${outLang}. focus="${focus}". ${jsonReferencesRule(hasBookContext)}`,
       user:
@@ -407,7 +410,7 @@ async function generateSingleCaseQuestion(
         'Scenario: 2–4 paragraphs with patient details. Answer: 2–4 paragraphs, focus-specific clinical reasoning. ' +
         (hasBookContext
           ? 'Leave "references" as an empty array — cite the book inline in "answer" instead. '
-          : 'Include 2 references in JSON. End answer with [1][2] style citations. ') +
+          : 'Leave "references" as an empty array — do not fabricate or cite any sources. ') +
         (strict ? 'Strict valid JSON only.' : ''),
       maxTokens: 3072,
       temperature: strict ? 0.4 : 0.58,
@@ -422,20 +425,14 @@ async function generateSingleCaseQuestion(
     raw = await request(true);
   }
 
-  const refs = hasBookContext ? [] : normalizeMedicalReferences(raw.references, topic);
   return {
     scenario: (raw.scenario || '').trim(),
     answer: (raw.answer || '').trim(),
     focus: normalizeCaseFocus(raw.focus, CASE_STUDY_FOCUS_ORDER.indexOf(focus)),
-    ...(refs.length ? { references: refs } : {}),
   };
 }
 
-function normalizeCaseSession(
-  topic: string,
-  data: CaseStudySession,
-  hasBookContext = false,
-): CaseStudySession {
+function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudySession {
   const rawQuestions = [...(data.questions || [])].slice(0, 3);
   while (rawQuestions.length < 3) {
     const focus = CASE_STUDY_FOCUS_ORDER[rawQuestions.length];
@@ -457,21 +454,17 @@ function normalizeCaseSession(
         "(4) dalillarga asoslangan davolash rejasi va monitoring;",
         "(5) bemor xavfsizligi hamda keyingi kuzatuv rejasi.",
       ].join(' ');
-      const refs = hasBookContext ? [] : normalizeMedicalReferences(q.references, topic);
       const focus = normalizeCaseFocus((q as CaseStudyQuestion).focus, i);
       return {
         scenario: scenario.length >= 120 ? scenario : fallbackScenario,
         answer: answer.length >= 120 ? answer : fallbackAnswer,
         focus,
-        ...(refs.length ? { references: refs } : {}),
       };
     });
-  const sessionRefs = hasBookContext ? [] : normalizeMedicalReferences(data.references, topic);
-  const allQRefs = cleanedQuestions.flatMap((q) => q.references || []);
   return {
     topic: (data.topic || topic || '').trim() || topic,
     questions: cleanedQuestions,
-    references: mergeReferences(sessionRefs, allQRefs),
+    references: [],
   };
 }
 
@@ -488,12 +481,7 @@ function isWeakTestSession(data: TestSession | null | undefined, requestedCount:
   return badQuestions.length > Math.max(1, Math.floor(data.questions.length * 0.35));
 }
 
-function normalizeTestSession(
-  topic: string,
-  data: TestSession,
-  requestedCount: number,
-  hasBookContext = false,
-): TestSession {
+function normalizeTestSession(topic: string, data: TestSession, requestedCount: number): TestSession {
   const questions = (data.questions || [])
     .slice(0, requestedCount)
     .map((q) => {
@@ -503,7 +491,6 @@ function normalizeTestSession(
         typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0 && q.correctOptionIndex < 5
           ? q.correctOptionIndex
           : 0;
-      const refs = hasBookContext ? [] : normalizeMedicalReferences(q.references, topic);
       const optionExplanations = (q.optionExplanations || []).slice(0, 5).map((e) => (e || '').trim());
       while (optionExplanations.length < 5) optionExplanations.push('');
       const hasOptionExplanations = optionExplanations.some((e) => e.length > 0);
@@ -513,16 +500,13 @@ function normalizeTestSession(
         explanation: (q.explanation || '').trim(),
         correctOptionIndex,
         ...(hasOptionExplanations ? { optionExplanations } : {}),
-        ...(refs.length ? { references: refs } : {}),
       };
     });
-  const sessionRefs = hasBookContext ? [] : normalizeMedicalReferences(data.references, topic);
-  const allQRefs = questions.flatMap((q) => q.references || []);
   return {
     ...data,
     topic: (data.topic || topic || '').trim() || topic,
     questions,
-    references: mergeReferences(sessionRefs, allQRefs),
+    references: [],
   };
 }
 
@@ -688,7 +672,8 @@ async function requestPresentationDeckFromAi(params: {
               'parchalaridagi ma\'lumotlarga asoslaning, tashqi/umumiy bilimingizdan fakt qo\'shmang. ' +
               'Har bir slaydning "notes" maydoni oxiriga foydalangan manbani "(Manba: kitob nomi, sahifa-bet)" ' +
               'formatida qo\'shing.'
-            : ''),
+            : 'MAJBURIY: tashqi havola, DOI, PubMed yoki o\'ylab topilgan manba ko\'rsatmang — bullets/notes ' +
+              'ichida hech qanday link yoki manba nomi yozmang.'),
         user: userPrompt,
         maxTokens: attempt.maxTokens,
         temperature: attempt.temperature,
@@ -740,8 +725,8 @@ export const aiService = {
         const structure = buildCaseStructurePrompt(topic);
         return openaiJson({
           model: OPENAI_CHAT,
-          system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: {topic, references:[...], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[...]}]}. Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Manba konteksti berilgan bo'lsa, "answer" matni ichida "(Manba: kitob nomi, sahifa-bet)" deb ko'rsating — JSON'dan tashqariga chiqarmang. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
-          user: `${structure}${keywordFocus}${avoid}\n\nHar scenario 2-4 paragraf. Har answer fokusga mos. Javob oxirida [1][2] iqtiboslar. ${strict ? 'Maksimal sifat, faqat valid JSON.' : ''}`,
+          system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: {topic, references:[], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[]}]}. Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Manba konteksti berilgan bo'lsa, "answer" matni ichida "(Manba: kitob nomi, sahifa-bet)" deb ko'rsating — JSON'dan tashqariga chiqarmang. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
+          user: `${structure}${keywordFocus}${avoid}\n\nHar scenario 2-4 paragraf. Har answer fokusga mos. ${strict ? 'Maksimal sifat, faqat valid JSON.' : ''}`,
           maxTokens: 8192,
           temperature: strict ? 0.45 : 0.6,
           parse: (t) => parseJSONSafe<CaseStudySession>(t),
@@ -770,15 +755,12 @@ export const aiService = {
         questions = data.questions || [];
       }
 
-      const sessionRefs = mergeReferences(
-        ...questions.map((q) => normalizeMedicalReferences(q.references, bookContext ? undefined : topic)),
-      );
       const data: CaseStudySession = {
         topic,
         questions,
-        references: sessionRefs,
+        references: [],
       };
-      const normalized = normalizeCaseSession(topic, data, Boolean(bookContext));
+      const normalized = normalizeCaseSession(topic, data);
       return keywords.length ? { ...normalized, keywords } : normalized;
     } catch (error) {
       console.error("Case study generation failed:", error);
@@ -801,14 +783,14 @@ export const aiService = {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:${bookContext ? '[]' : '[{title,authors,year,publisher,url}]'}, questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:${bookContext ? '[]' : '[...]'}}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Agar sizga darslik parchalari (manba konteksti) berilgan bo'lsa, shu parchalardan foydalangan har bir explanation/optionExplanations gapining oxiriga "(Manba: kitob nomi, sahifa-bet)" qo'shing — buni hech qachon JSON'dan tashqariga chiqarmang, faqat shu matn maydonlari ICHIDA yozing. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
-        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap — oxirida [1][2] iqtiboslar. optionExplanations: har bir variant uchun aniq, o'sha variantga xos 1 gapli sabab, manba asosida bo'lsa oxiriga (Manba: ..., ...-bet) qo'sh. ${strict ? 'Faqat valid JSON.' : ''}`,
+        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[]}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Agar sizga darslik parchalari (manba konteksti) berilgan bo'lsa, shu parchalardan foydalangan har bir explanation/optionExplanations gapining oxiriga "(Manba: kitob nomi, sahifa-bet)" qo'shing — buni hech qachon JSON'dan tashqariga chiqarmang, faqat shu matn maydonlari ICHIDA yozing. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
+        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap, hech qanday havola/manba raqami qo'shmasdan. optionExplanations: har bir variant uchun aniq, o'sha variantga xos 1 gapli sabab, manba asosida bo'lsa oxiriga (Manba: ..., ...-bet) qo'sh. ${strict ? 'Faqat valid JSON.' : ''}`,
         maxTokens: 6144,
         temperature: strict ? 0.42 : 0.68,
         parse: (t) => parseJSONSafe<TestSession>(t),
         bookContext,
       });
-      return normalizeTestSession(topic, parsed, requestedCount, Boolean(bookContext));
+      return normalizeTestSession(topic, parsed, requestedCount);
     };
 
     const generateChunked = async (total: number): Promise<TestSession> => {
@@ -822,7 +804,7 @@ export const aiService = {
         merged.push(...(part.questions || []).slice(0, current));
         remaining -= current;
       }
-      return normalizeTestSession(topic, { topic, questions: merged }, safeTotal, Boolean(bookContext));
+      return normalizeTestSession(topic, { topic, questions: merged }, safeTotal);
     };
 
     const base = await (async (): Promise<TestSession> => {
@@ -839,7 +821,7 @@ export const aiService = {
         if (isWeakTestSession(data, safeCount)) {
           data = await generateChunked(safeCount);
         }
-        return normalizeTestSession(topic, data, safeCount, Boolean(bookContext));
+        return normalizeTestSession(topic, data, safeCount);
       } catch (error) {
         try {
           return await generateChunked(safeCount);
