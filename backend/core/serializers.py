@@ -166,6 +166,14 @@ class TopicHandoutSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.file.url)
         return obj.file.url
 
+    def get_can_delete(self, obj: TopicHandout) -> bool:
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        if obj.owner_key == request.user.username:
+            return True
+        return resolve_user_role(request.user, request) == "admin"
+
 
 class SubjectBookSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source="department.name", read_only=True)
@@ -210,14 +218,6 @@ class SubjectBookSerializer(serializers.ModelSerializer):
             return int(obj.file.size) if obj.file else 0
         except (ValueError, OSError):
             return 0
-
-    def get_can_delete(self, obj: TopicHandout) -> bool:
-        request = self.context.get("request")
-        if not request or not request.user.is_authenticated:
-            return False
-        if obj.owner_key == request.user.username:
-            return True
-        return resolve_user_role(request.user, request) == "admin"
 
 
 class TopicPresentationSerializer(serializers.ModelSerializer):
