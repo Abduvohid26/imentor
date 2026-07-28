@@ -70,8 +70,8 @@ export default function CaseStudies() {
       setVersions([]);
       return;
     }
-    setVersions(listPreparedForTopic('case', topic));
-  }, [topic]);
+    setVersions(listPreparedForTopic('case', globalTopic ?? topic));
+  }, [topic, globalTopic]);
 
   const applySession = useCallback((data: CaseStudySession, versionId: string | null) => {
     setCaseSession(data);
@@ -99,8 +99,9 @@ export default function CaseStudies() {
       return;
     }
     let mounted = true;
+    const lookup = globalTopic ?? topic;
     (async () => {
-      const prepared = await loadLatestPreparedContent<CaseStudySession>('case', topic);
+      const prepared = await loadLatestPreparedContent<CaseStudySession>('case', lookup);
       if (!mounted) return;
       refreshVersions();
       if (!prepared) {
@@ -108,14 +109,14 @@ export default function CaseStudies() {
         setActiveVersionId(null);
         return;
       }
-      const list = listPreparedForTopic('case', topic);
+      const list = listPreparedForTopic('case', lookup);
       const latestId = list[0]?.id ?? null;
       applySession(prepared, latestId);
     })();
     return () => {
       mounted = false;
     };
-  }, [topic, applySession, refreshVersions]);
+  }, [topic, globalTopic, applySession, refreshVersions]);
 
   const handleSelectVersion = async (id: string) => {
     const data = loadPreparedById<CaseStudySession>('case', id);
@@ -134,7 +135,7 @@ export default function CaseStudies() {
       const data = await aiService.generateCaseStudy(currentTopic, contentLanguage, parsedKeywords, globalTopic?.subjectCode);
       await savePreparedContent('case', currentTopic, data, buildPreparedContentMeta(globalTopic));
       refreshVersions();
-      const list = listPreparedForTopic('case', currentTopic);
+      const list = listPreparedForTopic('case', globalTopic ?? currentTopic);
       applySession(data, list[0]?.id ?? null);
       try {
         const u = getCurrentLocalUser();
