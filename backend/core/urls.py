@@ -25,6 +25,11 @@ from .handout_views import (
     TopicHandoutFileView,
     TopicHandoutListCreateView,
 )
+from .subject_book_views import (
+    AdminSubjectBookDetailView,
+    AdminSubjectBookListView,
+    AdminSubjectBookStatsView,
+)
 from .video_views import (
     AdminTopicVideoDetailView,
     AdminTopicVideoListCreateView,
@@ -197,6 +202,9 @@ urlpatterns = [
     path('v1/handouts/<int:pk>/', TopicHandoutDetailView.as_view(), name='handout-detail'),
     path('v1/admin/handouts/', AdminTopicHandoutListCreateView.as_view(), name='admin-handouts'),
     path('v1/admin/handouts/<int:pk>/', AdminTopicHandoutDetailView.as_view(), name='admin-handout-detail'),
+    path('v1/admin/subject-books/', AdminSubjectBookListView.as_view(), name='admin-subject-books'),
+    path('v1/admin/subject-books/stats/', AdminSubjectBookStatsView.as_view(), name='admin-subject-books-stats'),
+    path('v1/admin/subject-books/<int:pk>/', AdminSubjectBookDetailView.as_view(), name='admin-subject-book-detail'),
     path('v1/topic-videos/', TopicVideoListView.as_view(), name='topic-videos-list'),
     path('v1/admin/topic-videos/', AdminTopicVideoListCreateView.as_view(), name='admin-topic-videos'),
     path('v1/admin/topic-videos/<int:pk>/', AdminTopicVideoDetailView.as_view(), name='admin-topic-video-detail'),

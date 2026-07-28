@@ -12,6 +12,7 @@ from .models import (
     StaffLocationPing,
     StaffScheduleSlot,
     StartupProjectApplication,
+    SubjectBook,
     SyllabusDocument,
     TopicHandout,
     TopicPresentation,
@@ -164,6 +165,51 @@ class TopicHandoutSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.file.url)
         return obj.file.url
+
+
+class SubjectBookSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source="department.name", read_only=True)
+    department_code = serializers.CharField(source="department.code", read_only=True)
+    file_url = serializers.SerializerMethodField()
+    file_size = serializers.SerializerMethodField()
+    chunk_count = serializers.IntegerField(read_only=True, required=False)
+
+    class Meta:
+        model = SubjectBook
+        fields = [
+            "id",
+            "department",
+            "department_name",
+            "department_code",
+            "title",
+            "source_archive",
+            "language",
+            "page_count",
+            "chunk_count",
+            "file_url",
+            "file_size",
+            "is_active",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_file_url(self, obj: SubjectBook) -> str:
+        request = self.context.get("request")
+        if not obj.file:
+            return ""
+        try:
+            url = obj.file.url
+        except ValueError:
+            return ""
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+    def get_file_size(self, obj: SubjectBook) -> int:
+        try:
+            return int(obj.file.size) if obj.file else 0
+        except (ValueError, OSError):
+            return 0
 
     def get_can_delete(self, obj: TopicHandout) -> bool:
         request = self.context.get("request")

@@ -28,6 +28,7 @@ import {
   Building2,
   Files,
   Library,
+  BookMarked,
   GraduationCap,
   Youtube,
   type LucideIcon,
@@ -81,6 +82,7 @@ import AdminSyllabusCatalog from './components/admin/AdminSyllabusCatalog';
 import AdminCourseAssignments from './components/admin/AdminCourseAssignments';
 import AdminTopicVideos from './components/admin/AdminTopicVideos';
 import AdminTopicHandouts from './components/admin/AdminTopicHandouts';
+import AdminBooksLibrary from './components/admin/AdminBooksLibrary';
 import StartupWorkspace from './components/startup/StartupWorkspace';
 import StartupDossierSubmit from './components/startup/StartupDossierSubmit';
 import HodimGpsPromptBar from './components/staff/HodimGpsPromptBar';
@@ -110,6 +112,7 @@ type View =
   | 'admin-course-assignments'
   | 'admin-videos'
   | 'admin-handouts'
+  | 'admin-books'
   | 'syllabus'
   | 'profile'
   | 'presentation'
@@ -135,6 +138,7 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   'admin-course-assignments': GraduationCap,
   'admin-videos': Youtube,
   'admin-handouts': Files,
+  'admin-books': BookMarked,
   syllabus: BookOpen,
   lectures: FileText,
   presentation: Presentation,
@@ -158,6 +162,7 @@ const ADMIN_NAV_IDS: View[] = [
   'admin-course-assignments',
   'admin-videos',
   'admin-handouts',
+  'admin-books',
   'admin-cases',
   'admin-tests',
   'profile',
@@ -506,6 +511,8 @@ export default function App() {
         return <AdminTopicVideos />;
       case 'admin-handouts':
         return <AdminTopicHandouts />;
+      case 'admin-books':
+        return <AdminBooksLibrary />;
       case 'startup':
         return <StartupWorkspace />;
       case 'startup-dossier':

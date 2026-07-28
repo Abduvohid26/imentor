@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Loader2,
   Trash2,
   FileText,
@@ -10,6 +11,8 @@ import {
   ToggleRight,
   FolderOpen,
   Plus,
+  Search,
+  Building2,
 } from 'lucide-react';
 import { HttpError } from '../../api/httpClient';
 import { aiService, syllabusExtractionErrorMessage } from '../../services/aiService';
@@ -102,6 +105,10 @@ export default function AdminSyllabusCatalog() {
 
   // Qaysi fan qatorida hujjat yuklash oynasi ochiq
   const [uploadTargetId, setUploadTargetId] = useState<number | null>(null);
+
+  // Kafedra bo'yicha guruhlash + qidiruv
+  const [search, setSearch] = useState('');
+  const [collapsedDepts, setCollapsedDepts] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -367,6 +374,36 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
+  const toggleDept = (key: string) => {
+    setCollapsedDepts((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const filteredList = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((row) =>
+      `${row.subject_name} ${row.department_name || ''} ${row.subject_code}`.toLowerCase().includes(q),
+    );
+  }, [list, search]);
+
+  const groupedByDepartment = useMemo(() => {
+    const map = new Map<string, { departmentName: string; rows: CourseSyllabusRow[] }>();
+    for (const row of filteredList) {
+      const key = row.department_code || '__none__';
+      const name = row.department_name || t('admin.noDepartment');
+      if (!map.has(key)) map.set(key, { departmentName: name, rows: [] });
+      map.get(key)!.rows.push(row);
+    }
+    return [...map.entries()]
+      .map(([code, v]) => ({ code, ...v }))
+      .sort((a, b) => a.departmentName.localeCompare(b.departmentName));
+  }, [filteredList, t]);
+
   const busy = uploading;
 
   return (
@@ -532,6 +569,18 @@ export default function AdminSyllabusCatalog() {
         {error && <p className="text-[13px] text-rose-600 font-medium">{error}</p>}
       </div>
 
+      {!loading && list.length > 0 && (
+        <div className="relative sm:max-w-sm">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('admin.syllabusSearchPlaceholder')}
+            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-[13px]"
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="animate-spin text-indigo-600" size={40} />
@@ -541,16 +590,45 @@ export default function AdminSyllabusCatalog() {
           <p className="text-slate-500">{t('admin.noSubjectsYet')}</p>
           <p className="text-[13px] text-slate-400">{t('admin.uploadSyllabus')}</p>
         </div>
+      ) : groupedByDepartment.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-slate-400 text-[14px]">{t('admin.noResults')}</p>
+        </div>
       ) : (
-        <ul className="space-y-3">
-          {list.map((row) => {
-            const variants = resolveSyllabusVariants(row);
-            const open = expandedId === row.id;
-            const topicTotal = totalTopicCount(variants);
-            const uploaderOpen = uploadTargetId === row.id;
+        <div className="space-y-4">
+          {groupedByDepartment.map((dept) => {
+            const deptCollapsed = collapsedDepts.has(dept.code);
+            const deptTopicTotal = dept.rows.reduce(
+              (sum, r) => sum + totalTopicCount(resolveSyllabusVariants(r)),
+              0,
+            );
             return (
-              <li key={row.id} className="ios-glass rounded-2xl border border-white/70 overflow-hidden">
-                <div className="p-4 flex flex-wrap items-start gap-3">
+              <div key={dept.code} className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => toggleDept(dept.code)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-100/80 border border-slate-200 text-left"
+                >
+                  <span className="flex items-center gap-2 font-bold text-slate-800">
+                    {deptCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                    <Building2 size={16} className="text-slate-500" />
+                    {dept.departmentName}
+                  </span>
+                  <span className="text-[12px] text-slate-500 shrink-0">
+                    {t('admin.subjectStats', { tracks: dept.rows.length, topics: deptTopicTotal })}
+                  </span>
+                </button>
+
+                {!deptCollapsed && (
+                  <ul className="space-y-3">
+                    {dept.rows.map((row) => {
+                      const variants = resolveSyllabusVariants(row);
+                      const open = expandedId === row.id;
+                      const topicTotal = totalTopicCount(variants);
+                      const uploaderOpen = uploadTargetId === row.id;
+                      return (
+                        <li key={row.id} className="ios-glass rounded-2xl border border-white/70 overflow-hidden">
+                          <div className="p-4 flex flex-wrap items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
                     <FileText size={20} className="text-slate-600" />
                   </div>
@@ -689,10 +767,15 @@ export default function AdminSyllabusCatalog() {
                     </div>
                   </div>
                 )}
-              </li>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
     </div>
   );
