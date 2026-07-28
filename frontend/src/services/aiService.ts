@@ -47,6 +47,26 @@ import {
   type MedicalReference,
 } from '../utils/medicalReferences';
 
+// Kitob (bookContext) mavjud bo'lsa, tashqi (DOI/PubMed) adabiyotlar ro'yxati talab qilinmaydi —
+// bular ko'pincha AI tomonidan o'ylab topiladi (haqiqiy maqolaga bog'lanmasligi mumkin) va
+// foydalanuvchi faqat darslikka asoslangan kontent so'ragan.
+const NO_EXTERNAL_REFS_JSON_RULE =
+  'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Tashqi adabiyot/DOI/PubMed ' +
+  'havolalari QO\'SHMANG — "references" maydonini bo\'sh massiv [] qoldiring. Manba faqat matn ichida ' +
+  '(Manba: kitob nomi, sahifa-bet) ko\'rinishida bo\'lsin.';
+const NO_EXTERNAL_REFS_TEXT_RULE =
+  'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Oxirida ' +
+  '"## Foydalanilgan adabiyotlar" bo\'limini YOZMANG va tashqi (DOI/PubMed) havolalar qo\'shmang — ' +
+  'faqat matn ichida (Manba: kitob nomi, sahifa-bet) ko\'rsating.';
+
+function jsonReferencesRule(hasBookContext: boolean): string {
+  return hasBookContext ? NO_EXTERNAL_REFS_JSON_RULE : MEDICAL_REFERENCES_AI_RULES;
+}
+
+function textReferencesRule(hasBookContext: boolean): string {
+  return hasBookContext ? NO_EXTERNAL_REFS_TEXT_RULE : LECTURE_REFERENCES_AI_RULES;
+}
+
 function previousCaseAvoidBlock(topic: string): string {
   const summaries = listPreparedForTopic('case', topic)
     .slice(0, 6)
@@ -379,7 +399,7 @@ async function generateSingleCaseQuestion(
         `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} Return ONLY valid JSON object: ` +
         `{"scenario":"...","answer":"...","references":[{"title":"...","url":"https://..."}]}. ` +
         `If book excerpts (manba context) were given, cite them inside "answer" text as "(Manba: kitob nomi, sahifa-bet)" — never outside the JSON. ` +
-        `Language: ${outLang}. focus="${focus}". ${MEDICAL_REFERENCES_AI_RULES}`,
+        `Language: ${outLang}. focus="${focus}". ${jsonReferencesRule(Boolean(bookContext))}`,
       user:
         `${structure}${keywordFocus}${avoid}\n\n` +
         `Generate ONE clinical case with focus="${focus}" (${CASE_FOCUS_HINTS[focus]}). ` +
@@ -703,7 +723,7 @@ export const aiService = {
         const structure = buildCaseStructurePrompt(topic);
         return openaiJson({
           model: OPENAI_CHAT,
-          system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: {topic, references:[...], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[...]}]}. Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Manba konteksti berilgan bo'lsa, "answer" matni ichida "(Manba: kitob nomi, sahifa-bet)" deb ko'rsating — JSON'dan tashqariga chiqarmang. Til: ${outLang}. ${MEDICAL_REFERENCES_AI_RULES}`,
+          system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: {topic, references:[...], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[...]}]}. Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Manba konteksti berilgan bo'lsa, "answer" matni ichida "(Manba: kitob nomi, sahifa-bet)" deb ko'rsating — JSON'dan tashqariga chiqarmang. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
           user: `${structure}${keywordFocus}${avoid}\n\nHar scenario 2-4 paragraf. Har answer fokusga mos. Javob oxirida [1][2] iqtiboslar. ${strict ? 'Maksimal sifat, faqat valid JSON.' : ''}`,
           maxTokens: 8192,
           temperature: strict ? 0.45 : 0.6,
@@ -764,7 +784,7 @@ export const aiService = {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[{title,authors,year,publisher,url}], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[...]}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Agar sizga darslik parchalari (manba konteksti) berilgan bo'lsa, shu parchalardan foydalangan har bir explanation/optionExplanations gapining oxiriga "(Manba: kitob nomi, sahifa-bet)" qo'shing — buni hech qachon JSON'dan tashqariga chiqarmang, faqat shu matn maydonlari ICHIDA yozing. Til: ${outLang}. ${MEDICAL_REFERENCES_AI_RULES}`,
+        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[{title,authors,year,publisher,url}], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[...]}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Agar sizga darslik parchalari (manba konteksti) berilgan bo'lsa, shu parchalardan foydalangan har bir explanation/optionExplanations gapining oxiriga "(Manba: kitob nomi, sahifa-bet)" qo'shing — buni hech qachon JSON'dan tashqariga chiqarmang, faqat shu matn maydonlari ICHIDA yozing. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
         user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap — oxirida [1][2] iqtiboslar. optionExplanations: har bir variant uchun aniq, o'sha variantga xos 1 gapli sabab, manba asosida bo'lsa oxiriga (Manba: ..., ...-bet) qo'sh. ${strict ? 'Faqat valid JSON.' : ''}`,
         maxTokens: 6144,
         temperature: strict ? 0.42 : 0.68,
@@ -828,7 +848,11 @@ export const aiService = {
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
       const content = await openaiText({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. Kirish, 3-4 bo'lim, klinik qo'llash, xulosa. Matn ichida muhim faktlar yonida manba ko'rsating: agar tashqi manba (URL bilan) bo'lsa [sarlavha](url) formatida; agar sizga berilgan darslik parchasidan (kitob nomi + sahifa, URL'siz) olingan bo'lsa "(Manba: kitob nomi, sahifa-bet)" formatida — hech qachon "manba" so'zini yolg'iz, qavs/havolasiz qoldirmang. ${LECTURE_REFERENCES_AI_RULES} Til: ${outLang}.`,
+        system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. Kirish, 3-4 bo'lim, klinik qo'llash, xulosa. ${
+          bookContext
+            ? 'Matn ichida muhim faktlar yonida "(Manba: kitob nomi, sahifa-bet)" formatida ko\'rsating — hech qachon "manba" so\'zini yolg\'iz, qavs/havolasiz qoldirmang.'
+            : 'Matn ichida muhim faktlar yonida [manba](url) havolalari.'
+        } ${textReferencesRule(Boolean(bookContext))} Til: ${outLang}.`,
         user: `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. Batafsil ma'ruza matni. Har bo'limda ilmiy dalillar va havolalar bo'lsin.`,
         maxTokens: 8192,
         temperature: 0.4,
