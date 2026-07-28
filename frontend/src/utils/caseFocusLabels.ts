@@ -25,6 +25,28 @@ const BADGE_CLASS: Record<CaseStudyFocus, string> = {
   tashxis: 'bg-violet-500/10 text-violet-800 border-violet-500/25',
 };
 
+const ACCENT_BORDER_CLASS: Record<CaseStudyFocus, string> = {
+  profilaktika: 'border-l-teal-500/60',
+  davolash: 'border-l-blue-500/60',
+  tashxis: 'border-l-violet-500/60',
+};
+
+const ICON_BG_CLASS: Record<CaseStudyFocus, string> = {
+  profilaktika: 'bg-teal-500/12 text-teal-700',
+  davolash: 'bg-blue-500/12 text-blue-700',
+  tashxis: 'bg-violet-500/12 text-violet-700',
+};
+
+export function caseFocusAccentBorderClass(focus: CaseStudyFocus | undefined): string {
+  if (!focus) return 'border-l-black/15';
+  return ACCENT_BORDER_CLASS[focus];
+}
+
+export function caseFocusIconBgClass(focus: CaseStudyFocus | undefined): string {
+  if (!focus) return 'bg-black/5 text-black/50';
+  return ICON_BG_CLASS[focus];
+}
+
 export function caseFocusLabel(focus: CaseStudyFocus | undefined, lang: AppLanguage = 'uz'): string {
   if (!focus) return '';
   return LABELS[lang][focus] || LABELS.uz[focus];

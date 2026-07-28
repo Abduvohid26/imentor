@@ -2,11 +2,15 @@ import React, { useState, useEffect, useContext, useCallback, useMemo } from 're
 import {
   Stethoscope,
   Loader2,
-  AlertCircle,
   FileText,
   RefreshCw,
   KeyRound,
   Tags,
+  ShieldCheck,
+  Pill,
+  Search,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { aiService, CaseStudySession } from '../services/aiService';
@@ -28,12 +32,23 @@ import StaffErrorAlert from './staff/StaffErrorAlert';
 import StaffLoading from './staff/StaffLoading';
 import StaffPanel from './staff/StaffPanel';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
-import { staffInput, staffLabel, staffBtnPrimary, STAFF_HEADING } from './staff/staffUi';
+import { staffInput, staffLabel, staffBtnSecondary, STAFF_HEADING } from './staff/staffUi';
 import { messageFromAiError } from '../utils/aiErrors';
-import MedicalReferencesList from './staff/MedicalReferencesList';
 import { parseKeywordsInput } from '../utils/generationVariety';
 import { downloadCaseAnswerKeyPdf, downloadCaseScenariosPdf } from '../utils/buildCasePdf';
-import { caseFocusBadgeClass, caseFocusLabel } from '../utils/caseFocusLabels';
+import {
+  caseFocusAccentBorderClass,
+  caseFocusBadgeClass,
+  caseFocusIconBgClass,
+  caseFocusLabel,
+} from '../utils/caseFocusLabels';
+import type { CaseStudyFocus } from '../utils/generationVariety';
+
+const CASE_FOCUS_ICONS: Record<CaseStudyFocus, typeof ShieldCheck> = {
+  profilaktika: ShieldCheck,
+  davolash: Pill,
+  tashxis: Search,
+};
 
 export default function CaseStudies() {
   const globalTopic = useContext(GlobalTopicContext);
@@ -259,27 +274,33 @@ export default function CaseStudies() {
             </div>
           )}
 
-          <StaffPanel large className="overflow-hidden print:shadow-none print:border-none print:bg-transparent">
-            <div className="p-6 sm:p-8 border-b border-black/5">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[#083047]/60 mb-2">
-                {t('case.viewLabel')}
-              </p>
-              <h1 className={`text-xl sm:text-2xl font-bold leading-tight ${STAFF_HEADING}`}>
-                {caseSession.topic}
-              </h1>
-            </div>
+          <div className="flex items-center gap-2 print:hidden">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#083047]/50">
+              {t('case.viewLabel')}
+            </p>
+            <div className="h-px flex-1 bg-black/5" />
+          </div>
 
-            <div className="p-6 sm:p-8 space-y-10 bg-white/30 print:bg-transparent">
-              {caseSession.references && caseSession.references.length > 0 && (
-                <MedicalReferencesList references={caseSession.references} className="print:break-inside-avoid" />
-              )}
-              <div className="space-y-12">
-                {caseSession.questions.map((q, i) => (
-                  <div key={i} className="space-y-5 print:break-inside-avoid">
-                    <div className="flex gap-4">
-                      <div className="flex flex-col items-center gap-2 shrink-0">
-                        <span className="w-8 h-8 rounded-lg bg-[#083047]/8 flex items-center justify-center text-[#083047] text-[13px] font-bold">
-                          {i + 1}
+          <div className="space-y-4">
+            {caseSession.questions.map((q, i) => {
+              const FocusIcon = q.focus ? CASE_FOCUS_ICONS[q.focus] : Stethoscope;
+              const revealed = revealedAnswers[i];
+              return (
+                <StaffPanel
+                  key={i}
+                  large
+                  className={`overflow-hidden border-l-4 ${caseFocusAccentBorderClass(q.focus)} print:shadow-none print:border print:break-inside-avoid`}
+                >
+                  <div className="p-5 sm:p-7 flex items-start gap-4">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${caseFocusIconBgClass(q.focus)}`}
+                    >
+                      <FocusIcon size={20} strokeWidth={2} />
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-black/35">
+                          {t('case.questionLabel')} {i + 1}
                         </span>
                         {q.focus && (
                           <span
@@ -289,48 +310,47 @@ export default function CaseStudies() {
                           </span>
                         )}
                       </div>
-                      <div className="space-y-4 flex-1">
-                        <p className="font-medium text-black/90 text-[15px] leading-relaxed pt-1 whitespace-pre-wrap">
-                          {q.scenario}
-                        </p>
-                        <div className="pt-2 print:hidden">
-                          <button
-                            type="button"
-                            onClick={() => handleRevealAnswer(i)}
-                            className={staffBtnPrimary}
-                          >
-                            {revealedAnswers[i] ? 'Javobni yashirish' : 'Javobni aniqlash'}
-                          </button>
-                        </div>
-                        {revealedAnswers[i] && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="mt-4 rounded-xl p-5 border border-black/8 border-l-4 border-l-[#083047]/40 bg-white/50"
-                          >
-                            <h4 className={`text-[12px] font-bold uppercase tracking-wide mb-2 flex items-center gap-2 ${STAFF_HEADING}`}>
-                              <AlertCircle size={16} />
-                              Keys javobi:
-                            </h4>
-                            <p className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap">{q.answer}</p>
-                            {q.references && q.references.length > 0 && (
-                              <div className="mt-4">
-                                <MedicalReferencesList
-                                  references={q.references}
-                                  title={t('case.questionReferences')}
-                                  compact
-                                />
-                              </div>
-                            )}
-                          </motion.div>
-                        )}
-                      </div>
+                      <p className="font-medium text-black/90 text-[15px] leading-relaxed whitespace-pre-wrap">
+                        {q.scenario}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </StaffPanel>
+
+                  <div className="px-5 sm:px-7 pb-5 sm:pb-7 pl-[76px] sm:pl-[84px] print:hidden">
+                    <button
+                      type="button"
+                      onClick={() => handleRevealAnswer(i)}
+                      className={staffBtnSecondary}
+                    >
+                      {revealed ? <EyeOff size={15} /> : <Eye size={15} />}
+                      {revealed ? t('case.hideAnswer') : t('case.revealAnswer')}
+                    </button>
+
+                    {revealed && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="mt-4 rounded-2xl p-5 bg-black/[0.025] border border-black/6"
+                      >
+                        <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-2 ${STAFF_HEADING}`}>
+                          {t('case.answerLabel')}
+                        </h4>
+                        <p className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap">{q.answer}</p>
+                      </motion.div>
+                    )}
+                  </div>
+
+                  {/* Print: har doim javobni ko'rsatish */}
+                  <div className="hidden print:block px-7 pb-7 pl-[84px]">
+                    <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-2 ${STAFF_HEADING}`}>
+                      {t('case.answerLabel')}
+                    </h4>
+                    <p className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap">{q.answer}</p>
+                  </div>
+                </StaffPanel>
+              );
+            })}
+          </div>
         </div>
       )}
     </StaffPageLayout>

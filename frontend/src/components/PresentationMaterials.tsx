@@ -17,10 +17,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GlobalTopicContext, AppNavigationContext, AppLanguageContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
 import { aiService } from '../services/aiService';
-import { buildPresentationPptxFile } from '../utils/buildPresentationPptx';
+import { buildPresentationPptxFile, type PresentationDeck } from '../utils/buildPresentationPptx';
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
+import { loadLatestPreparedContent, savePreparedContent } from '../utils/preparedContentStore';
 import {
   deletePresentation,
   fetchPresentationsForTopic,
@@ -78,6 +79,9 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
   const item = items[index];
   const [fileSrc, setFileSrc] = useState('');
   const [downloadUrl, setDownloadUrl] = useState('');
+  const [deck, setDeck] = useState<PresentationDeck | null>(null);
+  const [deckChecked, setDeckChecked] = useState(false);
+  const [slideIdx, setSlideIdx] = useState(0);
   if (!item) return null;
   const hasPrev = index > 0;
   const hasNext = index < items.length - 1;
@@ -107,14 +111,45 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
   }, [item.id, item.file_url, publicUrl]);
 
   useEffect(() => {
+    let cancelled = false;
+    setDeck(null);
+    setDeckChecked(false);
+    setSlideIdx(0);
+    const lookupTitle = (item.title || item.file_name || '').trim();
+    if (!lookupTitle) {
+      setDeckChecked(true);
+      return;
+    }
+    (async () => {
+      const found = await loadLatestPreparedContent<PresentationDeck>('presentation', lookupTitle);
+      if (!cancelled) {
+        setDeck(found && Array.isArray(found.slides) && found.slides.length ? found : null);
+        setDeckChecked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [item.id, item.title, item.file_name]);
+
+  const slideCount = deck?.slides.length ?? 0;
+  const hasPrevSlide = slideIdx > 0;
+  const hasNextSlide = slideIdx < slideCount - 1;
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      if (deck) {
+        if (e.key === 'ArrowLeft' && hasPrevSlide) setSlideIdx((i) => i - 1);
+        if (e.key === 'ArrowRight' && hasNextSlide) setSlideIdx((i) => i + 1);
+        return;
+      }
       if (e.key === 'ArrowLeft' && hasPrev) onIndexChange(index - 1);
       if (e.key === 'ArrowRight' && hasNext) onIndexChange(index + 1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, hasPrev, hasNext, onClose, onIndexChange]);
+  }, [index, hasPrev, hasNext, onClose, onIndexChange, deck, hasPrevSlide, hasNextSlide]);
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-black/92" role="dialog" aria-modal="true">
@@ -122,7 +157,11 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-semibold truncate">{item.title || item.file_name}</p>
           <p className="text-[12px] text-white/60 truncate">
-            {index + 1} / {items.length} · {kindLabel(item.kind)} · {item.author_name}
+            {deck
+              ? `${t('presentation.slideLabel')} ${slideIdx + 1} / ${slideCount}`
+              : `${index + 1} / ${items.length}`}
+            {' · '}
+            {kindLabel(item.kind)} · {item.author_name}
           </p>
         </div>
         {downloadUrl && (
@@ -140,52 +179,112 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
       </header>
 
       <div className="flex-1 relative flex items-center justify-center min-h-0 px-2 pb-2">
-        {hasPrev && (
-          <button
-            type="button"
-            onClick={() => onIndexChange(index - 1)}
-            className="absolute left-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
-          >
-            <ChevronLeft size={28} />
-          </button>
-        )}
+        {deck ? (
+          <>
+            {hasPrevSlide && (
+              <button
+                type="button"
+                onClick={() => setSlideIdx((i) => i - 1)}
+                className="absolute left-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+              >
+                <ChevronLeft size={28} />
+              </button>
+            )}
 
-        <div className="w-full h-full max-w-6xl flex items-center justify-center">
-          {!fileSrc ? (
-            <Loader2 className="animate-spin text-white" size={40} />
-          ) : item.kind === 'pdf' ? (
-            <iframe
-              title={item.file_name}
-              src={fileSrc}
-              className="w-full h-full min-h-[50vh] rounded-lg bg-white"
-            />
-          ) : (
-            <div className="text-center text-white px-6 space-y-5 max-w-md">
-              <div className="relative w-48 h-32 mx-auto rounded-2xl overflow-hidden bg-white/10">
-                <PresentationPreview item={item} mode="full" />
+            <div className="w-full h-full max-w-5xl mx-auto flex flex-col gap-4">
+              <div className="flex-1 min-h-0 rounded-3xl bg-white/95 backdrop-blur-xl shadow-2xl p-8 sm:p-12 flex flex-col overflow-y-auto">
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#083047] mb-6">
+                  {deck.slides[slideIdx]?.title}
+                </h2>
+                <ul className="space-y-3 text-[15px] sm:text-lg text-black/80">
+                  {(deck.slides[slideIdx]?.bullets ?? []).map((b, i) => (
+                    <li key={i} className="flex gap-3 leading-relaxed">
+                      <span className="text-orange-500 shrink-0">•</span>
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+                {deck.slides[slideIdx]?.notes && (
+                  <p className="mt-8 pt-4 border-t border-black/10 text-[13px] text-black/50 italic leading-relaxed">
+                    {deck.slides[slideIdx]?.notes}
+                  </p>
+                )}
               </div>
-              <p className="text-[14px] text-white/80 leading-relaxed">{t('presentation.previewDownload')}</p>
-              {downloadUrl && (
-                <a
-                  href={downloadUrl}
-                  download={item.file_name}
-                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#083047] text-white text-[14px] font-semibold hover:bg-[#0a4060]"
-                >
-                  <Download size={18} /> {t('common.download')}
-                </a>
+              <div className="flex items-center justify-center gap-1.5 shrink-0">
+                {deck.slides.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSlideIdx(i)}
+                    aria-label={`${t('presentation.slideLabel')} ${i + 1}`}
+                    className={`h-1.5 rounded-full transition-all ${
+                      i === slideIdx ? 'w-6 bg-white' : 'w-1.5 bg-white/35 hover:bg-white/55'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {hasNextSlide && (
+              <button
+                type="button"
+                onClick={() => setSlideIdx((i) => i + 1)}
+                className="absolute right-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+              >
+                <ChevronRight size={28} />
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            {hasPrev && (
+              <button
+                type="button"
+                onClick={() => onIndexChange(index - 1)}
+                className="absolute left-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+              >
+                <ChevronLeft size={28} />
+              </button>
+            )}
+
+            <div className="w-full h-full max-w-6xl flex items-center justify-center">
+              {!fileSrc || !deckChecked ? (
+                <Loader2 className="animate-spin text-white" size={40} />
+              ) : item.kind === 'pdf' ? (
+                <iframe
+                  title={item.file_name}
+                  src={fileSrc}
+                  className="w-full h-full min-h-[50vh] rounded-lg bg-white"
+                />
+              ) : (
+                <div className="text-center text-white px-6 space-y-5 max-w-md">
+                  <div className="relative w-48 h-32 mx-auto rounded-2xl overflow-hidden bg-white/10">
+                    <PresentationPreview item={item} mode="full" />
+                  </div>
+                  <p className="text-[14px] text-white/80 leading-relaxed">{t('presentation.previewDownload')}</p>
+                  {downloadUrl && (
+                    <a
+                      href={downloadUrl}
+                      download={item.file_name}
+                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#083047] text-white text-[14px] font-semibold hover:bg-[#0a4060]"
+                    >
+                      <Download size={18} /> {t('common.download')}
+                    </a>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
 
-        {hasNext && (
-          <button
-            type="button"
-            onClick={() => onIndexChange(index + 1)}
-            className="absolute right-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
-          >
-            <ChevronRight size={28} />
-          </button>
+            {hasNext && (
+              <button
+                type="button"
+                onClick={() => onIndexChange(index + 1)}
+                className="absolute right-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+              >
+                <ChevronRight size={28} />
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -292,6 +391,12 @@ export default function PresentationMaterials() {
       if (!file.size) {
         throw new Error('empty-pptx');
       }
+      await savePreparedContent('presentation', deck.title, deck, {
+        subjectName: globalTopic.subjectName,
+        subjectCode: globalTopic.subjectCode,
+        variantLabel: globalTopic.variantLabel,
+        topicCode: globalTopic.id,
+      });
       await uploadPresentation({
         topic: topicTitle,
         file,
