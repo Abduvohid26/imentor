@@ -380,21 +380,6 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  /** Kirish: hodim — syllabus tili; boshqalar — o'zbek */
-  useEffect(() => {
-    if (!user) return;
-    const role = normalizeUserRole(user);
-    if (role === 'hodim') {
-      const topic = loadPersistedSelectedTopic();
-      if (topic?.instructionLanguage) {
-        setLanguage(topic.instructionLanguage);
-        persistAppLanguage(topic.instructionLanguage);
-        return;
-      }
-    }
-    setLanguage('uz');
-    persistAppLanguage('uz');
-  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;
