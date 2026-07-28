@@ -29,7 +29,21 @@ from core.openai_client import OpenAiClientError, create_embeddings
 
 # Arxiv nomi kafedra nomiga to'g'ridan-to'g'ri (slug orqali) mos kelmasa,
 # shu yerga qo'lda moslashtirish qo'shiladi: {arxiv bazasi -> AcademicDepartment.code}
-DEPARTMENT_ALIASES: dict[str, str] = {}
+# (manba/ katalogidagi haqiqiy kafedra nomlari books/ arxiv nomlaridan imlo/tarkib
+# jihatidan farq qilgani uchun kerak — aks holda yangi, bo'sh dublikat kafedra yaratiladi.)
+DEPARTMENT_ALIASES: dict[str, str] = {
+    "18. Endokrinologiya va gemotalogiya": "endokrinologiyagemotologiya-va-ftiziatriya-sillabus",
+    "19. Epidemiologiya va yuqumli kasalliklar": "epidemiologiya-va-yuqumli-kasalliklar-hamshiralik-ishi",
+    "2. Fakultet va gospital jarroxlik": "fakultet-va-gospital-jarrohlik",
+    "5. Gospital terapiya (laboratoriya)": "gospital-terapiya",
+    "6. Ichki kasalliklar": "ichki-kasalliklar-propedevtikasi-kafedrasi",
+    "7. Mikrobiologiya va virusologiya": "mikrobiologiyavirusologiyaimmunologiya",
+    "21. Nevrologiya va psixiatriya": "nevrologiya-va-psixatriya",
+    "9. Patologik fiziologiya": "patologik-fiziologiya-va-patologik-anatomiya",
+    "10. Pediatriya 1": "pediatriya",
+    "12. Tibbiy kimyo": "tibbiy-va-biologik-kimyo",
+    "16. Xalq tabobati": "xalq-tabobati-va-farmakologiya",
+}
 
 ARCHIVE_PREFIX_RE = re.compile(r"^\d+\.\s*")
 CHUNK_TARGET_CHARS = 1100
