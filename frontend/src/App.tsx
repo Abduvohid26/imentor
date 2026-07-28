@@ -232,6 +232,24 @@ type AppNotification = {
 };
 
 const NOTIFICATIONS_STORAGE_KEY = 'imentor-notifications-v1';
+const ACTIVE_VIEW_STORAGE_KEY = 'imentor-active-view-v1';
+
+function loadPersistedActiveView(): View | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
+    return (raw as View) || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistActiveView(view: View): void {
+  try {
+    localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, view);
+  } catch {
+    /* quota */
+  }
+}
 
 function readStoredNotifications(): AppNotification[] {
   try {
@@ -246,7 +264,14 @@ function readStoredNotifications(): AppNotification[] {
 
 export default function App() {
   const { isMobile: isMobileDevice } = useDeviceProfile();
-  const [activeView, setActiveView] = useState<View>('syllabus');
+  const [activeView, setActiveViewState] = useState<View>(() => loadPersistedActiveView() ?? 'syllabus');
+  const setActiveView = useCallback((next: View | ((current: View) => View)) => {
+    setActiveViewState((current) => {
+      const resolved = typeof next === 'function' ? (next as (current: View) => View)(current) : next;
+      persistActiveView(resolved);
+      return resolved;
+    });
+  }, []);
   const [mountedViews, setMountedViews] = useState<View[]>([]);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [user, setUser] = useState<LocalStaffUser | null>(() => getCurrentLocalUser());

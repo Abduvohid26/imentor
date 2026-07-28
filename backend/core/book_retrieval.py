@@ -68,8 +68,13 @@ def format_book_context_message(chunks: list[dict]) -> str | None:
     ]
     joined = "\n\n---\n\n".join(parts)
     return (
-        "Quyida shu fanga tegishli darslik parchalari berilgan. Javobingizni shu manbalarga "
-        "tayangan holda tayyorlang va foydalangan manbangizni ko'rsating: "
+        "Quyida shu fanga tegishli RASMIY DARSLIK parchalari berilgan. "
+        "MAJBURIY QOIDA — manba: javobingizni FAQAT shu quyidagi parchalardagi ma'lumotlarga "
+        "asoslab tuzing. O'zingizning umumiy (tashqi, darslikdan tashqari) bilimingizdan "
+        "fakt/raqam/tafsilot QO'SHMANG — faqat shu matnlarda bor narsani tushuntiring, "
+        "qayta tuzing, savol/izoh shakliga soling. Agar berilgan parchalar savol uchun "
+        "yetarli bo'lmasa, faqat ular yetarli darajada qamrab olgan qismini ishlating "
+        "(kengaytirib, o'zingizdan tafsilot qo'shmang). Foydalangan manbangizni ko'rsating: "
         "\"(Manba: {kitob nomi}, {sahifa}-bet)\" formatida.\n\n"
         "MAJBURIY QOIDA — format bo'yicha:\n"
         "- Agar sizdan FAQAT JSON qaytarish so'ralgan bo'lsa: \"Manba: ...\" ni JSON'dan "
@@ -80,8 +85,6 @@ def format_book_context_message(chunks: list[dict]) -> str | None:
         "- Agar erkin matn (JSON emas) so'ralgan bo'lsa: shu parchadan foydalangan gapning oxiriga "
         "\"(Manba: {kitob nomi}, {sahifa}-bet)\" deb qo'shib qo'ying (qavs bilan, gap ichida). "
         "Agar sizga boshqacha joylashtirish ko'rsatmasi berilgan bo'lsa (masalan alohida qator), "
-        "o'sha ko'rsatmaga amal qiling — lekin manba so'zini hech qachon qavssiz, bo'sh holda qoldirmang.\n"
-        "Har ikki holatda ham: agar parchalar savolga umuman aloqador bo'lmasa, o'z bilimingizga "
-        "tayaning va manba ko'rsatmang.\n\n"
+        "o'sha ko'rsatmaga amal qiling — lekin manba so'zini hech qachon qavssiz, bo'sh holda qoldirmang.\n\n"
         f"{joined}"
     )
