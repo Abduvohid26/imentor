@@ -392,19 +392,22 @@ async function generateSingleCaseQuestion(
   const outLang = languageName(language);
   const structure = buildCaseStructurePrompt(topic);
   const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
+  const hasBookContext = Boolean(bookContext);
   const request = (strict: boolean) =>
     openaiJson<{ scenario?: string; answer?: string; references?: MedicalReference[]; focus?: string }>({
       model: OPENAI_CHAT,
       system:
         `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} Return ONLY valid JSON object: ` +
-        `{"scenario":"...","answer":"...","references":[{"title":"...","url":"https://..."}]}. ` +
+        `{"scenario":"...","answer":"...","references":${hasBookContext ? '[]' : '[{"title":"...","url":"https://..."}]'}}. ` +
         `If book excerpts (manba context) were given, cite them inside "answer" text as "(Manba: kitob nomi, sahifa-bet)" — never outside the JSON. ` +
-        `Language: ${outLang}. focus="${focus}". ${jsonReferencesRule(Boolean(bookContext))}`,
+        `Language: ${outLang}. focus="${focus}". ${jsonReferencesRule(hasBookContext)}`,
       user:
         `${structure}${keywordFocus}${avoid}\n\n` +
         `Generate ONE clinical case with focus="${focus}" (${CASE_FOCUS_HINTS[focus]}). ` +
         'Scenario: 2–4 paragraphs with patient details. Answer: 2–4 paragraphs, focus-specific clinical reasoning. ' +
-        'Include 2 references in JSON. End answer with [1][2] style citations. ' +
+        (hasBookContext
+          ? 'Leave "references" as an empty array — cite the book inline in "answer" instead. '
+          : 'Include 2 references in JSON. End answer with [1][2] style citations. ') +
         (strict ? 'Strict valid JSON only.' : ''),
       maxTokens: 3072,
       temperature: strict ? 0.4 : 0.58,
@@ -419,14 +422,12 @@ async function generateSingleCaseQuestion(
     raw = await request(true);
   }
 
-  const refFallbackTopic = bookContext ? undefined : topic;
+  const refs = hasBookContext ? [] : normalizeMedicalReferences(raw.references, topic);
   return {
     scenario: (raw.scenario || '').trim(),
     answer: (raw.answer || '').trim(),
     focus: normalizeCaseFocus(raw.focus, CASE_STUDY_FOCUS_ORDER.indexOf(focus)),
-    ...(normalizeMedicalReferences(raw.references, refFallbackTopic).length
-      ? { references: normalizeMedicalReferences(raw.references, refFallbackTopic) }
-      : {}),
+    ...(refs.length ? { references: refs } : {}),
   };
 }
 
@@ -435,7 +436,6 @@ function normalizeCaseSession(
   data: CaseStudySession,
   hasBookContext = false,
 ): CaseStudySession {
-  const refFallbackTopic = hasBookContext ? undefined : topic;
   const rawQuestions = [...(data.questions || [])].slice(0, 3);
   while (rawQuestions.length < 3) {
     const focus = CASE_STUDY_FOCUS_ORDER[rawQuestions.length];
@@ -457,7 +457,7 @@ function normalizeCaseSession(
         "(4) dalillarga asoslangan davolash rejasi va monitoring;",
         "(5) bemor xavfsizligi hamda keyingi kuzatuv rejasi.",
       ].join(' ');
-      const refs = normalizeMedicalReferences(q.references, refFallbackTopic);
+      const refs = hasBookContext ? [] : normalizeMedicalReferences(q.references, topic);
       const focus = normalizeCaseFocus((q as CaseStudyQuestion).focus, i);
       return {
         scenario: scenario.length >= 120 ? scenario : fallbackScenario,
@@ -466,7 +466,7 @@ function normalizeCaseSession(
         ...(refs.length ? { references: refs } : {}),
       };
     });
-  const sessionRefs = normalizeMedicalReferences(data.references, refFallbackTopic);
+  const sessionRefs = hasBookContext ? [] : normalizeMedicalReferences(data.references, topic);
   const allQRefs = cleanedQuestions.flatMap((q) => q.references || []);
   return {
     topic: (data.topic || topic || '').trim() || topic,
@@ -494,7 +494,6 @@ function normalizeTestSession(
   requestedCount: number,
   hasBookContext = false,
 ): TestSession {
-  const refFallbackTopic = hasBookContext ? undefined : topic;
   const questions = (data.questions || [])
     .slice(0, requestedCount)
     .map((q) => {
@@ -504,7 +503,7 @@ function normalizeTestSession(
         typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0 && q.correctOptionIndex < 5
           ? q.correctOptionIndex
           : 0;
-      const refs = normalizeMedicalReferences(q.references, refFallbackTopic);
+      const refs = hasBookContext ? [] : normalizeMedicalReferences(q.references, topic);
       const optionExplanations = (q.optionExplanations || []).slice(0, 5).map((e) => (e || '').trim());
       while (optionExplanations.length < 5) optionExplanations.push('');
       const hasOptionExplanations = optionExplanations.some((e) => e.length > 0);
@@ -517,7 +516,7 @@ function normalizeTestSession(
         ...(refs.length ? { references: refs } : {}),
       };
     });
-  const sessionRefs = normalizeMedicalReferences(data.references, refFallbackTopic);
+  const sessionRefs = hasBookContext ? [] : normalizeMedicalReferences(data.references, topic);
   const allQRefs = questions.flatMap((q) => q.references || []);
   return {
     ...data,
@@ -802,7 +801,7 @@ export const aiService = {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[{title,authors,year,publisher,url}], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[...]}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Agar sizga darslik parchalari (manba konteksti) berilgan bo'lsa, shu parchalardan foydalangan har bir explanation/optionExplanations gapining oxiriga "(Manba: kitob nomi, sahifa-bet)" qo'shing — buni hech qachon JSON'dan tashqariga chiqarmang, faqat shu matn maydonlari ICHIDA yozing. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
+        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:${bookContext ? '[]' : '[{title,authors,year,publisher,url}]'}, questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:${bookContext ? '[]' : '[...]'}}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Agar sizga darslik parchalari (manba konteksti) berilgan bo'lsa, shu parchalardan foydalangan har bir explanation/optionExplanations gapining oxiriga "(Manba: kitob nomi, sahifa-bet)" qo'shing — buni hech qachon JSON'dan tashqariga chiqarmang, faqat shu matn maydonlari ICHIDA yozing. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
         user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap — oxirida [1][2] iqtiboslar. optionExplanations: har bir variant uchun aniq, o'sha variantga xos 1 gapli sabab, manba asosida bo'lsa oxiriga (Manba: ..., ...-bet) qo'sh. ${strict ? 'Faqat valid JSON.' : ''}`,
         maxTokens: 6144,
         temperature: strict ? 0.42 : 0.68,
