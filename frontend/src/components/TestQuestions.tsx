@@ -699,7 +699,7 @@ export default function TestQuestions() {
           </div>
           {sessionLoading ? (
             <div className="bg-white rounded-3xl p-8 border border-gray-100 text-center">
-              <Loader2 className="animate-spin text-indigo-600 mx-auto mb-3" />
+              <Loader2 className="animate-spin text-blue-600 mx-auto mb-3" />
               <p className="text-gray-600">{t('test.studentLoading')}</p>
             </div>
           ) : error && !studentTest ? (
@@ -722,14 +722,14 @@ export default function TestQuestions() {
                     onChange={(e) => setStudentFirstName(e.target.value)}
                     placeholder={t('test.studentFirstName')}
                     disabled={studentSubmitted || sessionClosed}
-                    className="px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-400"
                   />
                   <input
                     value={studentLastName}
                     onChange={(e) => setStudentLastName(e.target.value)}
                     placeholder={t('test.studentLastName')}
                     disabled={studentSubmitted || sessionClosed}
-                    className="px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 </div>
               </div>
@@ -745,7 +745,7 @@ export default function TestQuestions() {
                           onClick={() => handleStudentAnswer(i, optIdx)}
                           disabled={studentSubmitted || sessionClosed}
                           className={`w-full text-left p-3 rounded-xl border ${
-                            studentAnswers[i] === optIdx ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'
+                            studentAnswers[i] === optIdx ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
                           }`}
                         >
                           {String.fromCharCode(65 + optIdx)}) {opt}
@@ -760,7 +760,7 @@ export default function TestQuestions() {
                 <button
                   onClick={handleStudentSubmit}
                   disabled={studentLoading}
-                  className="w-full h-12 bg-indigo-600 text-white rounded-2xl font-semibold hover:bg-indigo-500 flex items-center justify-center gap-2"
+                  className="w-full h-12 bg-blue-600 text-white rounded-2xl font-semibold hover:bg-blue-500 flex items-center justify-center gap-2"
                 >
                   {studentLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                   {t('test.studentSubmit')}
@@ -833,7 +833,7 @@ export default function TestQuestions() {
                           type="button"
                           onClick={() => setViewLang(l)}
                           className={`px-3 py-1.5 text-xs font-semibold uppercase ${
-                            viewLang === l ? 'bg-[#083047] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                            viewLang === l ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
                           }`}
                         >
                           {l}
@@ -875,7 +875,7 @@ export default function TestQuestions() {
               {joinUrl && !sessionClosed && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
                   <div className="lg:col-span-1 flex justify-center">
-                    <div className="bg-white border-4 border-indigo-200 rounded-2xl p-4 shadow-md">
+                    <div className="bg-white border-4 border-blue-200 rounded-2xl p-4 shadow-md">
                       {joinQrDataUrl ? (
                         <img
                           src={joinQrDataUrl}
@@ -903,7 +903,7 @@ export default function TestQuestions() {
                         onClick={async () => {
                           await navigator.clipboard.writeText(joinUrl);
                         }}
-                        className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold flex items-center gap-2"
+                        className="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold flex items-center gap-2"
                       >
                         <Copy size={16} /> {t('common.link')}
                       </button>
@@ -913,7 +913,7 @@ export default function TestQuestions() {
                         type="button"
                         onClick={() => void handleViewResults()}
                         disabled={finalizing}
-                        className={`px-4 py-2 rounded-xl font-semibold ${!showAnalysis ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                        className={`px-4 py-2 rounded-xl font-semibold ${!showAnalysis ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
                       >
                         {finalizing ? <Loader2 size={16} className="inline mr-1 animate-spin" /> : <Users size={16} className="inline mr-1" />}
                         {t('test.viewResults')}
@@ -1001,7 +1001,7 @@ export default function TestQuestions() {
                 {displayedTest.questions.map((q, i) => (
                   <div key={i} className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100">
                     <div className="flex items-start gap-4 mb-6">
-                      <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">
                         {i + 1}
                       </div>
                       <p className="text-lg text-gray-800 font-bold leading-relaxed">{q.question}</p>
@@ -1057,7 +1057,7 @@ export default function TestQuestions() {
                   type="button"
                   onClick={() => void handleGenerate()}
                   disabled={loading}
-                  className="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-500 transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
                   {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                   {t('test.createNewAfterClose')}
@@ -1067,7 +1067,7 @@ export default function TestQuestions() {
                   type="button"
                   onClick={() => void handleGenerate()}
                   disabled={loading}
-                  className="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-500 transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
                   {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                   {t('test.createAnother')}

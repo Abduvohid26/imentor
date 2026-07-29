@@ -152,7 +152,7 @@ export default function ContentTopicToolbar({
                       onClick={() => onSelectVersion(v.id)}
                       className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
                         active
-                          ? 'bg-[#083047] text-white border-[#083047]'
+                          ? 'bg-blue-600 text-white border-blue-600'
                           : 'bg-white/70 text-black/70 border-black/10 hover:border-black/20'
                       }`}
                     >

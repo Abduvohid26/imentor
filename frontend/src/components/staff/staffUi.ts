@@ -10,7 +10,7 @@ export const staffCardLg =
   'ios-glass rounded-[1.5rem] border border-white/70 shadow-sm';
 
 export const staffBtnPrimary =
-  'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#083047] text-white text-[14px] font-semibold hover:bg-[#0a4060] disabled:opacity-50 transition-colors';
+  'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-[14px] font-semibold hover:bg-blue-500 shadow-sm shadow-blue-600/20 disabled:opacity-50 transition-colors';
 
 export const staffBtnSecondary =
   'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-black/10 bg-white/80 text-[#083047] text-[14px] font-semibold hover:bg-white disabled:opacity-50 transition-colors';
