@@ -266,7 +266,7 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
                     <a
                       href={downloadUrl}
                       download={item.file_name}
-                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#083047] text-white text-[14px] font-semibold hover:bg-[#0a4060]"
+                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-600 text-white text-[14px] font-semibold hover:bg-blue-500"
                     >
                       <Download size={18} /> {t('common.download')}
                     </a>

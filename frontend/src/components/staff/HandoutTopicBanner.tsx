@@ -63,7 +63,7 @@ export default function HandoutTopicBanner() {
       <button
         type="button"
         onClick={openHandouts}
-        className="shrink-0 px-4 py-2 rounded-xl bg-[#083047] text-white text-[13px] font-semibold hover:bg-[#0a4060] shadow-sm"
+        className="shrink-0 px-4 py-2 rounded-xl bg-blue-600 text-white text-[13px] font-semibold hover:bg-blue-500 shadow-sm"
       >
         {items.length > 0 ? t('banner.view') : t('banner.openHandouts')}
       </button>
