@@ -83,26 +83,19 @@ def main() -> None:
         )
 
     subject_code = rows[0]['subject_code']
-    print(f"\n=== 4. Fan tafsiloti: {subject_code} ===")
-    detail = request_json(f'/v1/external/catalog/subjects/{urllib.parse.quote(subject_code, safe="")}/')
-    first_variant = (detail.get('variants') or [{}])[0]
-    variant_label = first_variant.get('label') or 'PI'
-    topics = first_variant.get('topics') or []
-    topic_code = (topics[0].get('id') if topics else 'm1').lower()
-    print(f"  Yo'nalish: {variant_label}, birinchi mavzu: {topic_code}")
+    print(f"\n=== 4. Fan tanlandi: {subject_code} ===")
+    print("  (Yo'nalish/mavzu shart emas — faqat fan bilan testlar olinadi)")
 
     print('\n=== 5. Testlar statistikasi ===')
     test_stats = request_json('/v1/external/tests/stats/')
     print(f"  Jami test: {test_stats.get('totals', {}).get('test_count', 0)}")
 
-    print('\n=== 6. Testlar ro\'yxati (fan + yo\'nalish + mavzu bo\'yicha) ===')
+    print("\n=== 6. Testlar ro'yxati (faqat fan — ichidan random) ===")
     tests = request_json(
         '/v1/external/tests/',
         params={
             'subject_code': subject_code,
-            'variant_label': variant_label,
-            'topic_code': topic_code,
-            'page_size': 3,
+            'page_size': 10,
         },
     )
     test_rows = tests.get('results', [])
@@ -110,8 +103,16 @@ def main() -> None:
         print('  Hali e\'lon qilingan test yo\'q (1 soat kutish yoki hodim test yaratishi kerak)')
         return
 
-    test_id = test_rows[0]['id']
-    print(f"  Topildi: test id={test_id}, savollar={test_rows[0].get('question_count')}")
+    import random
+
+    pick = random.choice(test_rows)
+    test_id = pick['id']
+    print(
+        f"  Random tanlandi: test id={test_id}, "
+        f"variant={pick.get('variant_label') or '—'}, "
+        f"topic={pick.get('topic_code') or '—'}, "
+        f"savollar={pick.get('question_count')}"
+    )
 
     print(f'\n=== 7. Test savollari (id={test_id}, limit=10) ===')
     payload = request_json(f'/v1/external/tests/{test_id}/', params={'question_limit': 10})

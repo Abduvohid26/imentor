@@ -231,7 +231,16 @@ def filter_catalog_queryset(qs, params) -> object:
 
     subject_code = (params.get('subject_code') or '').strip()
     if subject_code:
-        qs = qs.filter(Q(subject_code=subject_code) | Q(syllabus__subject_code=subject_code))
+        # Aniq fan kodi + syllabus.subject_code.
+        # Legacy: ba'zi testlar faqat kafedra kodi (dept) bilan saqlangan —
+        # katalog fan kodi dept__fan bo'lsa, dept bo'yicha ham topiladi.
+        subject_q = Q(subject_code=subject_code) | Q(syllabus__subject_code=subject_code)
+        if '__' in subject_code:
+            dept = subject_code.split('__', 1)[0].strip()
+            if dept:
+                subject_q |= Q(subject_code=dept)
+                subject_q |= Q(syllabus__department__code=dept)
+        qs = qs.filter(subject_q)
 
     department_code = (params.get('department_code') or '').strip()
     if department_code:

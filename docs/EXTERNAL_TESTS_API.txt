@@ -238,9 +238,9 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   E'lon qilingan testlar ro'yxati (savolsiz — faqat meta).
 
   Query:
-    subject_code=fiziologiya__anatomiya
-    variant_label=PI
-    topic_code=m1
+    subject_code=fiziologiya__anatomiya   — asosiy filter (YETARLI; yo'nalish/mavzu shart emas)
+    variant_label=PI                      — ixtiyoriy
+    topic_code=m1                         — ixtiyoriy
     syllabus_id=45
     q=yurak
     author=Ali
@@ -249,6 +249,10 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
     page_size=50          (max 200)
     min_questions=10      (10–30)
     max_questions=30      (10–30)
+
+  Eslatma: subject_code katalog formati (dept__fan) bo'lsa, legacy testlar
+  (faqat kafedra kodi bilan saqlanganlar) ham qaytariladi — hamkor faqat
+  kafedra+fan tanlab, ichidan random test olishi mumkin.
 
   Javob — har bir element:
   {
@@ -368,16 +372,21 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
      GET /v1/external/catalog/departments/
      → kafedra name + code ro'yxati
 
-  4. Fan, yo'nalish, mavzu — bitta so'rovda
+  4. Fanlar (yo'nalish/mavzu — ixtiyoriy)
      GET /v1/external/catalog/departments/fiziologiya/
-     → shu kafedradagi barcha fanlar + har biri uchun variant_label (PI) va
-       topic_code (m1) — subjects/<subject_code>/ ga alohida murojaat kerak emas
+     → shu kafedradagi barcha fanlar (+ ixtiyoriy variants/topics)
+     Hamkor uchun MINIMAL oqim: kafedra → fan → testlar.
+     Yo'nalish (variant_label) va mavzu (topic_code) SHART EMAS —
+     faqat subject_code bilan ham testlar topiladi (ichidan random).
 
   5. Test bormi?
      GET /v1/external/tests/stats/
      → by_subject da department_name + subject_name
 
-  6. Test id topish
+  6. Test id topish (tavsiya: faqat fan)
+     GET /v1/external/tests/?subject_code=fiziologiya__anatomiya
+     → shu fan (va legacy bo'lsa kafedra) dagi e'lon qilingan testlar
+     Ixtiyoriy toraytirish:
      GET /v1/external/tests/?subject_code=...&variant_label=PI&topic_code=m1
 
   7. Savollarni import
@@ -415,7 +424,11 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   curl -s -H "X-Api-Key: YOUR_KEY" \
     "https://imentor.devflix.uz/api/v1/external/tests/stats/"
 
-  # Testlar (fan + yo'nalish + mavzu)
+  # Testlar — faqat fan (yo'nalish/mavzu shart emas; ichidan random tanlash mumkin)
+  curl -s -H "X-Api-Key: YOUR_KEY" \
+    "https://imentor.devflix.uz/api/v1/external/tests/?subject_code=fiziologiya__anatomiya"
+
+  # Testlar (ixtiyoriy: fan + yo'nalish + mavzu)
   curl -s -H "X-Api-Key: YOUR_KEY" \
     "https://imentor.devflix.uz/api/v1/external/tests/?subject_code=fiziologiya__anatomiya&variant_label=PI&topic_code=m1"
 
