@@ -592,9 +592,10 @@ async function attachTestTranslations(session: TestSession, primaryLang: AppLang
 }
 
 const PRESENTATION_MIN_SLIDES = 10;
-const PRESENTATION_MIN_BULLETS = 6;
-/** Qisqa "bir qator fakt" emas — har bullet kamida shuncha belgi */
-const PRESENTATION_MIN_BULLET_CHARS = 55;
+const PRESENTATION_MIN_BULLETS = 7;
+/** Kontent-slayd: qisqa 1–2 gap EMAS — har bullet to'liq matn bloki */
+const PRESENTATION_MIN_BULLET_CHARS = 110;
+const PRESENTATION_MAX_BULLETS = 10;
 
 function fallbackPresentationSlides(fallbackTitle: string): PresentationDeck['slides'] {
   return [
@@ -729,30 +730,41 @@ function normalizePresentationDeck(
   const slides = (Array.isArray(raw?.slides) ? raw!.slides! : [])
     .map((s, i) => {
       const st = String(s?.title || `Slayd ${i + 1}`).trim();
+      const isIntro = i === 0 || /^kirish|reja|outline|introduction/i.test(st);
+      const minLen = isIntro ? 25 : 40;
       const bullets = (Array.isArray(s?.bullets) ? s.bullets : [])
         .map((b) => String(b || '').trim())
-        .filter((b) => b.length >= 20)
-        .slice(0, 8);
+        .filter((b) => b.length >= minLen)
+        .slice(0, PRESENTATION_MAX_BULLETS);
       let notes = String(s?.notes || '').trim();
       if (!st || bullets.length < 3) return null;
-      // Notes ichidagi qo'shimcha jumlalarni slaydga ko'tarish (qisqa faktlarni boyitish)
-      if (bullets.length < PRESENTATION_MIN_BULLETS && notes) {
+
+      // Notes dagi to'liq gaplarni slayd matniga qo'shish (sahifa bo'sh qolmasin)
+      if (notes) {
         for (const part of notes.split(/(?<=[.!?])\s+/)) {
+          if (bullets.length >= PRESENTATION_MAX_BULLETS) break;
           const p = part.trim();
-          if (p.length < 30) continue;
+          if (p.length < (isIntro ? 25 : 50)) continue;
           if (/^\(?manba:/i.test(p)) continue;
-          if (bullets.some((b) => b.includes(p.slice(0, 28)))) continue;
-          bullets.push(p.slice(0, 220));
-          if (bullets.length >= PRESENTATION_MIN_BULLETS) break;
+          if (bullets.some((b) => b.includes(p.slice(0, 36)) || p.includes(b.slice(0, 36)))) continue;
+          bullets.push(p.slice(0, 420));
         }
       }
-      // Manba notes oxirida saqlansin
-      const manba = notes.match(/\(Manba:\s*[^)]+\)/i)?.[0] || notes.match(/Manba:\s*[^\n.]+/i)?.[0];
-      if (manba && !notes.includes(manba)) notes = `${notes} ${manba}`.trim();
+
+      const manba =
+        notes.match(/\(Manba:\s*[^)]+\)/i)?.[0] ||
+        notes.match(/Manba:\s*[^\n.]+/i)?.[0] ||
+        '';
+      const notesKeep = manba
+        ? manba.startsWith('(')
+          ? manba
+          : `(${manba})`
+        : undefined;
+
       return {
         title: st.slice(0, 120),
-        bullets: bullets.slice(0, 8),
-        notes: notes || undefined,
+        bullets: bullets.slice(0, PRESENTATION_MAX_BULLETS),
+        notes: notesKeep,
       };
     })
     .filter((s): s is NonNullable<typeof s> => Boolean(s));
@@ -771,14 +783,15 @@ function normalizePresentationDeck(
     padded.push({
       title: `Qo'shimcha slayd ${padded.length + 1}`,
       bullets: [
-        `${fallbackTitle}: bu bo'limda mavzuning qo'shimcha klinik va nazariy jihatlari batafsil ochiladi.`,
-        'Asosiy tushunchalar mustahkamlanadi: ta\'rif, tasnif va amaliy misol ketma-ketligi beriladi.',
-        'Klinik / amaliy misol orqali talaba qaror qabul qilish bosqichlarini ko\'rib chiqadi.',
-        'Muhim eslatma: xavf belgilari va qachon shoshilinch yo\'naltirish kerakligi ta\'kidlanadi.',
-        'Keyingi qadam: xulosa va savol-javobga o\'tishdan oldin asosiy nuqtalar takrorlanadi.',
-        'Manba bo\'lsa, tegishli darslik sahifasini qayta ko\'rib chiqing.',
+        `${fallbackTitle} bo'yicha bu bo'limda nazariy asos, klinik mezonlar va amaliy qadamlar batafsil bayon etiladi; qisqa tezislar bilan cheklanmaydi.`,
+        'Avval ta\'rif va tasnif ochiladi: asosiy atamalar, farqlovchi belgilar, normal va patologik holatlar qiyoslanadi, talaba uchun aniq mezonlar beriladi.',
+        'Keyin etiologiya va mexanizm: sabab omillari, bosqichma-bosqich patogenez, kompensatsiya va asorat yo\'llari klinik misollar bilan bog\'lanadi.',
+        'Diagnostika ketma-ketligi: anamnez, fizikal topilmalar, laboratoriya va instrumental usullar, tasdiqlash mezonlari va chalkashtiriladigan holatlar sanab o\'tiladi.',
+        'Davolash va kuzatuv: birinchi qadam, asosiy terapiya tamoyillari, monitoring belgilari, bemorga tushuntiriladigan xavf signallari va profilaktika tavsiyalari yoziladi.',
+        'Amaliy xulosa: shikoyat → topilma → qaror → kuzatuv zanjiri qisqa algoritm sifatida beriladi; keyingi slaydda chuqurroq ochiladigan nuqtalar ko\'rsatiladi.',
+        'Muhim eslatma: doza, muddat va qarshi ko\'rsatmalar bo\'yicha aniq raqamlar mavjud bo\'lsa, ular kitob manbasidan olinadi va matnda ochiq ko\'rsatiladi.',
       ],
-      notes: 'Bu slaydni mavzu kontekstida batafsil oching.',
+      notes: undefined,
     });
   }
   return { title, slides: padded.slice(0, 28) };
@@ -806,7 +819,7 @@ async function requestPresentationDeckFromAi(params: {
   const enhanceBlock =
     params.mode === 'enhance'
       ? `O'qituvchi allaqachon taqdimot yuklagan ("${params.sourceFileName || 'fayl'}"). ` +
-        `Mavjud material asosida dars uchun yanada boyitilgan, tuzilgan taqdimot yarating. ` +
+        `Mavjud materialni SAQLAB, har slaydni TO'LIQ MATN bilan boyiting (qisqartirmang). ` +
         (params.sourceText?.trim()
           ? `Yuklangan fayldan ajratilgan matn:\n${params.sourceText.slice(0, 12000)}\n`
           : '')
@@ -815,18 +828,22 @@ async function requestPresentationDeckFromAi(params: {
   const userPrompt =
     `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
     `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}\n\n` +
-    'STRUKTURA (majburiy):\n' +
-    '1) BIRINCHI slayd "Kirish" — faqat dars REJASI/temalar ro\'yxati (keyingi slaydlarning sarlavhalari). ' +
-    'Har bullet = bitta tema nomi + 1 qisqa izoh (nima o\'rganiladi).\n' +
-    '2) KEYINGI slaydlar — Kirishdagi HAR BIR tema bo\'yicha ALOHIDA slayd. ' +
-    'Bu yerda qisqa bir qator fakt YAROQSIZ. Har bullet = 2-3 to\'liq gap (ta\'rif, mexanizm, misol, klinik ahamiyat). ' +
-    `Har kontent-slaydda ${PRESENTATION_MIN_BULLETS}-8 ta BATAFSIL bullet (har biri kamida ${PRESENTATION_MIN_BULLET_CHARS} belgi).\n` +
-    '3) Oxirgi slayd "Xulosa" — asosiy xulosalar + (kitob bo\'lsa) Manbalar.\n' +
-    '"notes" — bullet\'larni TAKRORLAMA; o\'qituvchi uchun qo\'shimcha izoh (3-5 yangi gap) + manba.';
+    'MAJBURIY USLUB — kafedra ma\'ruza PPTX (matnga to\'la sahifalar):\n' +
+    '1) 1-slayd "Kirish": dars REJASI (temalar ro\'yxati). Bu yerda qisqa bo\'lishi mumkin.\n' +
+    '2) Keyingi HAR slayd = bitta tema, lekin SAHIFA MATNGA TO\'LA bo\'lishi shart. ' +
+    `Har kontent-slaydda ${PRESENTATION_MIN_BULLETS}-${PRESENTATION_MAX_BULLETS} ta bullet; ` +
+    `HAR bullet kamida ${PRESENTATION_MIN_BULLET_CHARS} belgi (2–4 to\'liq gap). ` +
+    'Qisqa "X muhim", "Y keng tarqalgan" tipidagi 1 qatorlik fakt — TAQIQLANGAN.\n' +
+    '3) Kontentga majburiy: ta\'rif, mezonlar, bosqichlar/tartib, klinik tafsilot, ' +
+    'kerak bo\'lsa doza/muddat/forma/qarshi ko\'rsatma, amaliy xulosa.\n' +
+    '4) "notes" maydoniga YANA 4–6 to\'liq gap qo\'shing (bullet\'larni takrorlamang) — ' +
+    'ular ham slaydga chiqadi. Oxirida manba: (Manba: kitob, sahifa).\n' +
+    '5) Oxirgi slayd "Xulosa" — ham to\'liq matn + manbalar.\n' +
+    'Maqsad: talaba slayddan darsni o\'qib tushunadigan darajada TO\'LIQ matn.';
 
   const attempts: Array<{ maxTokens: number; temperature: number }> = [
-    { maxTokens: 14000, temperature: 0.4 },
-    { maxTokens: 12000, temperature: 0.3 },
+    { maxTokens: 16000, temperature: 0.35 },
+    { maxTokens: 14000, temperature: 0.28 },
   ];
 
   for (const attempt of attempts) {
@@ -837,14 +854,14 @@ async function requestPresentationDeckFromAi(params: {
           `${SYS_MEDICAL} Return ONLY valid JSON: ` +
           '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
           `KAMIDA ${PRESENTATION_MIN_SLIDES} slayd. ` +
-          'TAQIQLANGAN: bir qatorlik yuzaki faktlar ("X muhim", "Y keng tarqalgan") — bunday bullet\'lar YOZILMASIN. ' +
-          'Har kontent-bullet chuqur: nima, nima uchun, qanday, klinik ahamiyati. ' +
+          'CRITICAL: content slides must be TEXT-DENSE like a printed medical lecture PPT — ' +
+          'fill each slide with long bullets (full sentences/paragraphs), NOT 1-line slogans. ' +
           'Language: ' +
           outLang + '. ' +
           (bookContext
-            ? 'MAJBURIY MANBA: faqat berilgan darslik parchalariga tayaning. Har kontent-slayd notes oxirida ' +
+            ? 'Faqat berilgan darslik parchalariga tayaning; har kontent-slayd notes oxirida ' +
               '"(Manba: kitob nomi, sahifa-bet)". Tashqi DOI/PubMed qo\'shmang.'
-            : 'MAJBURIY: tashqi havola / o\'ylab topilgan manba qo\'shmang.'),
+            : 'Tashqi havola / o\'ylab topilgan manba qo\'shmang.'),
         user: userPrompt,
         maxTokens: attempt.maxTokens,
         temperature: attempt.temperature,
@@ -857,7 +874,6 @@ async function requestPresentationDeckFromAi(params: {
         continue;
       }
       const deck = normalizePresentationDeck(raw, fallbackTitle);
-      // Juda yuzaki slaydlar (o'rtacha bullet qisqa) — qayta urinish
       const contentSlides = deck.slides.slice(1);
       const avgLen =
         contentSlides.reduce(
@@ -865,7 +881,7 @@ async function requestPresentationDeckFromAi(params: {
           0,
         ) / Math.max(contentSlides.length, 1);
       if (avgLen < PRESENTATION_MIN_BULLET_CHARS && attempt === attempts[0]) {
-        console.warn('Presentation bullets too shallow, retrying…', Math.round(avgLen));
+        console.warn('Presentation bullets still too short, retrying…', Math.round(avgLen));
         continue;
       }
       return deck;

@@ -196,16 +196,16 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
                 <h2 className="text-2xl sm:text-3xl font-bold text-[#083047] mb-6">
                   {deck.slides[slideIdx]?.title}
                 </h2>
-                <ul className="space-y-3 text-[15px] sm:text-lg text-black/80">
+                <ul className="space-y-2.5 text-[14px] sm:text-[15px] text-black/85">
                   {(deck.slides[slideIdx]?.bullets ?? []).map((b, i) => (
-                    <li key={i} className="flex gap-3 leading-relaxed">
-                      <span className="text-orange-500 shrink-0">•</span>
+                    <li key={i} className="flex gap-3 leading-snug">
+                      <span className="text-orange-500 shrink-0 mt-0.5">•</span>
                       <span>{b}</span>
                     </li>
                   ))}
                 </ul>
                 {deck.slides[slideIdx]?.notes && (
-                  <p className="mt-8 pt-4 border-t border-black/10 text-[13px] text-black/50 italic leading-relaxed">
+                  <p className="mt-6 pt-3 border-t border-black/10 text-[12px] text-black/45 italic leading-relaxed">
                     {deck.slides[slideIdx]?.notes}
                   </p>
                 )}

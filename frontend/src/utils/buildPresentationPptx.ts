@@ -9,14 +9,12 @@ export type PresentationDeck = {
   slides: PresentationSlide[];
 };
 
-function splitManba(notes: string | undefined): { body: string; manba: string } {
+function extractManba(notes: string | undefined): string {
   const raw = (notes || '').trim();
-  if (!raw) return { body: '', manba: '' };
+  if (!raw) return '';
   const m = raw.match(/\(Manba:\s*[^)]+\)/i) || raw.match(/Manba:\s*[^\n.]+/i);
-  if (!m || m.index == null) return { body: raw, manba: '' };
-  const manba = m[0].replace(/^\(/, '').replace(/\)$/, '').trim();
-  const body = `${raw.slice(0, m.index)}${raw.slice(m.index + m[0].length)}`.replace(/\s+/g, ' ').trim();
-  return { body, manba };
+  if (!m) return '';
+  return m[0].replace(/^\(/, '').replace(/\)$/, '').trim();
 }
 
 export async function buildPresentationPptxFile(deck: PresentationDeck): Promise<File> {
@@ -27,58 +25,45 @@ export async function buildPresentationPptxFile(deck: PresentationDeck): Promise
 
   for (const slide of deck.slides) {
     const s = pptx.addSlide();
+    const bullets = slide.bullets.slice(0, 10);
+    const manba = extractManba(slide.notes);
+    const dense = bullets.some((b) => b.length >= 100) || bullets.length >= 7;
+    const fontSize = dense ? 10 : bullets.length >= 6 ? 11 : 12;
+    const titleSize = dense ? 16 : 18;
+
     s.addText(slide.title, {
-      x: 0.4,
-      y: 0.28,
-      w: 9.2,
-      h: 0.65,
-      fontSize: 18,
+      x: 0.35,
+      y: 0.22,
+      w: 9.3,
+      h: 0.55,
+      fontSize: titleSize,
       bold: true,
       color: '083047',
     });
-
-    const bullets = slide.bullets.slice(0, 8);
-    const { body: notesBody, manba } = splitManba(slide.notes);
-    const longBullets = bullets.some((b) => b.length >= 80);
-    const fontSize = longBullets || bullets.length >= 7 ? 11 : bullets.length >= 5 ? 12 : 13;
 
     if (bullets.length) {
       s.addText(
         bullets.map((b) => ({ text: b, options: { bullet: true, breakLine: true } })),
         {
-          x: 0.45,
-          y: 1.05,
-          w: 9.1,
-          h: notesBody ? 4.2 : 5.2,
+          x: 0.35,
+          y: 0.85,
+          w: 9.3,
+          h: manba ? 5.7 : 6.0,
           fontSize,
           color: '1c1c1e',
           valign: 'top',
-          paraSpaceAfter: 6,
+          paraSpaceAfter: dense ? 4 : 6,
         },
       );
     }
 
-    // Notes — slaydda ko'rinadigan qo'shimcha matn (faqat speaker notes emas)
-    if (notesBody) {
-      s.addText(notesBody.slice(0, 600), {
-        x: 0.45,
-        y: 5.4,
-        w: 9.1,
-        h: 1.1,
-        fontSize: 10,
-        italic: true,
-        color: '455a64',
-        valign: 'top',
-      });
-    }
-
     if (manba) {
       s.addText(manba, {
-        x: 0.45,
-        y: 6.7,
-        w: 9.1,
+        x: 0.35,
+        y: 6.75,
+        w: 9.3,
         h: 0.28,
-        fontSize: 10,
+        fontSize: 9,
         italic: true,
         color: '546e7a',
       });
