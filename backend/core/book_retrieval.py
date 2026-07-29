@@ -10,7 +10,7 @@ from core.models import BookChunk, CourseSyllabus
 from core.openai_client import OpenAiClientError, create_embeddings
 
 
-def retrieve_book_context(subject_code: str, query_text: str, *, top_k: int = 6) -> list[dict]:
+def retrieve_book_context(subject_code: str, query_text: str, *, top_k: int = 10) -> list[dict]:
     """
     subject_code -> CourseSyllabus -> department -> shu kafedraga tegishli BookChunk'lar
     orasidan query_text'ga eng yaqin top_k tasini qaytaradi.

@@ -47,20 +47,21 @@ import { type MedicalReference } from '../utils/medicalReferences';
 // bo'lmasa — hech qanday manba/havola ko'rsatilmaydi, faqat mazmun.
 const NO_EXTERNAL_REFS_JSON_RULE_BOOK =
   'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Tashqi adabiyot/DOI/PubMed ' +
-  'havolalari QO\'SHMANG — "references" maydonini bo\'sh massiv [] qoldiring. Manba faqat matn ichida ' +
-  '(Manba: kitob nomi, sahifa-bet) ko\'rinishida bo\'lsin.';
+  'havolalari QO\'SHMANG — "references" maydonini bo\'sh massiv [] qoldiring. Har bir savol/slayd/bo\'lim ' +
+  'matnida "(Manba: kitob nomi, sahifa-bet)" ko\'rsating.';
 const NO_EXTERNAL_REFS_JSON_RULE_NOBOOK =
   'MAJBURIY: tashqi adabiyot/DOI/PubMed/veb havolalari yoki o\'ylab topilgan manbalar QO\'SHMANG — ' +
   '"references" maydonini bo\'sh massiv [] qoldiring. Hech qanday manba ko\'rsatmasdan, faqat ' +
   'mazmunning o\'ziga tayanib yozing.';
 const NO_EXTERNAL_REFS_TEXT_RULE_BOOK =
-  'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Oxirida ' +
-  '"## Foydalanilgan adabiyotlar" bo\'limini YOZMANG va tashqi (DOI/PubMed) havolalar qo\'shmang — ' +
-  'faqat matn ichida (Manba: kitob nomi, sahifa-bet) ko\'rsating.';
+  'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Tashqi (DOI/PubMed/veb) ' +
+  'havolalar QO\'SHMANG. Har bir asosiy bo\'limda kamida 1 marta "(Manba: kitob nomi, sahifa-bet)" ' +
+  'ko\'rsating. Oxirida qisqa "## Manbalar" bo\'limida FAQAT berilgan darsliklardan foydalanilgan ' +
+  'kitoblar ro\'yxatini yozing (tashqi adabiyot qo\'shmang).';
 const NO_EXTERNAL_REFS_TEXT_RULE_NOBOOK =
-  'MAJBURIY: oxirida "## Foydalanilgan adabiyotlar" bo\'limini YOZMANG, tashqi (DOI/PubMed/veb) ' +
-  'havolalar yoki o\'ylab topilgan manbalar qo\'shmang — hech qanday link/manba ko\'rsatmasdan, ' +
-  'faqat mazmunning o\'ziga tayanib yozing.';
+  'MAJBURIY: oxirida "## Foydalanilgan adabiyotlar" / "## Manbalar" bo\'limini YOZMANG, tashqi ' +
+  '(DOI/PubMed/veb) havolalar yoki o\'ylab topilgan manbalar qo\'shmang — hech qanday link/manba ' +
+  'ko\'rsatmasdan, faqat mazmunning o\'ziga tayanib yozing.';
 
 function jsonReferencesRule(hasBookContext: boolean): string {
   return hasBookContext ? NO_EXTERNAL_REFS_JSON_RULE_BOOK : NO_EXTERNAL_REFS_JSON_RULE_NOBOOK;
@@ -590,6 +591,124 @@ async function attachTestTranslations(session: TestSession, primaryLang: AppLang
   return Object.keys(translations).length ? { ...session, translations } : session;
 }
 
+const PRESENTATION_MIN_SLIDES = 10;
+const PRESENTATION_MIN_BULLETS = 5;
+
+function fallbackPresentationSlides(fallbackTitle: string): PresentationDeck['slides'] {
+  return [
+    {
+      title: fallbackTitle,
+      bullets: [
+        'Mavzuning ahamiyati va dars maqsadi',
+        'Asosiy tushunchalar va ta\'riflar',
+        'Dars rejasi va kutiladigan natijalar',
+        'Klinik / amaliy kontekst',
+        'Keyingi slaydlarda chuqurroq yoritiladi',
+      ],
+      notes: 'Kirish: mavzuni oching, talabalarga dars maqsadini ayting.',
+    },
+    {
+      title: 'Asosiy tushunchalar',
+      bullets: [
+        'Markaziy atamalar va ta\'riflar',
+        'Tasniflash mezonlari',
+        'Normal va patologik holat farqi',
+        'Amaliy misollar',
+        'Muhim eslatmalar',
+      ],
+      notes: 'Asosiy tushunchalarni ta\'rif bilan oching.',
+    },
+    {
+      title: 'Etiologiya',
+      bullets: [
+        'Asosiy sabab omillari',
+        'Xavf guruhlari',
+        'Trigger mexanizmlar',
+        'Oldini olish imkoniyatlari',
+        'Klinik ahamiyati',
+      ],
+      notes: 'Sabablarni tizimli sanab, misollar bilan bog\'lang.',
+    },
+    {
+      title: 'Patogenez / mexanizm',
+      bullets: [
+        'Bosqichma-bosqich mexanizm',
+        'Asosiy zanjirlar va o\'zaro bog\'liqlik',
+        'Kompensatsiya mexanizmlari',
+        'Asoratlar yo\'li',
+        'Amaliy xulosa',
+      ],
+      notes: 'Mexanizmni oddiy sxema bilan tushuntiring.',
+    },
+    {
+      title: 'Klinik ko\'rinish',
+      bullets: [
+        'Asosiy simptomlar',
+        'Belgilar va topilmalar',
+        'Og\'irlik darajalari',
+        'Differensial jihatlar',
+        'Tez yordam / urgentsiya belgilari',
+      ],
+      notes: 'Klinik ko\'rinishni real holatlar bilan bog\'lang.',
+    },
+    {
+      title: 'Diagnostika',
+      bullets: [
+        'Anamnez va fizikal ko\'rik',
+        'Laborator tekshiruvlar',
+        'Instrumental usullar',
+        'Diagnostik mezonlar',
+        'Xatoliklarga yo\'l qo\'ymaslik',
+      ],
+      notes: 'Diagnostika bosqichlarini ketma-ket oching.',
+    },
+    {
+      title: 'Davolash tamoyillari',
+      bullets: [
+        'Konservativ yondashuv',
+        'Medikamentoz / asosiy terapiya',
+        'Jarrohlik yoki invaziv variantlar',
+        'Qo\'llab-quvvatlovchi choralar',
+        'Monitoring va dinamika',
+      ],
+      notes: 'Davolashni bosqichma-bosqich tushuntiring.',
+    },
+    {
+      title: 'Profilaktika va kuzatuv',
+      bullets: [
+        'Birlamchi profilaktika',
+        'Ikkinchi darajali chora-tadbirlar',
+        'Bemorni kuzatish rejasi',
+        'Hayot tarzi tavsiyalari',
+        'Qayta tekshiruv muddatlari',
+      ],
+      notes: 'Profilaktika va kuzatuvni amaliy tavsiyalar bilan bering.',
+    },
+    {
+      title: 'Klinik misol / amaliy vazifa',
+      bullets: [
+        'Qisqa klinik holat',
+        'Muhim savollar',
+        'Kutiladigan topilmalar',
+        'Qaror qabul qilish bosqichlari',
+        'Xulosa va muhokama',
+      ],
+      notes: 'Talabalar bilan qisqa holatni muhokama qiling.',
+    },
+    {
+      title: 'Xulosa',
+      bullets: [
+        'Asosiy xulosalar',
+        'Eslab qolish kerak bo\'lgan 3–5 nuqta',
+        'Amaliy ahamiyat',
+        'Keyingi mavzuga bog\'lanish',
+        'Savol-javob',
+      ],
+      notes: 'Xulosani takrorlab, savollarga joy qoldiring.',
+    },
+  ];
+}
+
 function normalizePresentationDeck(
   raw: Partial<PresentationDeck> | null | undefined,
   fallbackTitle: string,
@@ -600,25 +719,47 @@ function normalizePresentationDeck(
       const st = String(s?.title || `Slayd ${i + 1}`).trim();
       const bullets = (Array.isArray(s?.bullets) ? s.bullets : [])
         .map((b) => String(b || '').trim())
-        .filter((b) => b.length > 4)
+        .filter((b) => b.length > 8)
         .slice(0, 8);
       const notes = String(s?.notes || '').trim();
-      if (!st || bullets.length === 0) return null;
-      return { title: st.slice(0, 120), bullets, notes: notes || undefined };
+      if (!st || bullets.length < 3) return null;
+      while (bullets.length < PRESENTATION_MIN_BULLETS && notes) {
+        const extra = notes.split(/(?<=[.!?])\s+/).find((p) => p.trim().length > 20);
+        if (!extra || bullets.some((b) => b.includes(extra.slice(0, 24)))) break;
+        bullets.push(extra.trim().slice(0, 180));
+      }
+      return {
+        title: st.slice(0, 120),
+        bullets: bullets.slice(0, 8),
+        notes: notes || undefined,
+      };
     })
     .filter((s): s is NonNullable<typeof s> => Boolean(s));
 
-  if (slides.length >= 4) return { title, slides: slides.slice(0, 28) };
+  if (slides.length >= PRESENTATION_MIN_SLIDES) {
+    return { title, slides: slides.slice(0, 28) };
+  }
 
-  return {
-    title,
-    slides: [
-      { title: fallbackTitle, bullets: ['Mavzu kirish', 'Asosiy tushunchalar', 'Klinik ahamiyat'] },
-      { title: 'Etiologiya va patogenez', bullets: ['Sabablar', 'Mexanizm', 'Xavf omillari'] },
-      { title: 'Tashxis', bullets: ['Anamnez', 'Ko\'rik', 'Instrumental tekshiruvlar'] },
-      { title: 'Davolash va profilaktika', bullets: ['Konservativ', 'Operativ', 'Profilaktika'] },
-    ],
-  };
+  const padded = [...slides];
+  for (const filler of fallbackPresentationSlides(fallbackTitle)) {
+    if (padded.length >= PRESENTATION_MIN_SLIDES) break;
+    if (padded.some((s) => s.title.toLowerCase() === filler.title.toLowerCase())) continue;
+    padded.push(filler);
+  }
+  while (padded.length < PRESENTATION_MIN_SLIDES) {
+    padded.push({
+      title: `Qo'shimcha slayd ${padded.length + 1}`,
+      bullets: [
+        `${fallbackTitle}: qo'shimcha tafsilot`,
+        'Asosiy tushunchalarni mustahkamlash',
+        'Klinik / amaliy misol',
+        'Muhim eslatma',
+        'Keyingi qadam',
+      ],
+      notes: 'Bu slaydni mavzu kontekstida batafsil oching.',
+    });
+  }
+  return { title, slides: padded.slice(0, 28) };
 }
 
 async function requestPresentationDeckFromAi(params: {
@@ -654,8 +795,8 @@ async function requestPresentationDeckFromAi(params: {
     `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}`;
 
   const attempts: Array<{ maxTokens: number; temperature: number }> = [
-    { maxTokens: 12000, temperature: 0.55 },
-    { maxTokens: 8000, temperature: 0.4 },
+    { maxTokens: 16000, temperature: 0.5 },
+    { maxTokens: 12000, temperature: 0.4 },
   ];
 
   for (const attempt of attempts) {
@@ -665,26 +806,31 @@ async function requestPresentationDeckFromAi(params: {
         system:
           `${SYS_MEDICAL} Return ONLY valid JSON: ` +
           '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
-          'Dars uchun TO\'LIQ va BATAFSIL taqdimot kerak — kamida 16-22 ta slayd (kirish, har bir asosiy ' +
-          'kichik mavzu/tasnif/mexanizm uchun alohida slayd, klinik ahamiyati, xulosa). Har bir slaydda 5-8 ta ' +
-          'aniq va informativ bullet (juda qisqa/umumiy emas — har biri to\'liq fikr). Har bir slaydning ' +
-          '"notes" maydoni kamida 2-3 gap — o\'qituvchi shu slaydni tushuntirishda foydalanadigan qo\'shimcha ' +
-          'tafsilot bo\'lishi kerak, nafaqat bullet\'larni takrorlash. Language: ' +
+          `Dars uchun TO'LIQ taqdimot: KAMIDA ${PRESENTATION_MIN_SLIDES} ta slayd (tavsiya 12-18; ` +
+          'kirish, asosiy bo\'limlar, klinik/amaliy, diagnostika, davolash, xulosa). ' +
+          `Har bir slaydda KAMIDA ${PRESENTATION_MIN_BULLETS}-8 ta TO'LIQ informativ bullet ` +
+          '(har biri kamida 12-20 so\'z — qisqa "Sabablar" kabi yorliq emas, to\'liq fikr). ' +
+          'Har bir slayd "notes" maydonida kamida 3-5 gap — o\'qituvchi gapirish uchun batafsil izoh. ' +
+          'Language: ' +
           outLang + '. ' +
           (bookContext
-            ? 'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Berilgan darslik ' +
-              'parchalaridagi barcha tegishli tafsilotlardan to\'liq foydalaning — qisqartirmasdan, kengaytirib ' +
-              'tushuntiring. Faqat shu darslik parchalaridagi ma\'lumotlarga asoslaning, tashqi/umumiy ' +
-              'bilimingizdan fakt qo\'shmang. Har bir slaydning "notes" maydoni oxiriga foydalangan manbani ' +
-              '"(Manba: kitob nomi, sahifa-bet)" formatida qo\'shing.'
+            ? 'MAJBURIY MANBA: rasmiy darslik parchalaridan foydalaning. Har bir slaydda oxirgi bullet ' +
+              'YOKI notes oxiri "(Manba: kitob nomi, sahifa-bet)" bo\'lsin. Oxirgi slaydlardan birida ' +
+              '"Manbalar" deb faqat shu darsliklarni sanab o\'ting. Tashqi DOI/PubMed/veb havola qo\'shmang.'
             : 'MAJBURIY: tashqi havola, DOI, PubMed yoki o\'ylab topilgan manba ko\'rsatmang — bullets/notes ' +
               'ichida hech qanday link yoki manba nomi yozmang.'),
-        user: userPrompt,
+        user: userPrompt +
+          `\nTalab: kamida ${PRESENTATION_MIN_SLIDES} ta to'liq slayd, har birida ${PRESENTATION_MIN_BULLETS}+ batafsil bullet.`,
         maxTokens: attempt.maxTokens,
         temperature: attempt.temperature,
         parse: (t) => parseJSONSafe<Partial<PresentationDeck>>(t),
         bookContext,
       });
+      const rawCount = Array.isArray(raw?.slides) ? raw.slides.length : 0;
+      if (rawCount < PRESENTATION_MIN_SLIDES) {
+        console.warn('Presentation AI returned too few slides, retrying…', rawCount);
+        continue;
+      }
       return normalizePresentationDeck(raw, fallbackTitle);
     } catch (error) {
       console.warn('Presentation AI attempt failed:', error);
@@ -852,21 +998,26 @@ export const aiService = {
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
       const content = await openaiText({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} Ma'ruza faqat Markdown, universitet darajasida TO'LIQ va BATAFSIL bo'lishi shart — ` +
-          'qisqa konspekt emas, real 45-60 daqiqalik ma\'ruzaga yetadigan hajmda yozing. ' +
-          'Tuzilma: Kirish (mavzuning ahamiyati va rejasi), kamida 5-7 asosiy bo\'lim (har biri kamida 3-5 ' +
-          'to\'liq paragraf — ta\'riflar, mexanizmlar, tasniflar, misollar bilan), Klinik qo\'llash / amaliy ahamiyati ' +
-          '(kamida 2-3 paragraf, real holatlar bilan), Xulosa. Har bir bo\'lim ostida kerak bo\'lsa pastki sarlavhalar ' +
-          '(###) va ro\'yxatlar bilan tuzilmani boyiting — sayoz yoki umumiy gaplar bilan cheklanmang, chuqur ' +
-          'tushuntiring. ' +
+        system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. HAJM: qisqa konspekt EMAS — real 60-90 daqiqalik ` +
+          'universitet ma\'ruzasi (taxminan 3500-6000 so\'z yoki undan ko\'p). ' +
+          'Tuzilma majburiy: # sarlavha; ## Kirish (ahamiyat, maqsad, reja — kamida 3-4 paragraf); ' +
+          'kamida 7-9 ta ## asosiy bo\'lim (har birida kamida 4-6 to\'liq paragraf + kerak bo\'lsa ### ' +
+          'va ro\'yxatlar; ta\'rif, mexanizm, tasnif, misol); ## Klinik / amaliy qo\'llash (kamida 3-4 ' +
+          'paragraf); ## Xulosa (asosiy xulosalar). Sayoz umumiy gaplar bilan cheklanmang — chuqur ' +
+          'tushuntiring, ta\'rif va misollarni ochib yozing. ' +
           (bookContext
-            ? 'Berilgan darslik parchalaridagi BARCHA tegishli tafsilotlardan to\'liq foydalaning — parchalarni ' +
-              'qisqartirib emas, kengaytirib, o\'z so\'zlaringiz bilan chuqur tushuntirib yozing. Matn ichida muhim ' +
-              'faktlar yonida "(Manba: kitob nomi, sahifa-bet)" formatida ko\'rsating — hech qachon "manba" so\'zini ' +
-              'yolg\'iz, qavs/havolasiz qoldirmang.'
-            : 'Matn ichida muhim faktlar yonida [manba](url) havolalari.'
+            ? 'Berilgan darslik parchalaridagi BARCHA tegishli tafsilotlardan to\'liq foydalaning — ' +
+              'qisqartirmasdan, kengaytirib tushuntiring. HAR BIR ## bo\'limda kamida bitta ' +
+              '"(Manba: kitob nomi, sahifa-bet)" ko\'rsating.'
+            : 'Tashqi havola yoki o\'ylab topilgan manba qo\'shmang.'
           ) + ` ${textReferencesRule(Boolean(bookContext))} Til: ${outLang}.`,
-        user: `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. To'liq, chuqur va batafsil ma'ruza matni — qisqa xulosa emas, haqiqiy darsga tayyor materialdek yozing.`,
+        user:
+          `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. ` +
+          'UZUN va BATAFSIL ma\'ruza matni yozing — qisqa xulosa yoki tezislar emas. ' +
+          'Kamida 7 ta asosiy bo\'lim, har biri bir necha to\'liq paragraf. ' +
+          (bookContext
+            ? 'Darslik manbalarini matn ichida (Manba: ...) ko\'rsating va oxirida ## Manbalar qo\'shing.'
+            : ''),
         maxTokens: 16000,
         temperature: 0.4,
         bookContext,
