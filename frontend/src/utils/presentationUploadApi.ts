@@ -105,6 +105,12 @@ export async function fetchPresentationsForTopic(
   return Array.isArray(data) ? (data as TopicPresentationItem[]) : [];
 }
 
+function clipField(value: string, max: number): string {
+  const s = value.trim();
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1).trimEnd() + '…';
+}
+
 export async function uploadPresentation(params: {
   topic: string;
   file: File;
@@ -116,11 +122,14 @@ export async function uploadPresentation(params: {
   const topicNorm = params.context
     ? primaryPresentationTopicNorm(params.context)
     : normPresentationTopic(params.topic);
+  // Backend CharField max_length=255 — uzun syllabus sarlavhalari 400 bermasin
+  const topic = clipField(params.topic, 255);
+  const title = params.title?.trim() ? clipField(params.title, 255) : '';
   const form = new FormData();
-  form.append('topic', params.topic.trim());
-  form.append('topic_norm', topicNorm);
+  form.append('topic', topic);
+  form.append('topic_norm', clipField(topicNorm, 255));
   form.append('file', params.file);
-  if (params.title?.trim()) form.append('title', params.title.trim());
+  if (title) form.append('title', title);
 
   const res = await fetch(`${apiBaseUrl()}/v1/presentations/`, {
     method: 'POST',

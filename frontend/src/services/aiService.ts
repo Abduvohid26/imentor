@@ -794,9 +794,10 @@ async function requestPresentationDeckFromAi(params: {
     `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
     `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}`;
 
+  // Backend max_tokens ≤ 16384; 16000 ishlatiladi. Kam slayd qaytsa — normalize to'ldiradi.
   const attempts: Array<{ maxTokens: number; temperature: number }> = [
-    { maxTokens: 16000, temperature: 0.5 },
-    { maxTokens: 12000, temperature: 0.4 },
+    { maxTokens: 14000, temperature: 0.45 },
+    { maxTokens: 10000, temperature: 0.35 },
   ];
 
   for (const attempt of attempts) {
@@ -827,7 +828,8 @@ async function requestPresentationDeckFromAi(params: {
         bookContext,
       });
       const rawCount = Array.isArray(raw?.slides) ? raw.slides.length : 0;
-      if (rawCount < PRESENTATION_MIN_SLIDES) {
+      // Kamida 6 ta haqiqiy slayd bo'lsa — qolganini normalize to'ldiradi (qayta urinish shart emas)
+      if (rawCount > 0 && rawCount < 6) {
         console.warn('Presentation AI returned too few slides, retrying…', rawCount);
         continue;
       }

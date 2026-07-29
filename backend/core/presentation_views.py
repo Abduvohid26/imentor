@@ -66,20 +66,30 @@ def _validate_uploaded_file(uploaded) -> None:
 
 
 class TopicPresentationUploadSerializer(serializers.Serializer):
-    topic = serializers.CharField(max_length=255)
-    topic_norm = serializers.CharField(max_length=255, required=False, allow_blank=True)
-    title = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    # max_length validate() da qisqartiriladi — uzun syllabus sarlavhalari 400 bermasin
+    topic = serializers.CharField(max_length=4000)
+    topic_norm = serializers.CharField(max_length=4000, required=False, allow_blank=True)
+    title = serializers.CharField(max_length=4000, required=False, allow_blank=True)
     file = serializers.FileField()
 
     def validate(self, attrs):
         topic = (attrs.get("topic") or "").strip()
         if len(topic) < 2:
             raise serializers.ValidationError({"topic": "Mavzu nomi juda qisqa."})
+        if len(topic) > 255:
+            topic = topic[:254].rstrip() + "…"
         topic_norm = (attrs.get("topic_norm") or "").strip() or _norm_topic(topic)
         if not topic_norm:
             raise serializers.ValidationError({"topic_norm": "Mavzu normallashtirilmadi."})
+        if len(topic_norm) > 255:
+            topic_norm = topic_norm[:255]
+        title = (attrs.get("title") or "").strip()
+        if len(title) > 255:
+            title = title[:254].rstrip() + "…"
         attrs["topic"] = topic
         attrs["topic_norm"] = topic_norm
+        if title:
+            attrs["title"] = title
         _validate_uploaded_file(attrs.get("file"))
         return attrs
 

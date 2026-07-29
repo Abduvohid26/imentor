@@ -397,10 +397,12 @@ export default function PresentationMaterials() {
         variantLabel: globalTopic.variantLabel,
         topicCode: globalTopic.id,
       });
+      const shortTopic =
+        [globalTopic.id, globalTopic.title].filter(Boolean).join(' — ').slice(0, 240) || topicTitle;
       await uploadPresentation({
-        topic: topicTitle,
+        topic: shortTopic,
         file,
-        title: deck.title,
+        title: (deck.title || shortTopic).slice(0, 240),
         context: globalTopic,
       });
       await loadItems();
