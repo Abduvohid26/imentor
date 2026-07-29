@@ -592,119 +592,131 @@ async function attachTestTranslations(session: TestSession, primaryLang: AppLang
 }
 
 const PRESENTATION_MIN_SLIDES = 10;
-const PRESENTATION_MIN_BULLETS = 5;
+const PRESENTATION_MIN_BULLETS = 6;
+/** Qisqa "bir qator fakt" emas — har bullet kamida shuncha belgi */
+const PRESENTATION_MIN_BULLET_CHARS = 55;
 
 function fallbackPresentationSlides(fallbackTitle: string): PresentationDeck['slides'] {
   return [
     {
-      title: fallbackTitle,
+      title: 'Kirish',
       bullets: [
-        'Mavzuning ahamiyati va dars maqsadi',
-        'Asosiy tushunchalar va ta\'riflar',
-        'Dars rejasi va kutiladigan natijalar',
-        'Klinik / amaliy kontekst',
-        'Keyingi slaydlarda chuqurroq yoritiladi',
+        `Mavzu: ${fallbackTitle} — dars maqsadi va ahamiyati`,
+        'Asosiy tushunchalar va ta\'riflar — keyingi slaydda batafsil',
+        'Etiologiya va xavf omillari — sabablar tizimi',
+        'Patogenez / mexanizm — jarayon bosqichlari',
+        'Klinik ko\'rinish va diagnostika — belgi va tekshiruvlar',
+        'Davolash, profilaktika va xulosa — amaliy yo\'nalish',
       ],
-      notes: 'Kirish: mavzuni oching, talabalarga dars maqsadini ayting.',
+      notes: 'Kirishda faqat reja. Har tema keyingi slaydlarda chuqur ochiladi.',
     },
     {
       title: 'Asosiy tushunchalar',
       bullets: [
-        'Markaziy atamalar va ta\'riflar',
-        'Tasniflash mezonlari',
-        'Normal va patologik holat farqi',
-        'Amaliy misollar',
-        'Muhim eslatmalar',
+        'Markaziy atamalar aniq ta\'rif bilan ochiladi: nima ekanligi, qayerda uchrashi va klinik amaliyotda nima uchun muhimligi tushuntiriladi.',
+        'Tasniflash mezonlari bo\'yicha guruhlash: asosiy turlari, farqlovchi belgilari va har bir guruhning amaliy ahamiyati ko\'rsatiladi.',
+        'Normal holat bilan patologik o\'zgarish farqi: qaysi belgilar ogohlantiruvchi ekanligi va qachon chuqurroq tekshiruv kerakligi aytiladi.',
+        'Qisqa klinik misol orqali tushunchalar mustahkamlanadi: bemor shikoyati, kutiladigan topilma va birinchi qadam.',
+        'Talaba eslab qolishi kerak bo\'lgan asosiy xulosa: ta\'rif + tasnif + klinik signal — uchlik sifatida takrorlanadi.',
+        'Keyingi slaydga o\'tish: etiologiya sabab omillarini shu tushunchalar bilan bog\'lab ochish.',
       ],
-      notes: 'Asosiy tushunchalarni ta\'rif bilan oching.',
+      notes: 'Har bir ta\'rifni misol bilan bog\'lang; faqat atama sanab o\'tish yetarli emas.',
     },
     {
       title: 'Etiologiya',
       bullets: [
-        'Asosiy sabab omillari',
-        'Xavf guruhlari',
-        'Trigger mexanizmlar',
-        'Oldini olish imkoniyatlari',
-        'Klinik ahamiyati',
+        'Asosiy sabab omillari guruhlarga bo\'linadi: ichki, tashqi va aralash omillar, har biriga qisqa klinik izoh beriladi.',
+        'Xavf guruhlari aniq sanab o\'tiladi: yosh, jins, kasbiy ta\'sir, surunkali kasalliklar va genetik moyillik.',
+        'Trigger mexanizmlar: qaysi sharoitda jarayon faollashishi, qanday belgi bilan namoyon bo\'lishi tushuntiriladi.',
+        'Oldini olish imkoniyatlari: birlamchi profilaktika choralari va bemorga beriladigan amaliy tavsiyalar.',
+        'Klinik ahamiyat: sababni bilish davolash strategiyasini qanday o\'zgartirishi misol bilan ochiladi.',
+        'Xulosa: etiologiya — tasodifiy ro\'yxat emas, diagnostika va terapiyani yo\'naltiruvchi asos.',
       ],
-      notes: 'Sabablarni tizimli sanab, misollar bilan bog\'lang.',
+      notes: 'Sabablarni jadval yoki sxema sifatida sanab, keyin klinik bog\'lanishni so\'rang.',
     },
     {
       title: 'Patogenez / mexanizm',
       bullets: [
-        'Bosqichma-bosqich mexanizm',
-        'Asosiy zanjirlar va o\'zaro bog\'liqlik',
-        'Kompensatsiya mexanizmlari',
-        'Asoratlar yo\'li',
-        'Amaliy xulosa',
+        'Jarayon bosqichma-bosqich: boshlang\'ich omil → zanjir reaksiya → klinik namoyon bo\'lish ketma-ketligi ochiladi.',
+        'Asosiy zanjirlar va o\'zaro bog\'liqlik: qaysi tizimlar ishtirok etadi va ular bir-birini qanday kuchaytiradi.',
+        'Kompensatsiya mexanizmlari: organizm qanday moslashadi, qachon kompensatsiya yetarli bo\'lmaydi.',
+        'Asoratlar yo\'li: kechikkan yoki noto\'g\'ri boshqarilgan holatda qanday og\'irlashishlar kutiladi.',
+        'Amaliy xulosa: mexanizmni tushunish davolash nuqtalarini (qayerga ta\'sir qilish) aniqlaydi.',
+        'Talaba uchun eslatma: mexanizmni 3 bosqichda qayta aytib berish mashqi.',
       ],
-      notes: 'Mexanizmni oddiy sxema bilan tushuntiring.',
+      notes: 'Doskada oddiy 3–4 bosqichli sxema chizing.',
     },
     {
       title: 'Klinik ko\'rinish',
       bullets: [
-        'Asosiy simptomlar',
-        'Belgilar va topilmalar',
-        'Og\'irlik darajalari',
-        'Differensial jihatlar',
-        'Tez yordam / urgentsiya belgilari',
+        'Asosiy simptomlar batafsil: bemor nima shikoyat qiladi, qancha vaqtdan beri, nima kuchaytiradi yoki yengillashtiradi.',
+        'Obyektiv belgilar va topilmalar: ko\'rikda nima ko\'rinadi, qaysi belgi yuqori xavfni bildiradi.',
+        'Og\'irlik darajalari: engil, o\'rtacha, og\'ir — har biri uchun farqlovchi mezonlar.',
+        'Differensial jihatlar: o\'xshash holatlar bilan qanday ajratiladi, qaysi belgi chalkashtirmaslikka yordam beradi.',
+        'Urgentsiya belgilari: qachon zudlik bilan yo\'naltirish yoki shoshilinch choralar kerak.',
+        'Amaliy tip: qisqa "shikoyat → topilma → keyingi qadam" zanjiri.',
       ],
-      notes: 'Klinik ko\'rinishni real holatlar bilan bog\'lang.',
+      notes: 'Real klinik hikoya bilan oching; faqat simptom ro\'yxati bilan cheklanmang.',
     },
     {
       title: 'Diagnostika',
       bullets: [
-        'Anamnez va fizikal ko\'rik',
-        'Laborator tekshiruvlar',
-        'Instrumental usullar',
-        'Diagnostik mezonlar',
-        'Xatoliklarga yo\'l qo\'ymaslik',
+        'Anamnez va fizikal ko\'rik: qaysi savollar majburiy, qaysi topilmalar yo\'nalish beradi.',
+        'Laborator tekshiruvlar: asosiy ko\'rsatkichlar, ularning talqini va yolg\'on musbat/manfiy ehtimoli.',
+        'Instrumental usullar: qachon qaysi usul tanlanadi, nima kutish mumkin.',
+        'Diagnostik mezonlar: tasdiqlash uchun minimal majburiy to\'plam.',
+        'Xatoliklarga yo\'l qo\'ymaslik: kechikkan tashxis va ortiqcha tekshiruvlardan qochish tamoyillari.',
+        'Xulosa: diagnostika ketma-ketligi — arzon/xavfsizdan murakkabgacha.',
       ],
-      notes: 'Diagnostika bosqichlarini ketma-ket oching.',
+      notes: 'Algoritm chizing: 1-qadam, 2-qadam, tasdiqlash.',
     },
     {
       title: 'Davolash tamoyillari',
       bullets: [
-        'Konservativ yondashuv',
-        'Medikamentoz / asosiy terapiya',
-        'Jarrohlik yoki invaziv variantlar',
-        'Qo\'llab-quvvatlovchi choralar',
-        'Monitoring va dinamika',
+        'Konservativ yondashuv: qachon dori-darmonsiz yoki dastlabki choralar yetarli.',
+        'Asosiy terapiya: preparat/usul tanlash mezonlari, dozaga oid umumiy tamoyillar (aniq dozani kitobdan tekshirish).',
+        'Jarrohlik yoki invaziv variantlar: ko\'rsatma va qarshi ko\'rsatmalar qisqa ochiladi.',
+        'Qo\'llab-quvvatlovchi choralar: og\'riq, infektsiya, ovqatlanish, reabilitatsiya.',
+        'Monitoring: qaysi belgi/analiz dinamikasi kuzatiladi, qachon rejim o\'zgartiriladi.',
+        'Xavfsizlik: asorat belgilarini bemorga tushuntirish muhimligi.',
       ],
-      notes: 'Davolashni bosqichma-bosqich tushuntiring.',
+      notes: 'Davolashni maqsad → usul → monitoring sxemasida bering.',
     },
     {
       title: 'Profilaktika va kuzatuv',
       bullets: [
-        'Birlamchi profilaktika',
-        'Ikkinchi darajali chora-tadbirlar',
-        'Bemorni kuzatish rejasi',
-        'Hayot tarzi tavsiyalari',
-        'Qayta tekshiruv muddatlari',
+        'Birlamchi profilaktika: xavf omillarini kamaytirish bo\'yicha aniq tavsiyalar.',
+        'Ikkinchi darajali chora-tadbirlar: skrining, erta aniqlash, yuqori xavf guruhlarini kuzatish.',
+        'Bemorni kuzatish rejasi: qayta tashrif muddatlari va nimalarni qayta baholash.',
+        'Hayot tarzi uchun amaliy maslahatlar: ovqatlanish, faollik, zararli odatlar.',
+        'Oilaviy/ijtimoiy qo\'llab-quvvat: rioya qilishni oshiradigan omillar.',
+        'Xulosa: profilaktika davolashdan kam ahamiyatli emas.',
       ],
-      notes: 'Profilaktika va kuzatuvni amaliy tavsiyalar bilan bering.',
+      notes: 'Talabalarga "bemorga 3 ta aniq tavsiya" mashqi bering.',
     },
     {
       title: 'Klinik misol / amaliy vazifa',
       bullets: [
-        'Qisqa klinik holat',
-        'Muhim savollar',
-        'Kutiladigan topilmalar',
-        'Qaror qabul qilish bosqichlari',
-        'Xulosa va muhokama',
+        'Qisqa klinik holat: yosh, asosiy shikoyat, muhim anamnez elementi beriladi.',
+        'Muhim savollar: talaba qanday qo\'shimcha ma\'lumot so\'rashi kerakligi.',
+        'Kutiladigan topilmalar: ko\'rik va birinchi tekshiruvlarda nima chiqishi mumkin.',
+        'Qaror qabul qilish: differensial → eng ehtimolli tashxis → birinchi chora.',
+        'Xavfni baholash: qachon shoshilinch yo\'naltirish kerakligi.',
+        'Muhokama: guruhda 2–3 daqiqalik javob va o\'qituvchi xulosasi.',
       ],
-      notes: 'Talabalar bilan qisqa holatni muhokama qiling.',
+      notes: 'Holatni ovoz chiqarib o\'qing, keyin savollarni bosqichma-bosqich oching.',
     },
     {
       title: 'Xulosa',
       bullets: [
-        'Asosiy xulosalar',
-        'Eslab qolish kerak bo\'lgan 3–5 nuqta',
-        'Amaliy ahamiyat',
-        'Keyingi mavzuga bog\'lanish',
-        'Savol-javob',
+        'Asosiy xulosalar: tushuncha, sabab, mexanizm, klinik belgi — qisqa zanjir.',
+        'Eslab qolish kerak: erta aniqlash va to\'g\'ri diagnostika ketma-ketligi.',
+        'Amaliy ahamiyat: bemor xavfsizligi va davolashni individual tanlash.',
+        'Keyingi mavzuga bog\'lanish: chuqurroq yo\'nalish yoki amaliy mashg\'ulot.',
+        'Savol-javob: 2–3 ta tekshiruv savoli bilan darsni yakunlash.',
+        'Manbalar: dars davomida ko\'rsatilgan darslik sahifalarini qayta ko\'rib chiqing.',
       ],
-      notes: 'Xulosani takrorlab, savollarga joy qoldiring.',
+      notes: 'Xulosani doskada 5 nuqta qilib yozib qo\'ying.',
     },
   ];
 }
@@ -719,15 +731,24 @@ function normalizePresentationDeck(
       const st = String(s?.title || `Slayd ${i + 1}`).trim();
       const bullets = (Array.isArray(s?.bullets) ? s.bullets : [])
         .map((b) => String(b || '').trim())
-        .filter((b) => b.length > 8)
+        .filter((b) => b.length >= 20)
         .slice(0, 8);
-      const notes = String(s?.notes || '').trim();
+      let notes = String(s?.notes || '').trim();
       if (!st || bullets.length < 3) return null;
-      while (bullets.length < PRESENTATION_MIN_BULLETS && notes) {
-        const extra = notes.split(/(?<=[.!?])\s+/).find((p) => p.trim().length > 20);
-        if (!extra || bullets.some((b) => b.includes(extra.slice(0, 24)))) break;
-        bullets.push(extra.trim().slice(0, 180));
+      // Notes ichidagi qo'shimcha jumlalarni slaydga ko'tarish (qisqa faktlarni boyitish)
+      if (bullets.length < PRESENTATION_MIN_BULLETS && notes) {
+        for (const part of notes.split(/(?<=[.!?])\s+/)) {
+          const p = part.trim();
+          if (p.length < 30) continue;
+          if (/^\(?manba:/i.test(p)) continue;
+          if (bullets.some((b) => b.includes(p.slice(0, 28)))) continue;
+          bullets.push(p.slice(0, 220));
+          if (bullets.length >= PRESENTATION_MIN_BULLETS) break;
+        }
       }
+      // Manba notes oxirida saqlansin
+      const manba = notes.match(/\(Manba:\s*[^)]+\)/i)?.[0] || notes.match(/Manba:\s*[^\n.]+/i)?.[0];
+      if (manba && !notes.includes(manba)) notes = `${notes} ${manba}`.trim();
       return {
         title: st.slice(0, 120),
         bullets: bullets.slice(0, 8),
@@ -740,7 +761,7 @@ function normalizePresentationDeck(
     return { title, slides: slides.slice(0, 28) };
   }
 
-  const padded = [...slides];
+  const padded: PresentationDeck['slides'] = [...slides];
   for (const filler of fallbackPresentationSlides(fallbackTitle)) {
     if (padded.length >= PRESENTATION_MIN_SLIDES) break;
     if (padded.some((s) => s.title.toLowerCase() === filler.title.toLowerCase())) continue;
@@ -750,11 +771,12 @@ function normalizePresentationDeck(
     padded.push({
       title: `Qo'shimcha slayd ${padded.length + 1}`,
       bullets: [
-        `${fallbackTitle}: qo'shimcha tafsilot`,
-        'Asosiy tushunchalarni mustahkamlash',
-        'Klinik / amaliy misol',
-        'Muhim eslatma',
-        'Keyingi qadam',
+        `${fallbackTitle}: bu bo'limda mavzuning qo'shimcha klinik va nazariy jihatlari batafsil ochiladi.`,
+        'Asosiy tushunchalar mustahkamlanadi: ta\'rif, tasnif va amaliy misol ketma-ketligi beriladi.',
+        'Klinik / amaliy misol orqali talaba qaror qabul qilish bosqichlarini ko\'rib chiqadi.',
+        'Muhim eslatma: xavf belgilari va qachon shoshilinch yo\'naltirish kerakligi ta\'kidlanadi.',
+        'Keyingi qadam: xulosa va savol-javobga o\'tishdan oldin asosiy nuqtalar takrorlanadi.',
+        'Manba bo\'lsa, tegishli darslik sahifasini qayta ko\'rib chiqing.',
       ],
       notes: 'Bu slaydni mavzu kontekstida batafsil oching.',
     });
@@ -792,12 +814,19 @@ async function requestPresentationDeckFromAi(params: {
 
   const userPrompt =
     `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
-    `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}`;
+    `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}\n\n` +
+    'STRUKTURA (majburiy):\n' +
+    '1) BIRINCHI slayd "Kirish" — faqat dars REJASI/temalar ro\'yxati (keyingi slaydlarning sarlavhalari). ' +
+    'Har bullet = bitta tema nomi + 1 qisqa izoh (nima o\'rganiladi).\n' +
+    '2) KEYINGI slaydlar — Kirishdagi HAR BIR tema bo\'yicha ALOHIDA slayd. ' +
+    'Bu yerda qisqa bir qator fakt YAROQSIZ. Har bullet = 2-3 to\'liq gap (ta\'rif, mexanizm, misol, klinik ahamiyat). ' +
+    `Har kontent-slaydda ${PRESENTATION_MIN_BULLETS}-8 ta BATAFSIL bullet (har biri kamida ${PRESENTATION_MIN_BULLET_CHARS} belgi).\n` +
+    '3) Oxirgi slayd "Xulosa" — asosiy xulosalar + (kitob bo\'lsa) Manbalar.\n' +
+    '"notes" — bullet\'larni TAKRORLAMA; o\'qituvchi uchun qo\'shimcha izoh (3-5 yangi gap) + manba.';
 
-  // Backend max_tokens ≤ 16384; 16000 ishlatiladi. Kam slayd qaytsa — normalize to'ldiradi.
   const attempts: Array<{ maxTokens: number; temperature: number }> = [
-    { maxTokens: 14000, temperature: 0.45 },
-    { maxTokens: 10000, temperature: 0.35 },
+    { maxTokens: 14000, temperature: 0.4 },
+    { maxTokens: 12000, temperature: 0.3 },
   ];
 
   for (const attempt of attempts) {
@@ -807,33 +836,39 @@ async function requestPresentationDeckFromAi(params: {
         system:
           `${SYS_MEDICAL} Return ONLY valid JSON: ` +
           '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
-          `Dars uchun TO'LIQ taqdimot: KAMIDA ${PRESENTATION_MIN_SLIDES} ta slayd (tavsiya 12-18; ` +
-          'kirish, asosiy bo\'limlar, klinik/amaliy, diagnostika, davolash, xulosa). ' +
-          `Har bir slaydda KAMIDA ${PRESENTATION_MIN_BULLETS}-8 ta TO'LIQ informativ bullet ` +
-          '(har biri kamida 12-20 so\'z — qisqa "Sabablar" kabi yorliq emas, to\'liq fikr). ' +
-          'Har bir slayd "notes" maydonida kamida 3-5 gap — o\'qituvchi gapirish uchun batafsil izoh. ' +
+          `KAMIDA ${PRESENTATION_MIN_SLIDES} slayd. ` +
+          'TAQIQLANGAN: bir qatorlik yuzaki faktlar ("X muhim", "Y keng tarqalgan") — bunday bullet\'lar YOZILMASIN. ' +
+          'Har kontent-bullet chuqur: nima, nima uchun, qanday, klinik ahamiyati. ' +
           'Language: ' +
           outLang + '. ' +
           (bookContext
-            ? 'MAJBURIY MANBA: rasmiy darslik parchalaridan foydalaning. Har bir slaydda oxirgi bullet ' +
-              'YOKI notes oxiri "(Manba: kitob nomi, sahifa-bet)" bo\'lsin. Oxirgi slaydlardan birida ' +
-              '"Manbalar" deb faqat shu darsliklarni sanab o\'ting. Tashqi DOI/PubMed/veb havola qo\'shmang.'
-            : 'MAJBURIY: tashqi havola, DOI, PubMed yoki o\'ylab topilgan manba ko\'rsatmang — bullets/notes ' +
-              'ichida hech qanday link yoki manba nomi yozmang.'),
-        user: userPrompt +
-          `\nTalab: kamida ${PRESENTATION_MIN_SLIDES} ta to'liq slayd, har birida ${PRESENTATION_MIN_BULLETS}+ batafsil bullet.`,
+            ? 'MAJBURIY MANBA: faqat berilgan darslik parchalariga tayaning. Har kontent-slayd notes oxirida ' +
+              '"(Manba: kitob nomi, sahifa-bet)". Tashqi DOI/PubMed qo\'shmang.'
+            : 'MAJBURIY: tashqi havola / o\'ylab topilgan manba qo\'shmang.'),
+        user: userPrompt,
         maxTokens: attempt.maxTokens,
         temperature: attempt.temperature,
         parse: (t) => parseJSONSafe<Partial<PresentationDeck>>(t),
         bookContext,
       });
       const rawCount = Array.isArray(raw?.slides) ? raw.slides.length : 0;
-      // Kamida 6 ta haqiqiy slayd bo'lsa — qolganini normalize to'ldiradi (qayta urinish shart emas)
       if (rawCount > 0 && rawCount < 6) {
         console.warn('Presentation AI returned too few slides, retrying…', rawCount);
         continue;
       }
-      return normalizePresentationDeck(raw, fallbackTitle);
+      const deck = normalizePresentationDeck(raw, fallbackTitle);
+      // Juda yuzaki slaydlar (o'rtacha bullet qisqa) — qayta urinish
+      const contentSlides = deck.slides.slice(1);
+      const avgLen =
+        contentSlides.reduce(
+          (sum, s) => sum + s.bullets.reduce((a, b) => a + b.length, 0) / Math.max(s.bullets.length, 1),
+          0,
+        ) / Math.max(contentSlides.length, 1);
+      if (avgLen < PRESENTATION_MIN_BULLET_CHARS && attempt === attempts[0]) {
+        console.warn('Presentation bullets too shallow, retrying…', Math.round(avgLen));
+        continue;
+      }
+      return deck;
     } catch (error) {
       console.warn('Presentation AI attempt failed:', error);
     }
