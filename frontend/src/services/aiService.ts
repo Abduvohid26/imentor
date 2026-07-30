@@ -41,6 +41,8 @@ import { listPreparedForTopic, loadPreparedById } from '../utils/preparedContent
 import { normalizeCaseFocus } from '../utils/caseFocusLabels';
 import { type MedicalReference } from '../utils/medicalReferences';
 import { stripUnfilledSourceTemplate } from '../utils/sourceTemplate';
+import { httpJson } from '../api/httpClient';
+import { ensureBackendAccessToken, getBackendAccessToken } from '../utils/backendAuth';
 
 // Hech qachon tashqi (DOI/PubMed/veb) havola yoki "Foydalanilgan adabiyotlar" ro'yxati so'ralmaydi —
 // bular ko'pincha AI tomonidan o'ylab topiladi (haqiqiy maqolaga bog'lanmasligi mumkin). Kitob
@@ -505,22 +507,75 @@ function normalizeTestSession(
         .map((e) => stripUnfilledSourceTemplate(e || ''));
       while (optionExplanations.length < 5) optionExplanations.push('');
       const hasOptionExplanations = optionExplanations.some((e) => e.length > 0);
+      // Avval savolda bor manba (per-question), keyin umumiy bookReferences.
+      const existingRefs = Array.isArray(q.references) ? q.references.filter((r) => r && (r.title || r.url)) : [];
+      const refs = existingRefs.length ? existingRefs : bookReferences;
       return {
         question: (q.question || '').trim(),
         options: options.map((o) => (o || '').trim()),
         explanation: stripUnfilledSourceTemplate(q.explanation || ''),
         correctOptionIndex,
         ...(hasOptionExplanations ? { optionExplanations } : {}),
-        // Manba AI'dan EMAS — serverdan (RAG uchun ishlatilgan darslik).
-        ...(bookReferences.length ? { references: bookReferences } : {}),
+        ...(refs.length ? { references: refs } : {}),
       };
     });
+  const sessionRefs =
+    bookReferences.length > 0
+      ? bookReferences
+      : Array.from(
+          new Map(
+            questions
+              .flatMap((q) => q.references || [])
+              .filter((r) => r?.title || r?.url)
+              .map((r) => [`${(r.title || '').toLowerCase()}|${r.pages || ''}|${r.url || ''}`, r]),
+          ).values(),
+        );
   return {
     ...data,
     topic: (data.topic || topic || '').trim() || topic,
     questions,
-    references: bookReferences,
+    references: sessionRefs,
   };
+}
+
+async function attachPerQuestionBookReferences(
+  session: TestSession,
+  subjectCode?: string,
+): Promise<TestSession> {
+  const code = (subjectCode || '').trim();
+  const questions = session.questions || [];
+  if (!code || !questions.length) return session;
+  try {
+    await ensureBackendAccessToken();
+    const token = getBackendAccessToken();
+    if (!token) return session;
+    const data = await httpJson<{ results?: MedicalReference[][] }>(
+      `${(import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL?.trim() || '/api'}/v1/education-ai/book-references/`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subject_code: code,
+          queries: questions.map((q) => q.question || ''),
+          top_k: 3,
+        }),
+      },
+    );
+    const results = Array.isArray(data.results) ? data.results : [];
+    if (!results.length) return session;
+    const nextQuestions = questions.map((q, i) => {
+      const refs = Array.isArray(results[i]) ? results[i] : [];
+      const cleaned = refs.filter((r) => r && (r.title || r.url));
+      return cleaned.length ? { ...q, references: cleaned } : q;
+    });
+    return normalizeTestSession(session.topic || '', { ...session, questions: nextQuestions }, nextQuestions.length);
+  } catch (err) {
+    console.warn('Per-question book references failed, keeping session refs', err);
+    return session;
+  }
 }
 
 const ALL_TEST_LANGUAGES: AppLanguage[] = ['uz', 'ru', 'en'];
@@ -1052,7 +1107,9 @@ export const aiService = {
       }
     })();
 
-    return attachTestTranslations(base, language);
+    return attachPerQuestionBookReferences(base, subjectCode).then((withRefs) =>
+      attachTestTranslations(withRefs, language),
+    );
   },
 
   async generateLectureNotes(

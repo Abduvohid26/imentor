@@ -11,7 +11,7 @@ from .device_pairing_views import (
     DevicePairCreateView,
     DevicePairStatusView,
 )
-from .education_ai_views import EducationAiCompletionView
+from .education_ai_views import EducationAiBookReferencesView, EducationAiCompletionView
 from .ai_job_views import AiJobStatusView
 from .presentation_views import (
     TopicPresentationDetailView,
@@ -199,6 +199,11 @@ urlpatterns = [
     path('v1/device-pair/confirm/', DevicePairConfirmView.as_view(), name='device-pair-confirm'),
     path('v1/device-pair/status/<str:pairing_token>/', DevicePairStatusView.as_view(), name='device-pair-status'),
     path('v1/education-ai/completion/', EducationAiCompletionView.as_view(), name='education-ai-completion'),
+    path(
+        'v1/education-ai/book-references/',
+        EducationAiBookReferencesView.as_view(),
+        name='education-ai-book-references',
+    ),
     path('v1/ai-jobs/<str:job_id>/', AiJobStatusView.as_view(), name='ai-job-status'),
     path('v1/presentations/', TopicPresentationListCreateView.as_view(), name='presentations-list-create'),
     path('v1/presentations/<int:pk>/file/', TopicPresentationFileView.as_view(), name='presentation-file'),

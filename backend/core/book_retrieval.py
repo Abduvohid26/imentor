@@ -205,3 +205,24 @@ def book_references_from_chunks(chunks: list[dict]) -> list[dict]:
     # Eng ko'p ishlatilgan (ko'p sahifali) kitob birinchi bo'lsin.
     out.sort(key=lambda r: -len(str(r.get("pages") or "")))
     return out[:8]
+
+
+def retrieve_references_for_queries(
+    subject_code: str,
+    queries: list[str],
+    *,
+    top_k: int = 3,
+) -> list[list[dict]]:
+    """
+    Har bir so'rov (odatda savol matni) uchun alohida RAG — alohida references.
+    Bir xil umumiy manba ro'yxatini barcha savollarga yopishtirmaslik uchun.
+    """
+    out: list[list[dict]] = []
+    for raw in queries:
+        q = str(raw or "").strip()
+        if not q:
+            out.append([])
+            continue
+        chunks = retrieve_book_context(subject_code, q[:2000], top_k=top_k)
+        out.append(book_references_from_chunks(chunks))
+    return out

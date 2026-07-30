@@ -182,13 +182,51 @@ def apply_sources_to_payload(
 
     Qaytaradi: (yangi_payload, manba_biriktirilgan_savollar_soni)
     """
+    refs = [dict(r) for r in references if isinstance(r, dict) and r.get("title")]
+    per_q = [refs] * len(payload_questions(payload)) if refs else []
+    return apply_per_question_sources_to_payload(payload, per_q, rewrites)
+
+
+def apply_per_question_sources_to_payload(
+    payload: dict,
+    per_question_refs: list[list[dict]],
+    rewrites: dict[int, dict] | None = None,
+) -> tuple[dict, int]:
+    """
+    Har savolga O'Z references ro'yxatini biriktiradi.
+    Session-level `references` = barcha savollardagi unique union.
+    """
     rewrites = rewrites or {}
     new_payload = dict(payload) if isinstance(payload, dict) else {}
-    refs = [dict(r) for r in references if isinstance(r, dict) and r.get("title")]
+    questions = payload_questions(new_payload)
 
-    def fix_questions(questions: list, attach_refs: bool, use_rewrites: bool) -> tuple[list, int]:
+    def _clean_refs(raw: list | None) -> list[dict]:
+        out: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        for r in raw or []:
+            if not isinstance(r, dict):
+                continue
+            title = str(r.get("title") or "").strip()
+            if not title:
+                continue
+            pages = str(r.get("pages") or "").strip()
+            key = (title.lower(), pages)
+            if key in seen:
+                continue
+            seen.add(key)
+            ref = {"title": title[:300]}
+            if pages:
+                ref["pages"] = pages[:200]
+            for field in ("url", "authors", "publisher", "year"):
+                val = str(r.get(field) or "").strip()
+                if val:
+                    ref[field] = val[:300]
+            out.append(ref)
+        return out[:8]
+
+    def fix_questions(qs: list, use_rewrites: bool, attach: bool) -> tuple[list, int]:
         out, touched = [], 0
-        for i, q in enumerate(questions):
+        for i, q in enumerate(qs):
             if not isinstance(q, dict):
                 out.append(q)
                 continue
@@ -209,16 +247,32 @@ def apply_sources_to_payload(
                 row["optionExplanations"] = [
                     strip_unfilled_source(x) for x in row["optionExplanations"]
                 ]
-            if attach_refs and refs:
-                row["references"] = [dict(r) for r in refs]
-                touched += 1
+            if attach:
+                refs_i = _clean_refs(
+                    per_question_refs[i] if i < len(per_question_refs) else None
+                )
+                if refs_i:
+                    row["references"] = refs_i
+                    touched += 1
             out.append(row)
         return out, touched
 
-    fixed, touched = fix_questions(payload_questions(new_payload), True, True)
+    fixed, touched = fix_questions(questions, True, True)
     new_payload["questions"] = fixed
-    if refs:
-        new_payload["references"] = [dict(r) for r in refs]
+
+    union: list[dict] = []
+    seen_u: set[tuple[str, str]] = set()
+    for q in fixed:
+        if not isinstance(q, dict):
+            continue
+        for r in _clean_refs(q.get("references") if isinstance(q.get("references"), list) else []):
+            key = (r["title"].lower(), str(r.get("pages") or ""))
+            if key in seen_u:
+                continue
+            seen_u.add(key)
+            union.append(r)
+    if union:
+        new_payload["references"] = union[:12]
 
     translations = new_payload.get("translations")
     if isinstance(translations, dict):
@@ -229,11 +283,9 @@ def apply_sources_to_payload(
                 continue
             nb = dict(block)
             tq = [q for q in (nb.get("questions") or []) if isinstance(q, dict)]
-            # Tarjima izohlari qayta yozilmaydi (boshqa tilda) — faqat shablon
-            # tozalanadi va manba biriktiriladi.
-            nb["questions"], _ = fix_questions(tq, True, False)
-            if refs:
-                nb["references"] = [dict(r) for r in refs]
+            nb["questions"], _ = fix_questions(tq, False, True)
+            if union:
+                nb["references"] = [dict(r) for r in union[:12]]
             new_tr[lang] = nb
         new_payload["translations"] = new_tr
 

@@ -6,17 +6,20 @@ Ishlatish (avval DOIM dry-run):
     python manage.py backfill_test_sources --limit 1 --apply
     python manage.py backfill_test_sources --apply
 
+    # Bir xil manbani qayta: har savolga o'z RAG manbasi
+    python manage.py backfill_test_sources --ids 24 --refresh --per-question --apply
+
     python manage.py backfill_test_sources --force --apply
 
 Xulq:
-  * DARSLIK manbasi bor testlar har doim chetlab o'tiladi (idempotent).
+  * DARSLIK manbasi bor testlar odatda chetlab o'tiladi (idempotent).
+  * --refresh: mavjud darslik manbasini ham HAR SAVOL uchun qayta RAG qiladi.
+  * --per-question (default): har savol matni bo'yicha alohida retrieval.
+  * --no-per-question: eski usul — bitta umumiy manba barcha savollarga.
   * AI yaratgan TASHQI havolalar (DOI/PubMed) --force bilan darslik manbasiga
-    almashtiriladi. Bunday havolalar model tomonidan o'ylab topilgan bo'lishi
-    mumkin — tekshiriladigan darslik beti afzal.
-  * Darslik topilmagan test CHETLAB O'TILADI — manba soxta biriktirilmaydi va
-    --force bilan ham mavjud manba O'CHIRILMAYDI (manbasiz qolib ketmasin).
+    almashtiriladi.
+  * Darslik topilmagan test CHETLAB O'TILADI.
   * Savol/variant/to'g'ri javob HECH QACHON o'zgarmaydi.
-  * Har bir test alohida tranzaksiyada; bittasi yiqilsa qolganlari davom etadi.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from core.book_retrieval import (
 from core.models import PreparedContent
 from core.openai_client import OpenAiClientError, generate_openai_text
 from core.test_source_backfill import (
+    apply_per_question_sources_to_payload,
     apply_sources_to_payload,
     build_rewrite_prompt,
     external_reference_titles,
@@ -60,8 +64,29 @@ class Command(BaseCommand):
             action="store_true",
             help=(
                 "AI yaratgan TASHQI havolalarni (DOI/PubMed) darslik manbasiga "
-                "almashtirish. Darslikdan olingan manba baribir tegilmaydi."
+                "almashtirish. Darslikdan olingan manba baribir tegilmaydi "
+                "(--refresh bo'lmasa)."
             ),
+        )
+        parser.add_argument(
+            "--refresh",
+            action="store_true",
+            help=(
+                "Mavjud darslik manbasini ham qayta yozish — har savol uchun "
+                "yangi RAG (bir xil Oxford stampini tozalash uchun)."
+            ),
+        )
+        parser.add_argument(
+            "--per-question",
+            action="store_true",
+            default=True,
+            help="Har savol matni bo'yicha alohida manba (default)",
+        )
+        parser.add_argument(
+            "--no-per-question",
+            action="store_false",
+            dest="per_question",
+            help="Bitta umumiy manbani barcha savollarga yopishtirish (eski)",
         )
         parser.add_argument(
             "--skip-rewrite",
@@ -71,6 +96,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         apply_changes = bool(opts["apply"])
+        per_question = bool(opts["per_question"])
+        refresh = bool(opts["refresh"])
         api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
 
         qs = PreparedContent.objects.filter(kind=PreparedContent.KIND_TEST)
@@ -84,10 +111,11 @@ class Command(BaseCommand):
         rows = list(qs)
         self.stdout.write(
             f"Testlar: {len(rows)}   APPLY={apply_changes}   FORCE={bool(opts['force'])}   "
+            f"REFRESH={refresh}   PER_Q={per_question}   "
             f"izoh_qayta_yozish={'yo`q' if opts['skip_rewrite'] else 'ha'}"
         )
         if not api_key:
-            self.stdout.write(self.style.WARNING("OPENAI_API_KEY yo'q — izoh qayta yozilmaydi"))
+            self.stdout.write(self.style.WARNING("OPENAI_API_KEY yo'q — izoh qayta yozilmaydi / RAG yo'q"))
 
         stats = {"ok": 0, "bor": 0, "tashqi": 0, "kitob_yoq": 0, "xato": 0, "savol_yoq": 0}
         done = 0
@@ -103,14 +131,11 @@ class Command(BaseCommand):
                 stats["savol_yoq"] += 1
                 self.stdout.write(f"  o'tkazildi (savol yo'q)  {tag}")
                 continue
-            if payload_has_references(payload):
-                # Darslikdan olingan manba — ishonchli, hech qachon almashtirilmaydi.
+            if payload_has_references(payload) and not refresh:
                 if has_book_references(payload):
                     stats["bor"] += 1
                     self.stdout.write(f"  o'tkazildi (darslik manbasi bor) {tag}")
                     continue
-                # Tashqi havola (AI o'ylab topgan bo'lishi mumkin) — --force bilan
-                # almashtiriladi, aks holda o'tkazib yuboriladi.
                 ext = external_reference_titles(payload)
                 if not opts["force"]:
                     stats["tashqi"] += 1
@@ -125,20 +150,51 @@ class Command(BaseCommand):
                         f"      eski: {'; '.join(ext)[:100]}"
                     )
                 )
+            elif refresh and has_book_references(payload):
+                self.stdout.write(self.style.WARNING(f"  YANGILANADI (refresh) {tag}"))
 
-            query = retrieval_query(payload)
-            chunks = retrieve_book_context(item.subject_code, query) if item.subject_code else []
-            refs = book_references_from_chunks(chunks)
-            if not refs:
+            if not item.subject_code:
                 stats["kitob_yoq"] += 1
-                self.stdout.write(
-                    self.style.WARNING(f"  o'tkazildi (darslik topilmadi) {tag}")
-                )
+                self.stdout.write(self.style.WARNING(f"  o'tkazildi (subject_code yo'q) {tag}"))
                 continue
 
+            # Izoh rewrite uchun umumiy context (topic + bir necha savol).
+            shared_query = retrieval_query(payload)
+            shared_chunks = retrieve_book_context(item.subject_code, shared_query) if shared_query else []
+
+            if per_question:
+                per_refs = []
+                for q in questions:
+                    qtext = str(q.get("question") or "").strip()
+                    q_chunks = (
+                        retrieve_book_context(item.subject_code, qtext[:2000], top_k=3)
+                        if qtext
+                        else []
+                    )
+                    per_refs.append(book_references_from_chunks(q_chunks))
+                # Hech qaysi savolda manba chiqmasa — fallback shared
+                if not any(per_refs):
+                    shared_refs = book_references_from_chunks(shared_chunks)
+                    if not shared_refs:
+                        stats["kitob_yoq"] += 1
+                        self.stdout.write(
+                            self.style.WARNING(f"  o'tkazildi (darslik topilmadi) {tag}")
+                        )
+                        continue
+                    per_refs = [list(shared_refs) for _ in questions]
+            else:
+                shared_refs = book_references_from_chunks(shared_chunks)
+                if not shared_refs:
+                    stats["kitob_yoq"] += 1
+                    self.stdout.write(
+                        self.style.WARNING(f"  o'tkazildi (darslik topilmadi) {tag}")
+                    )
+                    continue
+                per_refs = [list(shared_refs) for _ in questions]
+
             rewrites: dict[int, dict] = {}
-            if api_key and not opts["skip_rewrite"]:
-                context = format_book_context_message(chunks)
+            if api_key and not opts["skip_rewrite"] and shared_chunks:
+                context = format_book_context_message(shared_chunks)
                 lang = LANG_NAMES.get(
                     (payload.get("language") or "uz").lower(), LANG_NAMES["uz"]
                 )
@@ -157,13 +213,31 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.ERROR(f"  AI xato {tag}: {str(e)[:90]}"))
                     continue
 
-            new_payload, touched = apply_sources_to_payload(payload, refs, rewrites)
-            books = ", ".join(f"{r['title']} ({r.get('pages', '-')})" for r in refs[:2])
+            if per_question:
+                new_payload, touched = apply_per_question_sources_to_payload(
+                    payload, per_refs, rewrites
+                )
+            else:
+                new_payload, touched = apply_sources_to_payload(
+                    payload, per_refs[0] if per_refs else [], rewrites
+                )
+
+            sample_titles = []
+            for refs in per_refs[:3]:
+                for r in refs[:1]:
+                    sample_titles.append(f"{r.get('title')} ({r.get('pages', '-')})")
+            books = " | ".join(sample_titles) if sample_titles else "-"
+            distinct = len({
+                (r.get("title"), r.get("pages"))
+                for refs in per_refs
+                for r in refs
+                if r.get("title")
+            })
             self.stdout.write(
                 f"  YANGILANADI {tag}\n"
                 f"      savol={len(questions)} manba_biriktirildi={touched} "
-                f"izoh_yangilandi={len(rewrites)}\n"
-                f"      {books[:110]}"
+                f"unique_manba={distinct} izoh_yangilandi={len(rewrites)}\n"
+                f"      {books[:140]}"
             )
 
             if apply_changes:
@@ -171,7 +245,7 @@ class Command(BaseCommand):
                     with transaction.atomic():
                         item.payload = new_payload
                         item.save(update_fields=["payload"])
-                except Exception as e:  # noqa: BLE001 — bitta test yiqilsa qolganlari davom etadi
+                except Exception as e:  # noqa: BLE001
                     stats["xato"] += 1
                     self.stdout.write(self.style.ERROR(f"  saqlash xatosi {tag}: {str(e)[:90]}"))
                     continue
@@ -180,17 +254,11 @@ class Command(BaseCommand):
 
         self.stdout.write("")
         self.stdout.write(
-            "NATIJA: yangilandi=%d  darslik_manbasi_bor=%d  tashqi_havola_o'tkazildi=%d  "
-            "darslik_yo'q=%d  savol_yo'q=%d  xato=%d"
-            % (stats["ok"], stats["bor"], stats["tashqi"], stats["kitob_yoq"],
-               stats["savol_yoq"], stats["xato"])
+            f"NATIJA: yangilandi={stats['ok']}  darslik_manbasi_bor={stats['bor']}  "
+            f"tashqi_havola_o'tkazildi={stats['tashqi']}  darslik_yo'q={stats['kitob_yoq']}  "
+            f"savol_yo'q={stats['savol_yoq']}  xato={stats['xato']}"
         )
         if not apply_changes and stats["ok"]:
-            self.stdout.write(self.style.WARNING("Bu DRY-RUN edi — saqlash uchun --apply qo'shing"))
-        if stats["tashqi"]:
             self.stdout.write(
-                self.style.WARNING(
-                    "%d testda AI yaratgan tashqi havola bor (tekshirib bo'lmaydi). "
-                    "Darslik manbasiga almashtirish uchun: --force" % stats["tashqi"]
-                )
+                self.style.WARNING("Bu DRY-RUN edi — saqlash uchun --apply qo'shing")
             )

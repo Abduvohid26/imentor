@@ -15,6 +15,7 @@ from .book_retrieval import (
     book_references_from_chunks,
     format_book_context_message,
     retrieve_book_context,
+    retrieve_references_for_queries,
 )
 from .education_ai_utils import clip_education_messages
 from .openai_client import OPENAI_CHAT
@@ -88,3 +89,35 @@ class EducationAiCompletionView(APIView):
             timeout=280.0,
             extra={"book_references": book_references} if book_references else None,
         )
+
+
+class EducationAiBookReferencesSerializer(serializers.Serializer):
+    subject_code = serializers.CharField(required=True, allow_blank=False, max_length=200)
+    queries = serializers.ListField(
+        child=serializers.CharField(allow_blank=True, max_length=4000),
+        allow_empty=False,
+        max_length=40,
+    )
+    top_k = serializers.IntegerField(required=False, default=3, min_value=1, max_value=8)
+
+
+class EducationAiBookReferencesView(APIView):
+    """
+    Har bir so'rov (savol matni) uchun alohida darslik manbasi.
+    Test yaratishdan KEYIN frontend shu endpoint orqali per-savol references biriktiradi.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, HasEducationRole]
+    throttle_classes = [EducationAiUserThrottle]
+
+    @extend_schema(request=EducationAiBookReferencesSerializer)
+    def post(self, request):
+        serializer = EducationAiBookReferencesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        subject_code = (data.get("subject_code") or "").strip()
+        queries = [str(q or "") for q in (data.get("queries") or [])][:40]
+        top_k = int(data.get("top_k") or 3)
+        results = retrieve_references_for_queries(subject_code, queries, top_k=top_k)
+        return Response({"subject_code": subject_code, "results": results})

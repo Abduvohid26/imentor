@@ -74,6 +74,29 @@ class PayloadHelpersTests(TestCase):
         p, _ = apply_sources_to_payload(sample_payload(), REFS)
         self.assertTrue(payload_has_references(p))
 
+    def test_per_question_refs_differ(self):
+        from core.test_source_backfill import apply_per_question_sources_to_payload
+
+        payload = sample_payload()
+        payload["questions"].append(
+            {
+                "question": "Ikkinchi savol?",
+                "options": ["A", "B", "C"],
+                "correctOptionIndex": 0,
+                "explanation": "Izoh",
+            }
+        )
+        per = [
+            [{"title": "Kitob A", "pages": "10"}],
+            [{"title": "Kitob B", "pages": "20-22"}],
+        ]
+        out, touched = apply_per_question_sources_to_payload(payload, per)
+        self.assertEqual(touched, 2)
+        self.assertEqual(out["questions"][0]["references"][0]["title"], "Kitob A")
+        self.assertEqual(out["questions"][1]["references"][0]["title"], "Kitob B")
+        titles = {r["title"] for r in out["references"]}
+        self.assertEqual(titles, {"Kitob A", "Kitob B"})
+
     def test_retrieval_query_includes_topic_and_questions(self):
         q = retrieval_query(sample_payload())
         self.assertIn("Homiladorlikda qusish", q)
