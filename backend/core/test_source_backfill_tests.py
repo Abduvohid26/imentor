@@ -1,0 +1,245 @@
+"""backfill_test_sources buyrug'i va uning sof mantiqi testlari."""
+
+from __future__ import annotations
+
+from io import StringIO
+from unittest import mock
+
+from django.core.management import call_command
+from django.test import TestCase
+
+from core.models import PreparedContent
+from core.test_source_backfill import (
+    apply_sources_to_payload,
+    parse_rewrite_response,
+    payload_has_references,
+    retrieval_query,
+    strip_unfilled_source,
+)
+
+REFS = [{"title": "Williams obstetrics 26th edition", "pages": "643"}]
+
+
+def sample_payload() -> dict:
+    return {
+        "topic": "Homiladorlikda qusish",
+        "questions": [
+            {
+                "question": "Qaysi dori birinchi tanlov?",
+                "options": ["Dimenhidrinat", "Vitamin B6", "Prometazin"],
+                "correctOptionIndex": 1,
+                "explanation": "B6 birinchi tanlov (Manba: kitob nomi, sahifa-bet).",
+                "optionExplanations": [
+                    "Birinchi tanlov emas (Manba: kitob nomi, sahifa-bet).",
+                    "To'g'ri.",
+                    "Ehtiyotkorlik bilan.",
+                ],
+            }
+        ],
+        "translations": {
+            "en": {
+                "questions": [
+                    {
+                        "question": "Which drug is first line?",
+                        "options": ["A", "B", "C"],
+                        "correctOptionIndex": 1,
+                        "explanation": "B6 is first line (Source: book name, page).",
+                    }
+                ]
+            }
+        },
+    }
+
+
+class StripUnfilledSourceTests(TestCase):
+    def test_removes_placeholder_keeps_real_source(self):
+        self.assertEqual(
+            strip_unfilled_source("B6 birinchi tanlov (Manba: kitob nomi, sahifa-bet)."),
+            "B6 birinchi tanlov.",
+        )
+        real = "B6 birinchi tanlov (Manba: Williams obstetrics, 643-bet)."
+        self.assertEqual(strip_unfilled_source(real), real)
+
+    def test_handles_other_languages_and_empty(self):
+        self.assertEqual(strip_unfilled_source("Text (Source: book name, page)."), "Text.")
+        self.assertEqual(strip_unfilled_source("Текст (Источник: название книги, стр)."), "Текст.")
+        self.assertEqual(strip_unfilled_source(None), "")
+
+
+class PayloadHelpersTests(TestCase):
+    def test_has_references_detection(self):
+        self.assertFalse(payload_has_references(sample_payload()))
+        p, _ = apply_sources_to_payload(sample_payload(), REFS)
+        self.assertTrue(payload_has_references(p))
+
+    def test_retrieval_query_includes_topic_and_questions(self):
+        q = retrieval_query(sample_payload())
+        self.assertIn("Homiladorlikda qusish", q)
+        self.assertIn("birinchi tanlov", q)
+
+    def test_parse_rewrite_response_handles_fences_and_bad_index(self):
+        text = '```json\n[{"i":0,"explanation":"Yangi izoh","optionExplanations":["a","b","c"]},' \
+               '{"i":99,"explanation":"chegaradan tashqari"}]\n```'
+        out = parse_rewrite_response(text, expected=1)
+        self.assertEqual(set(out), {0})
+        self.assertEqual(out[0]["explanation"], "Yangi izoh")
+
+    def test_parse_rewrite_response_survives_garbage(self):
+        self.assertEqual(parse_rewrite_response("not json at all", 3), {})
+        self.assertEqual(parse_rewrite_response("", 3), {})
+
+
+class ApplySourcesTests(TestCase):
+    def test_questions_and_answers_never_change(self):
+        original = sample_payload()
+        new, touched = apply_sources_to_payload(original, REFS, {0: {"explanation": "Darslikdan"}})
+        self.assertEqual(touched, 1)
+        oq, nq = original["questions"][0], new["questions"][0]
+        self.assertEqual(nq["question"], oq["question"])
+        self.assertEqual(nq["options"], oq["options"])
+        self.assertEqual(nq["correctOptionIndex"], oq["correctOptionIndex"])
+
+    def test_attaches_references_and_rewrites_explanation(self):
+        new, _ = apply_sources_to_payload(
+            sample_payload(), REFS,
+            {0: {"explanation": "Darslikka asoslangan izoh",
+                 "optionExplanations": ["x", "y", "z"]}},
+        )
+        q = new["questions"][0]
+        self.assertEqual(q["references"], REFS)
+        self.assertEqual(q["explanation"], "Darslikka asoslangan izoh")
+        self.assertEqual(q["optionExplanations"], ["x", "y", "z"])
+        self.assertEqual(new["references"], REFS)
+
+    def test_without_rewrite_only_strips_placeholder(self):
+        new, _ = apply_sources_to_payload(sample_payload(), REFS)
+        q = new["questions"][0]
+        self.assertEqual(q["explanation"], "B6 birinchi tanlov.")
+        self.assertEqual(q["optionExplanations"][0], "Birinchi tanlov emas.")
+        self.assertEqual(q["references"], REFS)
+
+    def test_translations_get_references_and_cleanup(self):
+        new, _ = apply_sources_to_payload(sample_payload(), REFS, {0: {"explanation": "Yangi"}})
+        tr = new["translations"]["en"]["questions"][0]
+        self.assertEqual(tr["references"], REFS)
+        self.assertEqual(tr["explanation"], "B6 is first line.", "shablon tozalansin")
+        self.assertNotEqual(tr["explanation"], "Yangi", "tarjima izohi qayta yozilmasin")
+
+    def test_original_payload_not_mutated(self):
+        original = sample_payload()
+        apply_sources_to_payload(original, REFS, {0: {"explanation": "Yangi"}})
+        self.assertIn("Manba: kitob nomi", original["questions"][0]["explanation"])
+        self.assertNotIn("references", original["questions"][0])
+
+    def test_no_references_means_no_attach(self):
+        new, touched = apply_sources_to_payload(sample_payload(), [])
+        self.assertEqual(touched, 0)
+        self.assertNotIn("references", new["questions"][0])
+
+
+class BackfillCommandTests(TestCase):
+    """Buyruq oqimi — AI va RAG mock qilinadi (haqiqiy chaqiruv yo'q)."""
+
+    def _make(self, **kw) -> PreparedContent:
+        defaults = dict(
+            owner_key="staff1",
+            kind=PreparedContent.KIND_TEST,
+            topic="Homiladorlikda qusish",
+            topic_norm="homiladorlikda qusish",
+            subject_code="akusherlik-va-ginekologiya",
+            payload=sample_payload(),
+        )
+        defaults.update(kw)
+        return PreparedContent.objects.create(**defaults)
+
+    def _run(self, chunks, ai_text='[{"i":0,"explanation":"Darslikdan izoh"}]', **opts):
+        out = StringIO()
+        with (
+            mock.patch("core.management.commands.backfill_test_sources.retrieve_book_context",
+                       return_value=chunks),
+            mock.patch("core.management.commands.backfill_test_sources.generate_openai_text",
+                       return_value=ai_text) as gen,
+            mock.patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
+        ):
+            call_command("backfill_test_sources", stdout=out, **opts)
+        return out.getvalue(), gen
+
+    def test_dry_run_does_not_save(self):
+        item = self._make()
+        text, _ = self._run([{"book_title": "1. Williams-obstetrics-26th-pdf", "page": "643", "text": "B6 haqida matn"}])
+        self.assertIn("YANGILANADI", text)
+        self.assertIn("DRY-RUN", text)
+        item.refresh_from_db()
+        self.assertFalse(payload_has_references(item.payload))
+
+    def test_apply_saves_references_and_clean_title(self):
+        item = self._make()
+        text, _ = self._run(
+            [{"book_title": "1. Williams-obstetrics-26th-edition-pdf", "page": "643", "text": "B6 haqida matn"}],
+            apply=True,
+        )
+        item.refresh_from_db()
+        refs = item.payload["questions"][0]["references"]
+        self.assertEqual(refs[0]["title"], "Williams obstetrics 26th edition")
+        self.assertEqual(refs[0]["pages"], "643")
+        self.assertEqual(item.payload["questions"][0]["explanation"], "Darslikdan izoh")
+        self.assertIn("yangilandi=1", text)
+
+    def test_skips_when_no_book_found(self):
+        item = self._make()
+        text, gen = self._run([], apply=True)
+        gen.assert_not_called()
+        item.refresh_from_db()
+        self.assertFalse(payload_has_references(item.payload), "manba SOXTA biriktirilmasin")
+        self.assertIn("darslik topilmadi", text.lower())
+
+    def test_idempotent_second_run_skips(self):
+        self._make()
+        chunks = [{"book_title": "Williams obstetrics", "page": "643", "text": "B6 haqida matn"}]
+        self._run(chunks, apply=True)
+        text, gen = self._run(chunks, apply=True)
+        gen.assert_not_called()
+        self.assertIn("manba bor", text)
+
+    def test_skip_rewrite_does_not_call_ai(self):
+        item = self._make()
+        _, gen = self._run(
+            [{"book_title": "Williams obstetrics", "page": "643", "text": "B6 haqida matn"}],
+            apply=True, skip_rewrite=True,
+        )
+        gen.assert_not_called()
+        item.refresh_from_db()
+        self.assertTrue(payload_has_references(item.payload))
+        self.assertEqual(item.payload["questions"][0]["explanation"], "B6 birinchi tanlov.")
+
+    def test_subject_and_limit_filters(self):
+        self._make()
+        self._make(subject_code="boshqa-fan")
+        text, _ = self._run(
+            [{"book_title": "Williams obstetrics", "page": "643", "text": "B6 haqida matn"}],
+            subject="boshqa-fan",
+        )
+        self.assertIn("Testlar: 1", text)
+
+    def test_ai_failure_leaves_payload_untouched(self):
+        item = self._make()
+        out = StringIO()
+        from core.openai_client import OpenAiClientError
+
+        with (
+            mock.patch("core.management.commands.backfill_test_sources.retrieve_book_context",
+                       return_value=[{"book_title": "Williams obstetrics", "page": "643", "text": "B6 haqida matn"}]),
+            mock.patch("core.management.commands.backfill_test_sources.generate_openai_text",
+                       side_effect=OpenAiClientError("rate limited")),
+            mock.patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
+        ):
+            call_command("backfill_test_sources", apply=True, stdout=out)
+        item.refresh_from_db()
+        self.assertFalse(payload_has_references(item.payload))
+        self.assertIn("xato=1", out.getvalue())
+
+    def test_other_kinds_are_not_touched(self):
+        lecture = self._make(kind=PreparedContent.KIND_LECTURE)
+        self._run([{"book_title": "Williams obstetrics", "page": "643", "text": "B6 haqida matn"}], apply=True)
+        lecture.refresh_from_db()
+        self.assertFalse(payload_has_references(lecture.payload))

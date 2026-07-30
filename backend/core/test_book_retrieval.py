@@ -130,3 +130,43 @@ class BookReferencesFromChunksTests(TestCase):
 
         refs = book_references_from_chunks([{"book_title": "Kitob"}])
         self.assertEqual(refs, [{"title": "Kitob"}])
+
+
+class CleanBookTitleTests(TestCase):
+    """Fayl nomidan o'qishga yaroqli sarlavha — manba talabaga ko'rinadi."""
+
+    def test_strips_numbering_extension_and_noise(self):
+        from core.book_retrieval import clean_book_title
+
+        self.assertEqual(
+            clean_book_title("1. Williams-obstetrics-26th-edition-pdf-pca-dr-notes"),
+            "Williams obstetrics 26th edition",
+        )
+        self.assertEqual(
+            clean_book_title("Harrisons_Principles_of_Internal_Medicine_21e.pdf"),
+            "Harrisons Principles of Internal Medicine 21e",
+        )
+
+    def test_keeps_already_clean_title_untouched(self):
+        from core.book_retrieval import clean_book_title
+
+        self.assertEqual(
+            clean_book_title("Netter Atlas of Human Anatomy"),
+            "Netter Atlas of Human Anatomy",
+        )
+
+    def test_falls_back_to_raw_when_result_too_short(self):
+        from core.book_retrieval import clean_book_title
+
+        # Tozalashdan keyin hech narsa qolmasa — buzib ko'rsatmaymiz.
+        self.assertEqual(clean_book_title("5.pdf"), "5.pdf")
+        self.assertEqual(clean_book_title(""), "")
+        self.assertEqual(clean_book_title(None), "")
+
+    def test_references_use_clean_title(self):
+        from core.book_retrieval import book_references_from_chunks
+
+        refs = book_references_from_chunks([
+            {"book_title": "1. Williams-obstetrics-26th-edition-pdf", "page": "643"},
+        ])
+        self.assertEqual(refs, [{"title": "Williams obstetrics 26th edition", "pages": "643"}])

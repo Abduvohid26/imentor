@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 from pgvector.django import CosineDistance
 
@@ -62,10 +63,21 @@ def format_book_context_message(chunks: list[dict]) -> str | None:
     """Chunk ro'yxatidan system xabar matnini quradi. Bo'sh bo'lsa — None."""
     if not chunks:
         return None
-    parts = [
-        f"[Manba: {c['book_title']}, {c['page']}-bet]\n{c['text']}"
-        for c in chunks
-    ]
+    # Nuqsonli chunk butun paketni yiqitmasin (backfill buyrug'i yuzlab
+    # testni ketma-ket ishlaydi) — yetishmagan maydon o'tkazib yuboriladi.
+    parts = []
+    for c in chunks:
+        if not isinstance(c, dict):
+            continue
+        text = str(c.get("text") or "").strip()
+        if not text:
+            continue
+        title = str(c.get("book_title") or "").strip() or "Darslik"
+        page = str(c.get("page") or "").strip()
+        head = f"[Manba: {title}, {page}-bet]" if page else f"[Manba: {title}]"
+        parts.append(f"{head}\n{text}")
+    if not parts:
+        return None
     joined = "\n\n---\n\n".join(parts)
     return (
         "Quyida shu fanga tegishli RASMIY DARSLIK parchalari berilgan. "
@@ -88,6 +100,44 @@ def format_book_context_message(chunks: list[dict]) -> str | None:
         "o'sha ko'rsatmaga amal qiling — lekin manba so'zini hech qachon qavssiz, bo'sh holda qoldirmang.\n\n"
         f"{joined}"
     )
+
+#: Fayl nomidagi texnik shovqin — sarlavhadan olib tashlanadi.
+_TITLE_NOISE = frozenset({
+    "pdf", "epub", "djvu", "doc", "docx", "scan", "scanned", "ocr", "final",
+    "copy", "pca", "dr", "notes", "note", "book", "ebook", "free", "download",
+    "org", "com", "www", "compressed", "merged", "full", "part", "vol", "ed",
+})
+
+
+def clean_book_title(raw: str) -> str:
+    """Fayl nomidan talabaga ko'rsatiladigan kitob sarlavhasi.
+
+    `SubjectBook.title` ko'pincha yuklangan fayl nomi bo'ladi, masalan
+    "1. Williams-obstetrics-26th-edition-pdf-pca-dr-notes". Manba talabaning
+    natija sahifasida ko'rinadi, shuning uchun uni o'qishga yaroqli holga
+    keltiramiz: "Williams obstetrics 26th edition".
+
+    Konservativ: faqat aniq shovqin olib tashlanadi. Natija juda qisqa
+    chiqsa xom nom qaytariladi — sarlavhani buzib ko'rsatgandan ko'ra
+    tushunarsiz nom afzal.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    s = re.sub(r"\.(pdf|epub|djvu|docx?|txt)$", "", s, flags=re.I)
+    s = re.sub(r"^\s*\d+[\s.)\-_]+", "", s)
+    s = s.replace("_", " ").replace("-", " ")
+    kept: list[str] = []
+    for i, part in enumerate(p for p in s.split() if p):
+        low = re.sub(r"[^a-z0-9]", "", part.lower())
+        if low in _TITLE_NOISE and i >= 1:
+            continue
+        kept.append(part)
+    out = re.sub(r"\s{2,}", " ", " ".join(kept)).strip(" .,-\u2013\u2014")
+    if len(out) < 3:
+        return str(raw).strip()
+    return out[0].upper() + out[1:] if out.islower() else out
+
 
 def book_references_from_chunks(chunks: list[dict]) -> list[dict]:
     """
@@ -114,7 +164,7 @@ def book_references_from_chunks(chunks: list[dict]) -> list[dict]:
 
     out: list[dict] = []
     for title, pages in by_title.items():
-        ref: dict = {"title": title[:300]}
+        ref: dict = {"title": clean_book_title(title)[:300]}
         if pages:
             # Sahifalarni raqam bo'yicha tartiblaymiz ("12", "40-45" -> 12, 40).
             def _first_page(p: str) -> int:
