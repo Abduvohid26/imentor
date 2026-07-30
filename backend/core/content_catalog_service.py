@@ -1,4 +1,4 @@
-"""Keys va testlar umumiy bazasi — darsdan 1 soat keyin e'lon qilinadi."""
+"""Keys va testlar umumiy bazasi — yaratilishi bilan e'lon qilinadi."""
 
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ from django.utils import timezone
 from .models import PreparedContent
 
 CATALOG_KINDS = (PreparedContent.KIND_CASE, PreparedContent.KIND_TEST)
-PUBLISH_DELAY = timedelta(hours=1)
+# 0 = darhol e'lon (oldingi 1 soatlik kechikish olib tashlandi).
+PUBLISH_DELAY = timedelta(0)
 TEST_QUESTION_LIMIT_MIN = 10
 TEST_QUESTION_LIMIT_MAX = 30
 _TOPIC_NORM_RE = re.compile(r'^(\d+)::([^:]+)::(.+)$')

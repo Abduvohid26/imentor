@@ -18,7 +18,7 @@ from .permissions import HasEducationRole, IsAdminRole
 
 
 class ContentCatalogListView(APIView):
-    """Keys va testlar bazasi — faqat 1 soatdan eski materiallar."""
+    """Keys va testlar bazasi — e'lon qilingan materiallar."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, HasEducationRole]
@@ -56,7 +56,7 @@ class ContentCatalogSubjectsView(APIView):
 
 
 class AdminContentCatalogListView(APIView):
-    """Admin: barcha keys/testlar — 1 soatlik e'lon kechikishisiz, to'liq nazorat uchun."""
+    """Admin: barcha keys/testlar — to'liq nazorat uchun."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdminRole]
@@ -107,7 +107,7 @@ class AdminContentCatalogStatsView(APIView):
 
 
 class PublicContentCatalogStatsView(APIView):
-    """Ochiq statistika — faqat e'lon qilingan (1 soatdan eski) materiallar."""
+    """Ochiq statistika — e'lon qilingan materiallar."""
 
     authentication_classes = []
     permission_classes = [AllowAny]

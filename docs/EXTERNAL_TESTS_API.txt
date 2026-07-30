@@ -11,7 +11,7 @@ Base URL (prod):   https://imentor.devflix.uz/api
 Base URL (local):  http://localhost:8080/api
 
 Kalit yo'q / noto'g'ri → HTTP 403
-Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
+Yangi testlar darhol e'lon qilinadi (PUBLISH_DELAY=0).
 
 
 ================================================================================
@@ -211,7 +211,7 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
 
 4.1  GET /v1/external/tests/stats/
 ──────────────────────────────────
-  E'lon qilingan testlar statistikasi (1 soatdan eski).
+  E'lon qilingan testlar statistikasi.
 
   Javob (asosiy):
     totals.test_count, totals.questions_total
@@ -533,7 +533,7 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   400  — noto'g'ri question_limit / min_questions / max_questions
   403  — API kalit yo'q yoki noto'g'ri
          { "detail": "Valid X-Api-Key header required." }
-  404  — topilmadi yoki test hali e'lon qilinmagan (1 soat o'tmagan)
+  404  — topilmadi
 
 
 ================================================================================
@@ -544,7 +544,6 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   - JWT, parol, telefon raqamlar
   - PDF fayllar (faqat parsed mavzu ro'yxati)
   - Ma'ruza, taqdimot kontenti
-  - 1 soatdan yangi testlar
   - Admin ichki ma'lumotlar
 
 

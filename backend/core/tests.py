@@ -288,9 +288,8 @@ class PreparedContentApiTests(TestCase):
         )
         self.assertEqual(blocked.status_code, 403)
 
-    def test_content_catalog_one_hour_delay(self):
-        from datetime import timedelta
-
+    def test_content_catalog_publishes_immediately(self):
+        """PUBLISH_DELAY=0 — yangi material darhol katalogda ko'rinadi."""
         from core.models import PreparedContent
 
         Group.objects.get_or_create(name='hodim')
@@ -322,22 +321,20 @@ class PreparedContentApiTests(TestCase):
             subject_code='ANAT',
             payload={'topic': 'Eski test', 'questions': [{'question': 'q', 'options': ['a'], 'correctOptionIndex': 0, 'explanation': 'e'}]},
         )
-        PreparedContent.objects.filter(pk=old.pk).update(
-            created_at=timezone.now() - timedelta(hours=2)
-        )
 
         lst = self.client.get('/api/v1/content-catalog/')
         self.assertEqual(lst.status_code, 200)
         catalog_items = lst.json().get('results', lst.json())
-        self.assertEqual(len(catalog_items), 1)
-        self.assertEqual(catalog_items[0]['topic'], 'Eski test')
+        topics = {row['topic'] for row in catalog_items}
+        self.assertEqual(topics, {'Yangi keys', 'Eski test'})
 
         detail = self.client.get(f'/api/v1/content-catalog/{old.pk}/')
         self.assertEqual(detail.status_code, 200)
         self.assertIn('payload', detail.json())
 
-        blocked = self.client.get(f'/api/v1/content-catalog/{recent.pk}/')
-        self.assertEqual(blocked.status_code, 404)
+        recent_detail = self.client.get(f'/api/v1/content-catalog/{recent.pk}/')
+        self.assertEqual(recent_detail.status_code, 200)
+        self.assertTrue(recent_detail.json().get('is_published'))
 
         subjects = self.client.get('/api/v1/content-catalog/subjects/')
         self.assertEqual(subjects.status_code, 200)
@@ -410,24 +407,18 @@ class PreparedContentApiTests(TestCase):
         self.assertEqual(ext_stats.json()['kind'], 'test')
 
         recent_pk = create_resp.json()['id']
+        # PUBLISH_DELAY=0 — yangi test darhol tashqi API da ko'rinadi.
         ext_list = self.client.get(
             '/api/v1/external/tests/',
             HTTP_X_API_KEY='ext-test-key-123',
         )
         self.assertEqual(ext_list.status_code, 200)
-        self.assertEqual(ext_list.json().get('results', ext_list.json()), [])
-
-        PreparedContent.objects.filter(pk=recent_pk).update(
-            created_at=timezone.now() - timedelta(hours=2)
-        )
-        ext_list2 = self.client.get(
-            '/api/v1/external/tests/',
-            HTTP_X_API_KEY='ext-test-key-123',
-        )
-        items = ext_list2.json().get('results', ext_list2.json())
+        items = ext_list.json().get('results', ext_list.json())
         self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['id'], recent_pk)
         self.assertEqual(items[0]['variant_label'], 'PI')
         self.assertEqual(items[0]['question_count'], 15)
+        self.assertTrue(items[0].get('is_published'))
 
         bad_limit = self.client.get(
             f'/api/v1/external/tests/{recent_pk}/?question_limit=5',
