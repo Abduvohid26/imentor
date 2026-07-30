@@ -160,8 +160,11 @@ class Command(BaseCommand):
 
             # Izoh rewrite uchun umumiy context (topic + bir necha savol).
             shared_query = retrieval_query(payload)
-            shared_chunks = retrieve_book_context(item.subject_code, shared_query) if shared_query else []
-
+            shared_chunks = (
+                retrieve_book_context(item.subject_code, shared_query, top_k=12)
+                if shared_query
+                else []
+            )
             if per_question:
                 per_refs = []
                 for q in questions:
@@ -204,8 +207,8 @@ class Command(BaseCommand):
                         system_instruction=context,
                         user_text=build_rewrite_prompt(questions, lang),
                         json_only=True,
-                        max_tokens=6144,
-                        temperature=0.3,
+                        max_tokens=12288,
+                        temperature=0.25,
                     )
                     rewrites = parse_rewrite_response(text, len(questions))
                 except OpenAiClientError as e:

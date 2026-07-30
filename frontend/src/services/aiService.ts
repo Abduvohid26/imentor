@@ -482,7 +482,8 @@ function isWeakTestSession(data: TestSession | null | undefined, requestedCount:
     const expLen = (q.explanation || '').trim().length;
     const opts = Array.isArray(q.options) ? q.options : [];
     const badOptions = opts.length !== 5 || opts.some((o) => (o || '').trim().length < 8);
-    return qLen < 120 || expLen < 70 || badOptions;
+    // explanation endi batafsil (8–12 gap) — juda qisqa izoh zaif hisoblanadi
+    return qLen < 120 || expLen < 280 || badOptions;
   });
   return badQuestions.length > Math.max(1, Math.floor(data.questions.length * 0.35));
 }
@@ -1055,9 +1056,9 @@ export const aiService = {
       let bookRefs: MedicalReference[] = [];
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[]}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Manba/havola YOZMANG — foydalanilgan darslik va sahifalarni tizim o'zi biriktiradi. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
-        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap, hech qanday havola/manba raqami qo'shmasdan. optionExplanations: har bir variant uchun aniq, o'sha variantga xos 1 gapli sabab (manba/havola yozmasdan). ${strict ? 'Faqat valid JSON.' : ''}`,
-        maxTokens: 6144,
+        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[]}]}. explanation — BATAFSIL (8–12 to'liq gap yoki ~600–1200 belgi): klinik asos, nega to'g'ri javob, boshqa yondashuvlar nega mos emas; FAQAT berilgan darslik kontekstidagi faktlar (yo'q narsani uydirma). optionExplanations — options bilan bir xil tartibda, HAR variant uchun 2–3 to'liq gap: to'g'ri uchun nega to'g'ri, xato uchun aynan shu variant nega noto'g'ri. Manba/havola YOZMANG — foydalanilgan darslik va sahifalarni tizim o'zi biriktiradi. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
+        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '6–8' : '8–12'} to'liq gap (qisqa 1–2 gap QABUL QILINMAYDI), hech qanday havola/manba raqami qo'shmasdan; faktlardan chetga chiqma. optionExplanations: har bir variant uchun 2–3 gapli aniq sabab (manba/havola yozmasdan). ${strict ? 'Faqat valid JSON.' : ''}`,
+        maxTokens: 12288,
         temperature: strict ? 0.42 : 0.68,
         parse: (t) => parseJSONSafe<TestSession>(t),
         bookContext,

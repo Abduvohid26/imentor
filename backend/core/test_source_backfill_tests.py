@@ -102,6 +102,14 @@ class PayloadHelpersTests(TestCase):
         self.assertIn("Homiladorlikda qusish", q)
         self.assertIn("birinchi tanlov", q)
 
+    def test_rewrite_prompt_asks_for_detailed_explanations(self):
+        from core.test_source_backfill import build_rewrite_prompt
+
+        prompt = build_rewrite_prompt(sample_payload()["questions"], "Uzbek (lotin)")
+        self.assertIn("8–12", prompt)
+        self.assertIn("2–3", prompt)
+        self.assertIn("YO'Q fakt", prompt)
+
     def test_parse_rewrite_response_handles_fences_and_bad_index(self):
         text = '```json\n[{"i":0,"explanation":"Yangi izoh","optionExplanations":["a","b","c"]},' \
                '{"i":99,"explanation":"chegaradan tashqari"}]\n```'

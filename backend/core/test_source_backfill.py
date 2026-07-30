@@ -104,7 +104,7 @@ def retrieval_query(payload: Any, max_questions: int = 4) -> str:
 
 
 def build_rewrite_prompt(questions: list[dict], language_name: str) -> str:
-    """Izohlarni darslik parchalari asosida qayta yozish so'rovi."""
+    """Izohlarni darslik parchalari asosida qayta yozish so'rovi (batafsil, fakt doirasida)."""
     items = []
     for i, q in enumerate(questions):
         opts = [str(o) for o in (q.get("options") or [])]
@@ -124,12 +124,19 @@ def build_rewrite_prompt(questions: list[dict], language_name: str) -> str:
         "Quyidagi test savollari uchun IZOHLARNI qayta yoz. Savol matni, "
         "variantlar va to'g'ri javob O'ZGARMAYDI — faqat izohlar.\n"
         f"Til: {language_name}.\n"
-        "MAJBURIY: faqat yuqorida berilgan darslik parchalaridagi ma'lumotga "
-        "tayan. Parchalarda yo'q faktni qo'shma. Parchalar biror savolni "
+        "MAJBURIY — fakt chegarasi: faqat yuqorida berilgan darslik parchalaridagi "
+        "ma'lumotga tayan. Parchalarda YO'Q fakt, raqam, dori doza, statistikani "
+        "O'ZINGDAN QO'SHMA. Agar parcha yetarli bo'lmasa — bor faktlar bilan "
+        "chuqurroq tushuntir; yo'q narsani uydirma. Parchalar savolni umuman "
         "qamramasa, o'sha savol uchun izohni bo'sh qoldir (\"\").\n"
+        "MAJBURIY — hajm (hozirgi qisqa 1 gapdan ~4–5 marta uzunroq):\n"
+        "- explanation: 8–12 to'liq gap (yoki ~600–1200 belgi). Klinik asos, "
+        "nega aynan shu javob, boshqa yondashuvlar nega mos emas (faqat "
+        "parchalardagi faktlar bilan), qisqa xulosa.\n"
+        "- optionExplanations: options bilan bir xil tartibda; HAR variant uchun "
+        "2–3 to'liq gap (to'g'ri — nega to'g'ri; xato — aynan shu variant nega "
+        "noto'g'ri / qachon ishlatiladi, lekin bu yerda emas).\n"
         "Matn ichida \"(Manba: ...)\" YOZMA — manbani tizim o'zi biriktiradi.\n"
-        "optionExplanations — options bilan bir xil tartibda, har biri uchun "
-        "1 gap: to'g'ri variant nega to'g'ri, xato variant nega xato.\n"
         f"Kirish: {json.dumps(items, ensure_ascii=False)}\n"
         'Chiqish: JSON massiv, har elementi: {"i":<raqam>,"explanation":"...",'
         '"optionExplanations":["...","..."]}'
