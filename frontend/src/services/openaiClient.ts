@@ -4,6 +4,7 @@
  * Dev: to‘g‘ridan-to‘g‘ri API (frontend/.env.local OPENAI_API_KEY).
  */
 import { httpJson } from '../api/httpClient';
+import { type MedicalReference } from '../utils/medicalReferences';
 import { ensureBackendAccessToken, getBackendAccessToken } from '../utils/backendAuth';
 import { pdfjsLib } from '../utils/pdfjsSetup';
 
@@ -88,9 +89,11 @@ async function chatViaBackend(params: {
   maxTokens: number;
   temperature?: number;
   bookContext?: BookContext;
+  /** Server RAG uchun ISHLATGAN darsliklar (AI o'ylab topgani emas). */
+  onBookReferences?: (refs: MedicalReference[]) => void;
 }): Promise<string> {
   const call = async (token: string) =>
-    httpJson<{ content?: string; detail?: string }>(`${apiBaseUrl()}/v1/education-ai/completion/`, {
+    httpJson<{ content?: string; detail?: string; book_references?: MedicalReference[] }>(`${apiBaseUrl()}/v1/education-ai/completion/`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: {
@@ -115,6 +118,9 @@ async function chatViaBackend(params: {
     const data = await call(token);
     const text = data.content?.trim();
     if (!text) throw new Error(data.detail || 'OpenAI: bo‘sh javob (server proxy)');
+    if (Array.isArray(data.book_references) && data.book_references.length) {
+      params.onBookReferences?.(data.book_references);
+    }
     return text;
   } catch (e: unknown) {
     const status = e && typeof e === 'object' && 'status' in e ? (e as { status: number }).status : 0;
@@ -182,6 +188,7 @@ async function chatCompletion(params: {
   maxTokens: number;
   temperature?: number;
   bookContext?: BookContext;
+  onBookReferences?: (refs: MedicalReference[]) => void;
 }): Promise<string> {
   const msgs: ChatMessage[] = [];
   const sys = params.system.trim();
@@ -196,6 +203,7 @@ async function chatCompletion(params: {
       maxTokens: params.maxTokens,
       temperature: params.temperature,
       bookContext: params.bookContext,
+      onBookReferences: params.onBookReferences,
     });
   }
   return chatViaDirectApi({
@@ -232,6 +240,7 @@ export async function openaiJson<T>(opts: {
   temperature?: number;
   parse: (text: string) => T;
   bookContext?: BookContext;
+  onBookReferences?: (refs: MedicalReference[]) => void;
 }): Promise<T> {
   const text = await chatCompletion({
     model: opts.model ?? OPENAI_CHAT,
@@ -240,6 +249,7 @@ export async function openaiJson<T>(opts: {
     maxTokens: opts.maxTokens ?? 8192,
     temperature: opts.temperature ?? 0.3,
     bookContext: opts.bookContext,
+    onBookReferences: opts.onBookReferences,
   });
   return opts.parse(text);
 }

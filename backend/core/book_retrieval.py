@@ -88,3 +88,42 @@ def format_book_context_message(chunks: list[dict]) -> str | None:
         "o'sha ko'rsatmaga amal qiling — lekin manba so'zini hech qachon qavssiz, bo'sh holda qoldirmang.\n\n"
         f"{joined}"
     )
+
+def book_references_from_chunks(chunks: list[dict]) -> list[dict]:
+    """
+    Ishlatilgan chunk'lardan STRUKTURALI manba ro'yxatini quradi.
+
+    Nega kerak: AI'dan manba yozishni so'rash ikki xil yo'l bilan yiqilardi —
+    yo o'ylab topilgan DOI/PubMed havolalar (shu sabab `references` umuman
+    o'chirib qo'yilgan edi), yo "(Manba: kitob nomi, sahifa-bet)" degan
+    TO'LDIRILMAGAN shablon matn izoh ichida qolib ketardi.
+
+    Bu funksiya AI'ga umuman tayanmaydi: qaysi kitobning qaysi betlari
+    modelga berilgani bizga aniq ma'lum — o'shani qaytaramiz. Ya'ni manba
+    haqiqiy va tekshiriladigan.
+    """
+    by_title: dict[str, list[str]] = {}
+    for c in chunks or []:
+        title = str((c or {}).get("book_title") or "").strip()
+        page = str((c or {}).get("page") or "").strip()
+        if not title:
+            continue
+        pages = by_title.setdefault(title, [])
+        if page and page not in pages:
+            pages.append(page)
+
+    out: list[dict] = []
+    for title, pages in by_title.items():
+        ref: dict = {"title": title[:300]}
+        if pages:
+            # Sahifalarni raqam bo'yicha tartiblaymiz ("12", "40-45" -> 12, 40).
+            def _first_page(p: str) -> int:
+                head = p.split("-", 1)[0].strip()
+                return int(head) if head.isdigit() else 0
+
+            ordered = sorted(pages, key=_first_page)[:12]
+            ref["pages"] = ", ".join(ordered)
+        out.append(ref)
+    # Eng ko'p ishlatilgan (ko'p sahifali) kitob birinchi bo'lsin.
+    out.sort(key=lambda r: -len(str(r.get("pages") or "")))
+    return out[:8]

@@ -40,6 +40,7 @@ import {
 import { listPreparedForTopic, loadPreparedById } from '../utils/preparedContentStore';
 import { normalizeCaseFocus } from '../utils/caseFocusLabels';
 import { type MedicalReference } from '../utils/medicalReferences';
+import { stripUnfilledSourceTemplate } from '../utils/sourceTemplate';
 
 // Hech qachon tashqi (DOI/PubMed/veb) havola yoki "Foydalanilgan adabiyotlar" ro'yxati so'ralmaydi —
 // bular ko'pincha AI tomonidan o'ylab topiladi (haqiqiy maqolaga bog'lanmasligi mumkin). Kitob
@@ -47,8 +48,10 @@ import { type MedicalReference } from '../utils/medicalReferences';
 // bo'lmasa — hech qanday manba/havola ko'rsatilmaydi, faqat mazmun.
 const NO_EXTERNAL_REFS_JSON_RULE_BOOK =
   'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Tashqi adabiyot/DOI/PubMed ' +
-  'havolalari QO\'SHMANG — "references" maydonini bo\'sh massiv [] qoldiring. Har bir savol/slayd/bo\'lim ' +
-  'matnida "(Manba: kitob nomi, sahifa-bet)" ko\'rsating.';
+  'havolalari QO\'SHMANG — "references" maydonini bo\'sh massiv [] qoldiring (manbani tizim ' +
+  'AVTOMATIK biriktiradi: qaysi darslikning qaysi betlari ishlatilgani serverga aniq ma\'lum). ' +
+  'Matn ichida ham "(Manba: ...)" YOZMANG — ayniqsa "kitob nomi", "sahifa-bet" kabi ' +
+  'TO\'LDIRILMAGAN shablonni hech qachon qoldirmang. Faqat mazmunni yozing.';
 const NO_EXTERNAL_REFS_JSON_RULE_NOBOOK =
   'MAJBURIY: tashqi adabiyot/DOI/PubMed/veb havolalari yoki o\'ylab topilgan manbalar QO\'SHMANG — ' +
   '"references" maydonini bo\'sh massiv [] qoldiring. Hech qanday manba ko\'rsatmasdan, faqat ' +
@@ -482,7 +485,12 @@ function isWeakTestSession(data: TestSession | null | undefined, requestedCount:
   return badQuestions.length > Math.max(1, Math.floor(data.questions.length * 0.35));
 }
 
-function normalizeTestSession(topic: string, data: TestSession, requestedCount: number): TestSession {
+function normalizeTestSession(
+  topic: string,
+  data: TestSession,
+  requestedCount: number,
+  bookReferences: MedicalReference[] = [],
+): TestSession {
   const questions = (data.questions || [])
     .slice(0, requestedCount)
     .map((q) => {
@@ -492,22 +500,26 @@ function normalizeTestSession(topic: string, data: TestSession, requestedCount: 
         typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0 && q.correctOptionIndex < 5
           ? q.correctOptionIndex
           : 0;
-      const optionExplanations = (q.optionExplanations || []).slice(0, 5).map((e) => (e || '').trim());
+      const optionExplanations = (q.optionExplanations || [])
+        .slice(0, 5)
+        .map((e) => stripUnfilledSourceTemplate(e || ''));
       while (optionExplanations.length < 5) optionExplanations.push('');
       const hasOptionExplanations = optionExplanations.some((e) => e.length > 0);
       return {
         question: (q.question || '').trim(),
         options: options.map((o) => (o || '').trim()),
-        explanation: (q.explanation || '').trim(),
+        explanation: stripUnfilledSourceTemplate(q.explanation || ''),
         correctOptionIndex,
         ...(hasOptionExplanations ? { optionExplanations } : {}),
+        // Manba AI'dan EMAS — serverdan (RAG uchun ishlatilgan darslik).
+        ...(bookReferences.length ? { references: bookReferences } : {}),
       };
     });
   return {
     ...data,
     topic: (data.topic || topic || '').trim() || topic,
     questions,
-    references: [],
+    references: bookReferences,
   };
 }
 
@@ -985,16 +997,20 @@ export const aiService = {
     const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
     const generate = async (requestedCount: number, shortMode: boolean, strict: boolean): Promise<TestSession> => {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
+      let bookRefs: MedicalReference[] = [];
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[]}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Agar sizga darslik parchalari (manba konteksti) berilgan bo'lsa, shu parchalardan foydalangan har bir explanation/optionExplanations gapining oxiriga "(Manba: kitob nomi, sahifa-bet)" qo'shing — buni hech qachon JSON'dan tashqariga chiqarmang, faqat shu matn maydonlari ICHIDA yozing. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
-        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap, hech qanday havola/manba raqami qo'shmasdan. optionExplanations: har bir variant uchun aniq, o'sha variantga xos 1 gapli sabab, manba asosida bo'lsa oxiriga (Manba: ..., ...-bet) qo'sh. ${strict ? 'Faqat valid JSON.' : ''}`,
+        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[]}]}. optionExplanations — options bilan bir xil tartibda, har biri uchun 1 gapli izoh: to'g'ri variant uchun nega to'g'ri, xato variantlar uchun nega xato (aynan shu variant nega noto'g'ri ekanini tushuntir, umumiy gap emas). Manba/havola YOZMANG — foydalanilgan darslik va sahifalarni tizim o'zi biriktiradi. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
+        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '2-3' : '3-5'} gap, hech qanday havola/manba raqami qo'shmasdan. optionExplanations: har bir variant uchun aniq, o'sha variantga xos 1 gapli sabab (manba/havola yozmasdan). ${strict ? 'Faqat valid JSON.' : ''}`,
         maxTokens: 6144,
         temperature: strict ? 0.42 : 0.68,
         parse: (t) => parseJSONSafe<TestSession>(t),
         bookContext,
+        onBookReferences: (refs) => {
+          bookRefs = refs;
+        },
       });
-      return normalizeTestSession(topic, parsed, requestedCount);
+      return normalizeTestSession(topic, parsed, requestedCount, bookRefs);
     };
 
     const generateChunked = async (total: number): Promise<TestSession> => {

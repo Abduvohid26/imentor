@@ -33,17 +33,23 @@ export default function MedicalReferencesList({
       </h4>
       <ol className={`space-y-2 list-decimal list-inside ${compact ? 'text-[11px]' : 'text-[13px]'}`}>
         {references.map((ref, idx) => (
-          <li key={`${ref.url}-${idx}`} className="text-amber-950/90 leading-relaxed">
-            <a
-              href={ref.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-blue-700 hover:text-blue-600 hover:underline inline-flex items-center gap-1"
-            >
-              {ref.title}
-              <ExternalLink size={12} className="shrink-0 opacity-70" />
-            </a>
+          <li key={`${ref.url || ref.title}-${idx}`} className="text-amber-950/90 leading-relaxed">
+            {ref.url ? (
+              <a
+                href={ref.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-blue-700 hover:text-blue-600 hover:underline inline-flex items-center gap-1"
+              >
+                {ref.title}
+                <ExternalLink size={12} className="shrink-0 opacity-70" />
+              </a>
+            ) : (
+              /* Darslik manbasi — tashqi havola yo'q, oddiy matn. */
+              <span className="font-semibold text-amber-950">{ref.title}</span>
+            )}
             <span className="text-amber-900/70">
+              {ref.pages ? ` — ${ref.pages}-bet` : ''}
               {ref.authors ? ` — ${ref.authors}` : ''}
               {ref.year ? ` (${ref.year})` : ''}
               {ref.publisher ? `. ${ref.publisher}` : ''}

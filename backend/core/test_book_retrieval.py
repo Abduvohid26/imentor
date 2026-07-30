@@ -81,3 +81,52 @@ class BookRetrievalTests(TestCase):
         self.assertIn("Manba:", msg)
         self.assertIn("Guyton", msg)
         self.assertIn("114-bet", msg)
+
+
+class BookReferencesFromChunksTests(TestCase):
+    """RAG uchun ishlatilgan darsliklardan STRUKTURALI manba ro'yxati.
+
+    Manba AI'dan olinmaydi (u o'ylab topardi yoki "(Manba: kitob nomi,
+    sahifa-bet)" shablonini to'ldirmasdan qoldirardi) — server qaysi kitobning
+    qaysi betlarini modelga berganini aniq biladi.
+    """
+
+    def test_groups_pages_by_book(self):
+        from core.book_retrieval import book_references_from_chunks
+
+        refs = book_references_from_chunks([
+            {"book_title": "Guyton", "page": "114", "text": "..."},
+            {"book_title": "Guyton", "page": "220-225", "text": "..."},
+            {"book_title": "Harrison", "page": "30", "text": "..."},
+        ])
+        by_title = {r["title"]: r for r in refs}
+        self.assertEqual(set(by_title), {"Guyton", "Harrison"})
+        self.assertEqual(by_title["Guyton"]["pages"], "114, 220-225")
+        self.assertEqual(by_title["Harrison"]["pages"], "30")
+
+    def test_pages_sorted_numerically_and_deduped(self):
+        from core.book_retrieval import book_references_from_chunks
+
+        refs = book_references_from_chunks([
+            {"book_title": "Kitob", "page": "220"},
+            {"book_title": "Kitob", "page": "30"},
+            {"book_title": "Kitob", "page": "30"},
+            {"book_title": "Kitob", "page": "9-12"},
+        ])
+        self.assertEqual(refs[0]["pages"], "9-12, 30, 220")
+
+    def test_ignores_broken_rows(self):
+        from core.book_retrieval import book_references_from_chunks
+
+        self.assertEqual(book_references_from_chunks([]), [])
+        self.assertEqual(book_references_from_chunks(None), [])
+        self.assertEqual(
+            book_references_from_chunks([{"page": "10"}, {"book_title": "  "}, None]),
+            [],
+        )
+
+    def test_book_without_pages_still_listed(self):
+        from core.book_retrieval import book_references_from_chunks
+
+        refs = book_references_from_chunks([{"book_title": "Kitob"}])
+        self.assertEqual(refs, [{"title": "Kitob"}])

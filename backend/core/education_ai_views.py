@@ -11,7 +11,11 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .ai_async import dispatch_ai_job
-from .book_retrieval import format_book_context_message, retrieve_book_context
+from .book_retrieval import (
+    book_references_from_chunks,
+    format_book_context_message,
+    retrieve_book_context,
+)
 from .education_ai_utils import clip_education_messages
 from .openai_client import OPENAI_CHAT
 from .permissions import HasEducationRole
@@ -59,11 +63,16 @@ class EducationAiCompletionView(APIView):
 
         subject_code = (data.get("subject_code") or "").strip()
         topic_query = (data.get("topic_query") or "").strip()
+        book_references: list[dict] = []
         if subject_code and topic_query:
             book_chunks = retrieve_book_context(subject_code, topic_query)
             context_message = format_book_context_message(book_chunks)
             if context_message:
                 messages = [{"role": "system", "content": context_message}] + messages
+                # Qaysi kitobning qaysi betlari modelga berilgani — ANIQ ma'lum.
+                # Shuni javobga qo'shamiz: chaqiruvchi uni tayyor kontentga
+                # `references` sifatida biriktiradi (AI o'ylab topmaydi).
+                book_references = book_references_from_chunks(book_chunks)
 
         payload = {
             "model": data.get("model") or OPENAI_CHAT,
@@ -77,4 +86,5 @@ class EducationAiCompletionView(APIView):
             payload=payload,
             task=run_education_ai_completion,
             timeout=280.0,
+            extra={"book_references": book_references} if book_references else None,
         )

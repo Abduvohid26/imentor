@@ -17,6 +17,7 @@ def dispatch_ai_job(
     payload: dict[str, Any],
     task: Callable[..., Any],
     timeout: float = 180.0,
+    extra: dict[str, Any] | None = None,
 ) -> Response:
     job_id = create_ai_job(user_id=user_id, kind=kind)
     task.delay(job_id, payload)
@@ -34,7 +35,9 @@ def dispatch_ai_job(
 
     result = job.get("result")
     if kind == "education_completion" and isinstance(result, dict):
-        return Response({"content": result.get("content", "")})
+        # `extra` — AI natijasidan TASHQARIDAGI, server aniq biladigan ma'lumot
+        # (masalan RAG uchun ishlatilgan kitob/sahifalar). AI'ga tayanmaydi.
+        return Response({"content": result.get("content", ""), **(extra or {})})
     if kind == "startup_coach_reply" and isinstance(result, dict):
         return Response({"reply": result.get("reply", "")})
     if isinstance(result, dict):
