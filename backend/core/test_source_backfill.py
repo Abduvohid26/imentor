@@ -56,6 +56,43 @@ def payload_has_references(payload: Any) -> bool:
     return False
 
 
+def _iter_references(payload: Any):
+    for q in payload_questions(payload):
+        refs = q.get("references")
+        if isinstance(refs, list):
+            for r in refs:
+                if isinstance(r, dict):
+                    yield r
+
+
+def has_book_references(payload: Any) -> bool:
+    """Manba DARSLIKdan olinganmi (`pages` bor, tashqi havola yo'q).
+
+    Bunday manba server bilgan aniq ma'lumotdan qurilgan — tekshiriladigan
+    va ishonchli, shuning uchun uni almashtirish shart emas.
+    """
+    return any(r.get("pages") and not r.get("url") for r in _iter_references(payload))
+
+
+def external_reference_titles(payload: Any, limit: int = 3) -> list[str]:
+    """AI yaratgan TASHQI havolalar (DOI/PubMed va h.k.) sarlavhalari.
+
+    Bunday havolalar model tomonidan o'ylab topilgan bo'lishi mumkin va
+    haqiqiy maqolaga bog'lanmasligi ehtimoli bor — shu sabab ular darslik
+    manbasiga almashtirilishi tavsiya etiladi.
+    """
+    out: list[str] = []
+    for r in _iter_references(payload):
+        if not r.get("url"):
+            continue
+        title = str(r.get("title") or r.get("url") or "").strip()
+        if title and title not in out:
+            out.append(title)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def retrieval_query(payload: Any, max_questions: int = 4) -> str:
     """Qidiruv so'rovi: mavzu + bir nechta savol matni (mavzu yolg'iz kam)."""
     if not isinstance(payload, dict):

@@ -103,37 +103,65 @@ def format_book_context_message(chunks: list[dict]) -> str | None:
 
 #: Fayl nomidagi texnik shovqin — sarlavhadan olib tashlanadi.
 _TITLE_NOISE = frozenset({
-    "pdf", "epub", "djvu", "doc", "docx", "scan", "scanned", "ocr", "final",
-    "copy", "pca", "dr", "notes", "note", "book", "ebook", "free", "download",
-    "org", "com", "www", "compressed", "merged", "full", "part", "vol", "ed",
+    "pdf", "epub", "djvu", "doc", "docx", "txt", "scan", "scanned", "ocr",
+    "final", "copy", "pca", "dr", "notes", "note", "book", "ebook", "free",
+    "download", "compressed", "merged", "org", "com", "net", "www",
+    "konkur", "in",
 })
+
+#: Qavs ichidagi sayt manzili — qaroqchi saytlarning vatermarki.
+_BRACKET_URL_RE = re.compile(r"[\[\(]\s*(?:https?://|www\.)[^\]\)]*[\]\)]", re.I)
+#: Markdown havola: [matn](url) -> matn
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\((?:[^)]*)\)")
+_BARE_URL_RE = re.compile(r"(?:https?://\S+|www\.[^\s\]\)]+)", re.I)
+#: "Medicine2021" -> "Medicine 2021"
+_LETTER_YEAR_RE = re.compile(r"([A-Za-z\u0400-\u04ff])((?:19|20)\d{2})\b")
 
 
 def clean_book_title(raw: str) -> str:
     """Fayl nomidan talabaga ko'rsatiladigan kitob sarlavhasi.
 
-    `SubjectBook.title` ko'pincha yuklangan fayl nomi bo'ladi, masalan
-    "1. Williams-obstetrics-26th-edition-pdf-pca-dr-notes". Manba talabaning
-    natija sahifasida ko'rinadi, shuning uchun uni o'qishga yaroqli holga
-    keltiramiz: "Williams obstetrics 26th edition".
+    `SubjectBook.title` odatda yuklangan fayl nomi bo'ladi va ichida turli
+    shovqin uchraydi: kengaytma, boshdagi tartib raqami, qaroqchi saytlarning
+    vatermarki ("[www.konkur.in]"), hatto markdown havola. Manba talabaning
+    natija sahifasida ko'rinadi, shuning uchun tozalanadi:
 
-    Konservativ: faqat aniq shovqin olib tashlanadi. Natija juda qisqa
-    chiqsa xom nom qaytariladi — sarlavhani buzib ko'rsatgandan ko'ra
-    tushunarsiz nom afzal.
+        "Oral Medicine2021 [www.konkur.in]"  -> "Oral Medicine 2021"
+        "1. Williams-obstetrics-26th-pdf"    -> "Williams obstetrics 26th"
+
+    Konservativ: natija juda qisqa chiqsa xom nom qaytariladi — sarlavhani
+    buzib ko'rsatgandan ko'ra tushunarsiz nom afzal.
     """
     s = str(raw or "").strip()
     if not s:
         return ""
-    s = re.sub(r"\.(pdf|epub|djvu|docx?|txt)$", "", s, flags=re.I)
+    s = _MD_LINK_RE.sub(r"\1", s)
+    s = _BRACKET_URL_RE.sub(" ", s)
+    s = _BARE_URL_RE.sub(" ", s)
+    s = re.sub(r"\.(pdf|epub|djvu|docx?|txt)\b", " ", s, flags=re.I)
     s = re.sub(r"^\s*\d+[\s.)\-_]+", "", s)
     s = s.replace("_", " ").replace("-", " ")
+    s = _LETTER_YEAR_RE.sub(r"\1 \2", s)
+
     kept: list[str] = []
     for i, part in enumerate(p for p in s.split() if p):
         low = re.sub(r"[^a-z0-9]", "", part.lower())
         if low in _TITLE_NOISE and i >= 1:
             continue
+        if kept and kept[-1].lower() == part.lower():
+            continue  # ketma-ket takror: "4th 4th" -> "4th"
         kept.append(part)
+
     out = re.sub(r"\s{2,}", " ", " ".join(kept)).strip(" .,-\u2013\u2014")
+    # Muvozanatsiz qavslarni olib tashlash — haqiqiy "(2018)" buzilmasin.
+    for op, cl in (("(", ")"), ("[", "]"), ("{", "}")):
+        extra = out.count(op) - out.count(cl)
+        if extra > 0:
+            out = out.replace(op, "", extra)
+        elif extra < 0:
+            out = out.replace(cl, "", -extra)
+    out = re.sub(r"\s{2,}", " ", out).strip(" .,-\u2013\u2014")
+
     if len(out) < 3:
         return str(raw).strip()
     return out[0].upper() + out[1:] if out.islower() else out

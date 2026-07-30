@@ -11,6 +11,8 @@ from django.test import TestCase
 from core.models import PreparedContent
 from core.test_source_backfill import (
     apply_sources_to_payload,
+    external_reference_titles,
+    has_book_references,
     parse_rewrite_response,
     payload_has_references,
     retrieval_query,
@@ -199,7 +201,7 @@ class BackfillCommandTests(TestCase):
         self._run(chunks, apply=True)
         text, gen = self._run(chunks, apply=True)
         gen.assert_not_called()
-        self.assertIn("manba bor", text)
+        self.assertIn("darslik manbasi bor", text)
 
     def test_skip_rewrite_does_not_call_ai(self):
         item = self._make()
@@ -243,3 +245,112 @@ class BackfillCommandTests(TestCase):
         self._run([{"book_title": "Williams obstetrics", "page": "643", "text": "B6 haqida matn"}], apply=True)
         lecture.refresh_from_db()
         self.assertFalse(payload_has_references(lecture.payload))
+
+
+EXTERNAL_REFS = [
+    {
+        "title": "Nausea and vomiting of pregnancy",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/29420409/",
+        "publisher": "BMJ",
+        "year": "2020",
+    }
+]
+BOOK_REFS = [{"title": "Williams obstetrics", "pages": "643"}]
+
+
+def payload_with_refs(refs) -> dict:
+    p = sample_payload()
+    p["questions"][0]["references"] = [dict(r) for r in refs]
+    return p
+
+
+class ReferenceClassificationTests(TestCase):
+    """Darslik manbasi (ishonchli) va AI havolasi (tekshirilmaydi) farqi."""
+
+    def test_book_refs_detected(self):
+        self.assertTrue(has_book_references(payload_with_refs(BOOK_REFS)))
+        self.assertFalse(has_book_references(payload_with_refs(EXTERNAL_REFS)))
+        self.assertFalse(has_book_references(sample_payload()))
+
+    def test_external_titles_listed(self):
+        titles = external_reference_titles(payload_with_refs(EXTERNAL_REFS))
+        self.assertEqual(titles, ["Nausea and vomiting of pregnancy"])
+        self.assertEqual(external_reference_titles(payload_with_refs(BOOK_REFS)), [])
+
+
+class ForceReplaceTests(TestCase):
+    """--force: AI havolalarini darslik manbasiga almashtirish."""
+
+    CHUNKS = [{"book_title": "Williams obstetrics", "page": "643", "text": "matn"}]
+
+    def _make(self, refs, **kw) -> PreparedContent:
+        return PreparedContent.objects.create(
+            owner_key="staff1",
+            kind=PreparedContent.KIND_TEST,
+            topic="Homiladorlikda qusish",
+            topic_norm="homiladorlikda qusish",
+            subject_code="akusherlik-va-ginekologiya",
+            payload=payload_with_refs(refs),
+            **kw,
+        )
+
+    def _run(self, chunks, **opts):
+        out = StringIO()
+        with (
+            mock.patch("core.management.commands.backfill_test_sources.retrieve_book_context",
+                       return_value=chunks),
+            mock.patch("core.management.commands.backfill_test_sources.generate_openai_text",
+                       return_value='[{"i":0,"explanation":"Darslikdan"}]') as gen,
+            mock.patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
+        ):
+            call_command("backfill_test_sources", stdout=out, **opts)
+        return out.getvalue(), gen
+
+    def test_without_force_external_refs_kept(self):
+        item = self._make(EXTERNAL_REFS)
+        text, gen = self._run(self.CHUNKS, apply=True)
+        gen.assert_not_called()
+        item.refresh_from_db()
+        self.assertEqual(item.payload["questions"][0]["references"], EXTERNAL_REFS)
+        self.assertIn("--force kerak", text)
+        self.assertIn("tashqi_havola_o'tkazildi=1", text)
+
+    def test_force_replaces_external_with_book(self):
+        item = self._make(EXTERNAL_REFS)
+        text, _ = self._run(self.CHUNKS, apply=True, force=True)
+        item.refresh_from_db()
+        refs = item.payload["questions"][0]["references"]
+        self.assertEqual(refs, BOOK_REFS, "tashqi havola darslik manbasiga almashsin")
+        self.assertNotIn("pubmed", str(refs).lower())
+        self.assertIn("ALMASHTIRILADI", text)
+
+    def test_force_does_NOT_delete_refs_when_no_book_found(self):
+        """Eng muhim xavfsizlik: darslik topilmasa eski manba SAQLANADI."""
+        item = self._make(EXTERNAL_REFS)
+        text, _ = self._run([], apply=True, force=True)
+        item.refresh_from_db()
+        self.assertEqual(
+            item.payload["questions"][0]["references"], EXTERNAL_REFS,
+            "manbasiz qoldirib ketmasin",
+        )
+        self.assertIn("darslik topilmadi", text.lower())
+
+    def test_force_never_touches_book_references(self):
+        item = self._make(BOOK_REFS)
+        text, gen = self._run(
+            [{"book_title": "Boshqa kitob", "page": "10", "text": "matn"}],
+            apply=True, force=True,
+        )
+        gen.assert_not_called()
+        item.refresh_from_db()
+        self.assertEqual(item.payload["questions"][0]["references"], BOOK_REFS)
+        self.assertIn("darslik manbasi bor", text)
+
+    def test_force_is_idempotent(self):
+        item = self._make(EXTERNAL_REFS)
+        self._run(self.CHUNKS, apply=True, force=True)
+        text, gen = self._run(self.CHUNKS, apply=True, force=True)
+        gen.assert_not_called()
+        self.assertIn("darslik manbasi bor", text)
+        item.refresh_from_db()
+        self.assertEqual(item.payload["questions"][0]["references"], BOOK_REFS)

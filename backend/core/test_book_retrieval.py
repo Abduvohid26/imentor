@@ -163,6 +163,40 @@ class CleanBookTitleTests(TestCase):
         self.assertEqual(clean_book_title(""), "")
         self.assertEqual(clean_book_title(None), "")
 
+    def test_strips_pirate_site_watermark_and_markdown(self):
+        from core.book_retrieval import clean_book_title
+
+        # Serverdagi HAQIQIY nomlar (backfill dry-run natijasidan).
+        self.assertEqual(clean_book_title("Oral Medicine2021 [www.konkur.in]"), "Oral Medicine 2021")
+        self.assertEqual(
+            clean_book_title("Dentistry for the Child2021 [[www.konur](https://www.konur) .in]"),
+            "Dentistry for the Child 2021",
+        )
+
+    def test_collapses_repeated_token(self):
+        from core.book_retrieval import clean_book_title
+
+        self.assertEqual(
+            clean_book_title("Williams Gynecology 4th 4th Edition Barbara L Hoffman"),
+            "Williams Gynecology 4th Edition Barbara L Hoffman",
+        )
+
+    def test_keeps_balanced_parentheses(self):
+        from core.book_retrieval import clean_book_title
+
+        self.assertEqual(
+            clean_book_title("Robbins Basic Pathology 10th ed (2018)"),
+            "Robbins Basic Pathology 10th ed (2018)",
+        )
+
+    def test_keeps_cyrillic_title(self):
+        from core.book_retrieval import clean_book_title
+
+        self.assertEqual(
+            clean_book_title("\u042d\u043d\u0434\u043e\u043a\u0440\u0438\u043d\u043d\u0430\u044f \u0433\u0438\u043d\u0435\u043a\u043e\u043b\u043e\u0433\u0438\u044f"),
+            "\u042d\u043d\u0434\u043e\u043a\u0440\u0438\u043d\u043d\u0430\u044f \u0433\u0438\u043d\u0435\u043a\u043e\u043b\u043e\u0433\u0438\u044f",
+        )
+
     def test_references_use_clean_title(self):
         from core.book_retrieval import book_references_from_chunks
 
