@@ -160,6 +160,7 @@ class Command(BaseCommand):
 
             # Izoh rewrite uchun umumiy context (topic + bir necha savol).
             shared_query = retrieval_query(payload)
+            self.stdout.write(f"      … RAG (umumiy kontekst) {tag}")
             shared_chunks = (
                 retrieve_book_context(item.subject_code, shared_query, top_k=12)
                 if shared_query
@@ -167,7 +168,10 @@ class Command(BaseCommand):
             )
             if per_question:
                 per_refs = []
-                for q in questions:
+                total_q = len(questions)
+                for qi, q in enumerate(questions, start=1):
+                    if qi == 1 or qi == total_q or qi % 5 == 0:
+                        self.stdout.write(f"      … RAG per-savol {qi}/{total_q}")
                     qtext = str(q.get("question") or "").strip()
                     q_chunks = (
                         retrieve_book_context(item.subject_code, qtext[:2000], top_k=3)
@@ -201,16 +205,27 @@ class Command(BaseCommand):
                 lang = LANG_NAMES.get(
                     (payload.get("language") or "uz").lower(), LANG_NAMES["uz"]
                 )
+                # Katta bir so'rov o'rniga 3 tadan — timeout/qotish kamayadi.
+                batch_size = 3
                 try:
-                    text = generate_openai_text(
-                        api_key,
-                        system_instruction=context,
-                        user_text=build_rewrite_prompt(questions, lang),
-                        json_only=True,
-                        max_tokens=12288,
-                        temperature=0.25,
-                    )
-                    rewrites = parse_rewrite_response(text, len(questions))
+                    for start in range(0, len(questions), batch_size):
+                        batch = questions[start : start + batch_size]
+                        self.stdout.write(
+                            f"      … AI izoh qayta yozish "
+                            f"{start + 1}–{start + len(batch)}/{len(questions)} "
+                            f"(1–3 daqiqa kutishi mumkin)"
+                        )
+                        text = generate_openai_text(
+                            api_key,
+                            system_instruction=context,
+                            user_text=build_rewrite_prompt(batch, lang),
+                            json_only=True,
+                            max_tokens=8192,
+                            temperature=0.25,
+                        )
+                        parsed = parse_rewrite_response(text, len(batch))
+                        for local_i, row in parsed.items():
+                            rewrites[start + local_i] = row
                 except OpenAiClientError as e:
                     stats["xato"] += 1
                     self.stdout.write(self.style.ERROR(f"  AI xato {tag}: {str(e)[:90]}"))
