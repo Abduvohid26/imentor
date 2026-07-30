@@ -33,6 +33,9 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   GET  /v1/external/tests/
   GET  /v1/external/tests/<id>/
        ?question_limit=10..30
+  GET  /v1/external/questions/sample/                                 ← unique aralashtirilgan savollar
+       ?subject_code=...&department_code=...&count=10..30
+       (+ ixtiyoriy variant_label, topic_code)
 
 
 ================================================================================
@@ -357,6 +360,63 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
   qo'shilishidan oldin yaratilgan) "translations" umuman bo'lmaydi.
 
 
+4.4  GET /v1/external/questions/sample/
+──────────────────────────────────────
+  Kafedra/fan doirasidagi BARCHA e'lon qilingan testlardan unique savollarni
+  aralashtirib, so'ralgan sondagi namunani qaytaradi.
+  (Bitta test tanlash + prefix emas — pool + shuffle + unique.)
+
+  Majburiy (kamida bittasi):
+    subject_code=fiziologiya__anatomiya
+    department_code=fiziologiya
+
+  Ixtiyoriy:
+    count=20            — 10–30 (alias: question_limit, question_count)
+                          berilmasa → unique poolning hammasi
+    variant_label=PI
+    topic_code=m1
+    syllabus_id=45
+
+  Unique: savol matni (lower + whitespace normalize). Bir xil matn ikki marta
+  chiqmaydi. Savolda references bo'lmasa — shu testning payload.references
+  o'tkaziladi (static kitob yozilmaydi).
+
+  Misol:
+    GET /api/v1/external/questions/sample/?subject_code=fiziologiya__anatomiya&count=20
+    Header: X-Api-Key: <kalit>
+
+  Javob:
+  {
+    "subject_code": "fiziologiya__anatomiya",
+    "department_code": "",
+    "variant_label": "",
+    "topic_code": "",
+    "syllabus_id": "",
+    "count_requested": 20,
+    "count_available": 87,
+    "count_returned": 20,
+    "tests_scanned": 5,
+    "question_limit_bounds": { "min": 10, "max": 30 },
+    "questions": [
+      {
+        "question": "45 yoshli bemor ...",
+        "options": ["A", "B", "C", "D", "E"],
+        "correctOptionIndex": 2,
+        "explanation": "...",
+        "references": [
+          { "title": "Oxford Textbook of Palliative Medicine", "pages": "501, 818" }
+        ],
+        "source_test_id": 24
+      }
+    ]
+  }
+
+  Xatoliklar:
+    400 — subject_code va department_code ikkalasi ham yo'q
+    400 — count 10–30 dan tashqari
+    403 — X-Api-Key yo'q/noto'g'ri
+
+
 ================================================================================
 5. INTEGRATSIYA OQIMI (tavsiya etilgan ketma-ketlik)
 ================================================================================
@@ -394,6 +454,17 @@ Testlar 1 soatdan keyin e'lon qilinadi (yangi test → 404)
 
   8. (Ixtiyoriy) Manba tasdiqlash
      document_id + verification_code saqlash
+
+
+  Integratsiya tavsiyasi (imtihon yaratish):
+    1) catalog/departments/ → kafedra
+    2) catalog/departments/<code>/ → fan (+ variant/mavzu)
+    3) questions/sample/?subject_code=...&count=20  ← unique aralash bank
+       (eski yo'l: tests/ list → tests/<id>/ ham ishlayveradi)
+
+  curl misol (sample):
+    curl -sS -H "X-Api-Key: $KEY" \
+      "$BASE/v1/external/questions/sample/?subject_code=ANAT-CAT&count=10"
 
 
 ================================================================================

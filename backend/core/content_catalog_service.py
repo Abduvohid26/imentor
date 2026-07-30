@@ -129,6 +129,73 @@ def slice_test_payload(payload: dict | None, limit: int | None) -> tuple[dict, i
     return base, available, len(taken)
 
 
+def normalize_question_text_key(text: str) -> str:
+    """Unique solishtirish: lower + ortiqcha bo'shliqlarni yig'ish."""
+    return ' '.join(str(text or '').lower().split())
+
+
+def _payload_level_references(payload: dict) -> list:
+    refs = payload.get('references')
+    return list(refs) if isinstance(refs, list) and refs else []
+
+
+def collect_unique_questions_from_tests(
+    items,
+    *,
+    shuffle: bool = True,
+    count: int | None = None,
+    rng=None,
+) -> tuple[list[dict], int, int]:
+    """
+    Bir nechta e'lon qilingan testdan unique savollar pooli.
+
+    Unique = savol matni (question/text) normalize qilingan kalit.
+    Savolda references bo'lmasa — shu testning payload.references olinadi.
+    Qaytadi: (savollar, available_unique, tests_scanned).
+    """
+    import random as _random
+
+    seen: set[str] = set()
+    pool: list[dict] = []
+    tests_scanned = 0
+
+    for item in items:
+        tests_scanned += 1
+        payload = item.payload if isinstance(getattr(item, 'payload', None), dict) else {}
+        if not isinstance(payload, dict):
+            payload = {}
+        payload_refs = _payload_level_references(payload)
+        raw_qs = payload.get('questions')
+        if not isinstance(raw_qs, list):
+            continue
+        source_id = int(getattr(item, 'pk', 0) or 0)
+        for q in raw_qs:
+            if not isinstance(q, dict):
+                continue
+            text = str(q.get('question') or q.get('text') or '').strip()
+            if not text:
+                continue
+            key = normalize_question_text_key(text)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            row = dict(q)
+            refs = row.get('references')
+            if not (isinstance(refs, list) and refs) and payload_refs:
+                row['references'] = list(payload_refs)
+            if source_id > 0:
+                row['source_test_id'] = source_id
+            pool.append(row)
+
+    available = len(pool)
+    picker = rng if rng is not None else _random
+    if shuffle and pool:
+        picker.shuffle(pool)
+    if count is not None:
+        pool = pool[: max(0, int(count))]
+    return pool, available, tests_scanned
+
+
 def annotate_stored_question_count(qs):
     from django.db import connection
     from django.db.models import IntegerField

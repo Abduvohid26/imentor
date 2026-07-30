@@ -64,6 +64,7 @@ from .external_api_views import (
     ExternalCatalogStatsView,
     ExternalCatalogSubjectDetailView,
     ExternalCatalogSubjectsView,
+    ExternalQuestionsSampleView,
     ExternalTestsDetailView,
     ExternalTestsListView,
     ExternalTestsStatsView,
@@ -128,6 +129,11 @@ urlpatterns = [
     path('v1/external/tests/', ExternalTestsListView.as_view(), name='external-tests-list'),
     path('v1/external/tests/stats/', ExternalTestsStatsView.as_view(), name='external-tests-stats'),
     path('v1/external/tests/<int:pk>/', ExternalTestsDetailView.as_view(), name='external-tests-detail'),
+    path(
+        'v1/external/questions/sample/',
+        ExternalQuestionsSampleView.as_view(),
+        name='external-questions-sample',
+    ),
     path('v1/external/catalog/stats/', ExternalCatalogStatsView.as_view(), name='external-catalog-stats'),
     path('v1/external/catalog/departments/', ExternalCatalogDepartmentsView.as_view(), name='external-catalog-departments'),
     path(

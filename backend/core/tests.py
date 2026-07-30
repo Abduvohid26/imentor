@@ -461,6 +461,150 @@ class PreparedContentApiTests(TestCase):
         self.assertEqual(len(filtered_ok.json().get('results', [])), 1)
 
     @override_settings(EXTERNAL_API_KEYS='ext-test-key-123')
+    def test_external_questions_sample_unique_pool(self):
+        from datetime import timedelta
+
+        from core.models import AcademicDepartment, CourseSyllabus, PreparedContent
+
+        dept = AcademicDepartment.objects.create(name='Sample kafedra', code='sample-dept', sort_order=1)
+        syllabus = CourseSyllabus.objects.create(
+            subject_name='Sample fan',
+            subject_code='sample-dept__fan',
+            department=dept,
+            variants=[{'label': 'XT', 'topics': [{'id': 'M1', 'title': 'Mavzu'}]}],
+            topics=[{'id': 'M1', 'title': 'Mavzu'}],
+        )
+        hodim = self._register_user('998901114488', 'StrongPass123', first_name='S', last_name='T')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {hodim["access"]}')
+
+        def _create(questions, subject_code='sample-dept__fan'):
+            resp = self.client.post(
+                '/api/v1/prepared-content/',
+                {
+                    'kind': 'test',
+                    'topic': 'Sample topic',
+                    'topic_norm': f'{syllabus.pk}::xt::m1',
+                    'variant_label': 'XT',
+                    'topic_code': 'm1',
+                    'subject_name': 'Sample fan',
+                    'subject_code': subject_code,
+                    'author_display_name': 'S T',
+                    'payload': {
+                        'topic': 'Sample topic',
+                        'references': [{'title': 'Payload Book', 'pages': '1'}],
+                        'questions': questions,
+                    },
+                },
+                format='json',
+            )
+            self.assertEqual(resp.status_code, 201, resp.content)
+            return resp.json()['id']
+
+        pk1 = _create(
+            [
+                {
+                    'question': 'Unique one',
+                    'options': ['a', 'b', 'c', 'd', 'e'],
+                    'correctOptionIndex': 0,
+                    'explanation': 'ex',
+                    'references': [{'title': 'PerQ Book', 'pages': '5'}],
+                },
+                {
+                    'question': 'Shared dup',
+                    'options': ['a', 'b', 'c', 'd', 'e'],
+                    'correctOptionIndex': 1,
+                    'explanation': 'ex',
+                },
+            ]
+            + [
+                {
+                    'question': f'Extra A{i}',
+                    'options': ['a', 'b', 'c', 'd', 'e'],
+                    'correctOptionIndex': 0,
+                    'explanation': 'ex',
+                }
+                for i in range(8)
+            ]
+        )
+        pk2 = _create(
+            [
+                {
+                    'question': '  shared   DUP ',
+                    'options': ['a', 'b', 'c', 'd', 'e'],
+                    'correctOptionIndex': 0,
+                    'explanation': 'dup',
+                },
+                {
+                    'question': 'Unique two',
+                    'options': ['a', 'b', 'c', 'd', 'e'],
+                    'correctOptionIndex': 2,
+                    'explanation': 'ex2',
+                },
+            ]
+            + [
+                {
+                    'question': f'Extra B{i}',
+                    'options': ['a', 'b', 'c', 'd', 'e'],
+                    'correctOptionIndex': 0,
+                    'explanation': 'ex',
+                }
+                for i in range(8)
+            ]
+        )
+        PreparedContent.objects.filter(pk__in=[pk1, pk2]).update(
+            created_at=timezone.now() - timedelta(hours=2)
+        )
+
+        self.client.credentials()
+        headers = {'HTTP_X_API_KEY': 'ext-test-key-123'}
+
+        missing = self.client.get('/api/v1/external/questions/sample/', **headers)
+        self.assertEqual(missing.status_code, 400)
+
+        bad = self.client.get(
+            '/api/v1/external/questions/sample/?subject_code=sample-dept__fan&count=5',
+            **headers,
+        )
+        self.assertEqual(bad.status_code, 400)
+
+        ok = self.client.get(
+            '/api/v1/external/questions/sample/?subject_code=sample-dept__fan&count=10',
+            **headers,
+        )
+        self.assertEqual(ok.status_code, 200, ok.content)
+        body = ok.json()
+        self.assertEqual(body['count_requested'], 10)
+        self.assertEqual(body['tests_scanned'], 2)
+        # 10 + 10 raw, 1 duplicate → 19 unique available
+        self.assertEqual(body['count_available'], 19)
+        self.assertEqual(body['count_returned'], 10)
+        self.assertEqual(len(body['questions']), 10)
+        keys = [' '.join(q['question'].lower().split()) for q in body['questions']]
+        self.assertEqual(len(keys), len(set(keys)))
+
+        all_qs = self.client.get(
+            '/api/v1/external/questions/sample/?subject_code=sample-dept__fan',
+            **headers,
+        )
+        self.assertEqual(all_qs.status_code, 200)
+        all_body = all_qs.json()
+        self.assertEqual(all_body['count_requested'], None)
+        self.assertEqual(all_body['count_returned'], 19)
+        one = next(
+            q
+            for q in all_body['questions']
+            if ' '.join(q['question'].lower().split()) == 'unique one'
+        )
+        self.assertEqual(one['references'][0]['title'], 'PerQ Book')
+        shared = next(
+            q
+            for q in all_body['questions']
+            if ' '.join(q['question'].lower().split()) == 'shared dup'
+        )
+        self.assertEqual(shared['references'][0]['title'], 'Payload Book')
+        self.assertIn(shared['source_test_id'], (pk1, pk2))
+
+    @override_settings(EXTERNAL_API_KEYS='ext-test-key-123')
     def test_external_catalog_and_tests_flow(self):
         from datetime import timedelta
 

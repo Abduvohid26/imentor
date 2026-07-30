@@ -13,6 +13,7 @@ from .content_catalog_service import (
     TEST_QUESTION_LIMIT_MIN,
     build_catalog_stats,
     catalog_item_summary,
+    collect_unique_questions_from_tests,
     filter_by_stored_question_count,
     filter_catalog_queryset,
     parse_test_question_limit,
@@ -109,6 +110,65 @@ class ExternalTestsDetailView(APIView):
         if limit is not None:
             data['question_limit'] = limit
         return Response(data)
+
+
+class ExternalQuestionsSampleView(APIView):
+    """
+    Kafedra/fan doirasidagi barcha e'lon qilingan testlardan
+    unique savollarni aralashtirib, so'ralgan sondagi namunani qaytaradi.
+    """
+
+    authentication_classes = []
+    permission_classes = [HasExternalApiKey]
+
+    def get(self, request):
+        params = request.query_params
+        subject_code = (params.get('subject_code') or '').strip()
+        department_code = (params.get('department_code') or '').strip()
+        if not subject_code and not department_code:
+            return Response(
+                {'detail': 'subject_code or department_code is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw_count = (
+            params.get('count')
+            or params.get('question_limit')
+            or params.get('question_count')
+        )
+        # count berilmasa — unique poolning hammasi (imtihon 0 = barcha).
+        count, err = parse_test_question_limit(raw_count, param_name='count')
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+
+        qs = filter_catalog_queryset(
+            published_catalog_queryset().filter(kind=PreparedContent.KIND_TEST),
+            params,
+        )
+        questions, available, tests_scanned = collect_unique_questions_from_tests(
+            qs,
+            shuffle=True,
+            count=count,
+        )
+
+        return Response(
+            {
+                'subject_code': subject_code,
+                'department_code': department_code,
+                'variant_label': (params.get('variant_label') or '').strip(),
+                'topic_code': (params.get('topic_code') or '').strip().lower(),
+                'syllabus_id': (params.get('syllabus_id') or '').strip(),
+                'count_requested': count,
+                'count_available': available,
+                'count_returned': len(questions),
+                'tests_scanned': tests_scanned,
+                'question_limit_bounds': {
+                    'min': TEST_QUESTION_LIMIT_MIN,
+                    'max': TEST_QUESTION_LIMIT_MAX,
+                },
+                'questions': questions,
+            }
+        )
 
 
 class ExternalTestsStatsView(APIView):
