@@ -33,6 +33,7 @@ from core.book_retrieval import (
     book_references_from_chunks,
     format_book_context_message,
     retrieve_book_context,
+    retrieve_references_for_queries,
 )
 from core.models import PreparedContent
 from core.openai_client import OpenAiClientError, generate_openai_text
@@ -167,18 +168,13 @@ class Command(BaseCommand):
                 else []
             )
             if per_question:
-                per_refs = []
-                total_q = len(questions)
-                for qi, q in enumerate(questions, start=1):
-                    if qi == 1 or qi == total_q or qi % 5 == 0:
-                        self.stdout.write(f"      … RAG per-savol {qi}/{total_q}")
-                    qtext = str(q.get("question") or "").strip()
-                    q_chunks = (
-                        retrieve_book_context(item.subject_code, qtext[:2000], top_k=3)
-                        if qtext
-                        else []
-                    )
-                    per_refs.append(book_references_from_chunks(q_chunks))
+                self.stdout.write(
+                    f"      … RAG per-savol batch ({len(questions)} ta, 1 embedding so'rov)"
+                )
+                queries = [str(q.get("question") or "").strip() for q in questions]
+                per_refs = retrieve_references_for_queries(
+                    item.subject_code, queries, top_k=3
+                )
                 # Hech qaysi savolda manba chiqmasa — fallback shared
                 if not any(per_refs):
                     shared_refs = book_references_from_chunks(shared_chunks)

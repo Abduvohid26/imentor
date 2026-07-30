@@ -20,43 +20,70 @@ def retrieve_book_context(subject_code: str, query_text: str, *, top_k: int = 10
     Hech narsa topilmasa yoki xato bo'lsa — bo'sh ro'yxat (chaqiruvchi tomon buni
     "manba yo'q" sifatida talqin qiladi, xato ko'tarmaydi).
     """
-    subject_code = (subject_code or "").strip()
-    query_text = (query_text or "").strip()
-    if not subject_code or not query_text:
-        return []
+    rows = retrieve_book_context_many(subject_code, [query_text], top_k=top_k)
+    return rows[0] if rows else []
 
-    syllabus = CourseSyllabus.objects.filter(subject_code=subject_code).select_related("department").first()
+
+def _chunk_to_dict(chunk) -> dict:
+    return {
+        "book_title": chunk.book.title,
+        "page": (
+            str(chunk.page_start)
+            if chunk.page_start == chunk.page_end
+            else f"{chunk.page_start}-{chunk.page_end}"
+        ),
+        "text": chunk.text,
+    }
+
+
+def retrieve_book_context_many(
+    subject_code: str,
+    queries: list[str],
+    *,
+    top_k: int = 10,
+) -> list[list[dict]]:
+    """
+    Bir nechta so'rov uchun RAG — embedding BIR marta (batch).
+    backfill per-savol da 10 ta alohida OpenAI chaqiruvini oldini oladi.
+    """
+    subject_code = (subject_code or "").strip()
+    cleaned = [str(q or "").strip()[:2000] for q in (queries or [])]
+    if not subject_code or not cleaned:
+        return [[] for _ in cleaned]
+
+    syllabus = (
+        CourseSyllabus.objects.filter(subject_code=subject_code)
+        .select_related("department")
+        .first()
+    )
     if not syllabus or not syllabus.department_id:
-        return []
+        return [[] for _ in cleaned]
 
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
-        return []
+        return [[] for _ in cleaned]
 
+    # Bo'sh so'rovlar uchun ham indeksi saqlansin.
+    embed_texts = [q if q else " " for q in cleaned]
     try:
-        [query_vec] = create_embeddings(api_key, [query_text])
+        vectors = create_embeddings(api_key, embed_texts)
     except OpenAiClientError:
-        return []
+        return [[] for _ in cleaned]
 
-    chunks = (
-        BookChunk.objects.filter(department_id=syllabus.department_id)
-        .select_related("book")
-        .annotate(distance=CosineDistance("embedding", query_vec))
-        .order_by("distance")[:top_k]
-    )
-
-    return [
-        {
-            "book_title": chunk.book.title,
-            "page": (
-                str(chunk.page_start)
-                if chunk.page_start == chunk.page_end
-                else f"{chunk.page_start}-{chunk.page_end}"
-            ),
-            "text": chunk.text,
-        }
-        for chunk in chunks
-    ]
+    out: list[list[dict]] = []
+    dept_id = syllabus.department_id
+    for q, vec in zip(cleaned, vectors):
+        if not q.strip():
+            out.append([])
+            continue
+        chunks = (
+            BookChunk.objects.filter(department_id=dept_id)
+            .select_related("book")
+            .annotate(distance=CosineDistance("embedding", vec))
+            .order_by("distance")[:top_k]
+        )
+        out.append([_chunk_to_dict(c) for c in chunks])
+    return out
 
 
 def format_book_context_message(chunks: list[dict]) -> str | None:
@@ -215,14 +242,7 @@ def retrieve_references_for_queries(
 ) -> list[list[dict]]:
     """
     Har bir so'rov (odatda savol matni) uchun alohida RAG — alohida references.
-    Bir xil umumiy manba ro'yxatini barcha savollarga yopishtirmaslik uchun.
+    Embedding batch qilinadi (tez).
     """
-    out: list[list[dict]] = []
-    for raw in queries:
-        q = str(raw or "").strip()
-        if not q:
-            out.append([])
-            continue
-        chunks = retrieve_book_context(subject_code, q[:2000], top_k=top_k)
-        out.append(book_references_from_chunks(chunks))
-    return out
+    chunk_lists = retrieve_book_context_many(subject_code, queries, top_k=top_k)
+    return [book_references_from_chunks(chunks) for chunks in chunk_lists]
