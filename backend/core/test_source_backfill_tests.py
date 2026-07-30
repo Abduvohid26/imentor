@@ -187,11 +187,30 @@ class BackfillCommandTests(TestCase):
 
     def _run(self, chunks, ai_text='[{"i":0,"explanation":"Darslikdan izoh"}]', **opts):
         out = StringIO()
+        from core.book_retrieval import book_references_from_chunks
+
+        refs = book_references_from_chunks(chunks)
+
+        def _per_q_refs(subject_code, queries, **kwargs):
+            return [list(refs) for _ in queries] if refs else [[] for _ in queries]
+
         with (
-            mock.patch("core.management.commands.backfill_test_sources.retrieve_book_context",
-                       return_value=chunks),
-            mock.patch("core.management.commands.backfill_test_sources.generate_openai_text",
-                       return_value=ai_text) as gen,
+            mock.patch(
+                "core.management.commands.backfill_test_sources.resolve_book_department_id",
+                return_value=1,
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.retrieve_book_context",
+                return_value=chunks,
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.retrieve_references_for_queries",
+                side_effect=_per_q_refs,
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.generate_openai_text",
+                return_value=ai_text,
+            ) as gen,
             mock.patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
         ):
             call_command("backfill_test_sources", stdout=out, **opts)
@@ -259,11 +278,25 @@ class BackfillCommandTests(TestCase):
         out = StringIO()
         from core.openai_client import OpenAiClientError
 
+        chunks = [{"book_title": "Williams obstetrics", "page": "643", "text": "B6 haqida matn"}]
+        refs = [{"title": "Williams obstetrics", "pages": "643"}]
         with (
-            mock.patch("core.management.commands.backfill_test_sources.retrieve_book_context",
-                       return_value=[{"book_title": "Williams obstetrics", "page": "643", "text": "B6 haqida matn"}]),
-            mock.patch("core.management.commands.backfill_test_sources.generate_openai_text",
-                       side_effect=OpenAiClientError("rate limited")),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.resolve_book_department_id",
+                return_value=1,
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.retrieve_book_context",
+                return_value=chunks,
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.retrieve_references_for_queries",
+                side_effect=lambda *_a, **_k: [list(refs)],
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.generate_openai_text",
+                side_effect=OpenAiClientError("rate limited"),
+            ),
             mock.patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
         ):
             call_command("backfill_test_sources", apply=True, stdout=out)
@@ -327,11 +360,30 @@ class ForceReplaceTests(TestCase):
 
     def _run(self, chunks, **opts):
         out = StringIO()
+        from core.book_retrieval import book_references_from_chunks
+
+        refs = book_references_from_chunks(chunks)
+
+        def _per_q_refs(subject_code, queries, **kwargs):
+            return [list(refs) for _ in queries] if refs else [[] for _ in queries]
+
         with (
-            mock.patch("core.management.commands.backfill_test_sources.retrieve_book_context",
-                       return_value=chunks),
-            mock.patch("core.management.commands.backfill_test_sources.generate_openai_text",
-                       return_value='[{"i":0,"explanation":"Darslikdan"}]') as gen,
+            mock.patch(
+                "core.management.commands.backfill_test_sources.resolve_book_department_id",
+                return_value=1,
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.retrieve_book_context",
+                return_value=chunks,
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.retrieve_references_for_queries",
+                side_effect=_per_q_refs,
+            ),
+            mock.patch(
+                "core.management.commands.backfill_test_sources.generate_openai_text",
+                return_value='[{"i":0,"explanation":"Darslikdan"}]',
+            ) as gen,
             mock.patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
         ):
             call_command("backfill_test_sources", stdout=out, **opts)

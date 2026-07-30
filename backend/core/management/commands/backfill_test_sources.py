@@ -32,6 +32,7 @@ from django.db import transaction
 from core.book_retrieval import (
     book_references_from_chunks,
     format_book_context_message,
+    resolve_book_department_id,
     retrieve_book_context,
     retrieve_references_for_queries,
 )
@@ -159,11 +160,30 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"  o'tkazildi (subject_code yo'q) {tag}"))
                 continue
 
-            # Izoh rewrite uchun umumiy context (topic + bir necha savol).
-            shared_query = retrieval_query(payload)
-            self.stdout.write(f"      … RAG (umumiy kontekst) {tag}")
+            syllabus_id = getattr(item, "syllabus_id", None) or None
+            dept_id = resolve_book_department_id(item.subject_code, syllabus_id=syllabus_id)
+            if not dept_id:
+                stats["kitob_yoq"] += 1
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  o'tkazildi (kafedra/darslik bog'lanmasi topilmadi) {tag}\n"
+                        f"      subject_code={item.subject_code!r} syllabus_id={syllabus_id!r}"
+                    )
+                )
+                continue
+
+            # Izoh rewrite uchun umumiy context (topic + qisqa savollar).
+            shared_query = retrieval_query(payload)[:800]
+            self.stdout.write(
+                f"      … RAG (umumiy kontekst) dept_id={dept_id} {tag}"
+            )
             shared_chunks = (
-                retrieve_book_context(item.subject_code, shared_query, top_k=12)
+                retrieve_book_context(
+                    item.subject_code,
+                    shared_query,
+                    top_k=12,
+                    syllabus_id=syllabus_id,
+                )
                 if shared_query
                 else []
             )
@@ -173,18 +193,47 @@ class Command(BaseCommand):
                 )
                 queries = [str(q.get("question") or "").strip() for q in questions]
                 per_refs = retrieve_references_for_queries(
-                    item.subject_code, queries, top_k=3
+                    item.subject_code,
+                    queries,
+                    top_k=3,
+                    syllabus_id=syllabus_id,
                 )
-                # Hech qaysi savolda manba chiqmasa — fallback shared
+                # Hech qaysi savolda manba chiqmasa — fallback shared yoki mavjud refs
                 if not any(per_refs):
                     shared_refs = book_references_from_chunks(shared_chunks)
-                    if not shared_refs:
+                    if shared_refs:
+                        per_refs = [list(shared_refs) for _ in questions]
+                    elif refresh and has_book_references(payload):
+                        # RAG vaqtincha ishlamasa — eski manbalarni saqlab, izohni yangilashga urinamiz
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"      RAG bo'sh — mavjud manbalar saqlanadi, izoh rewrite davom etadi {tag}"
+                            )
+                        )
+                        per_refs = []
+                        for q in questions:
+                            existing = q.get("references") if isinstance(q, dict) else None
+                            per_refs.append(
+                                [dict(r) for r in existing]
+                                if isinstance(existing, list) and existing
+                                else []
+                            )
+                        if not any(per_refs):
+                            stats["kitob_yoq"] += 1
+                            self.stdout.write(
+                                self.style.WARNING(f"  o'tkazildi (darslik topilmadi) {tag}")
+                            )
+                            continue
+                    else:
                         stats["kitob_yoq"] += 1
                         self.stdout.write(
-                            self.style.WARNING(f"  o'tkazildi (darslik topilmadi) {tag}")
+                            self.style.WARNING(
+                                f"  o'tkazildi (darslik topilmadi) {tag}\n"
+                                f"      shared_chunks={len(shared_chunks)} "
+                                f"(OPENAI_API_KEY / embedding / kitob chunk tekshir)"
+                            )
                         )
                         continue
-                    per_refs = [list(shared_refs) for _ in questions]
             else:
                 shared_refs = book_references_from_chunks(shared_chunks)
                 if not shared_refs:
@@ -196,36 +245,50 @@ class Command(BaseCommand):
                 per_refs = [list(shared_refs) for _ in questions]
 
             rewrites: dict[int, dict] = {}
-            if api_key and not opts["skip_rewrite"] and shared_chunks:
+            if api_key and not opts["skip_rewrite"]:
+                # Context bo'sh bo'lsa ham topic bilan qayta urinib ko'ramiz
+                if not shared_chunks and item.topic:
+                    shared_chunks = retrieve_book_context(
+                        item.subject_code,
+                        str(item.topic)[:800],
+                        top_k=12,
+                        syllabus_id=syllabus_id,
+                    )
                 context = format_book_context_message(shared_chunks)
-                lang = LANG_NAMES.get(
-                    (payload.get("language") or "uz").lower(), LANG_NAMES["uz"]
-                )
-                # Katta bir so'rov o'rniga 3 tadan — timeout/qotish kamayadi.
-                batch_size = 3
-                try:
-                    for start in range(0, len(questions), batch_size):
-                        batch = questions[start : start + batch_size]
-                        self.stdout.write(
-                            f"      … AI izoh qayta yozish "
-                            f"{start + 1}–{start + len(batch)}/{len(questions)} "
-                            f"(1–3 daqiqa kutishi mumkin)"
+                if not context:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"      izoh rewrite o'tkazildi (darslik konteksti yo'q) {tag}"
                         )
-                        text = generate_openai_text(
-                            api_key,
-                            system_instruction=context,
-                            user_text=build_rewrite_prompt(batch, lang),
-                            json_only=True,
-                            max_tokens=8192,
-                            temperature=0.25,
-                        )
-                        parsed = parse_rewrite_response(text, len(batch))
-                        for local_i, row in parsed.items():
-                            rewrites[start + local_i] = row
-                except OpenAiClientError as e:
-                    stats["xato"] += 1
-                    self.stdout.write(self.style.ERROR(f"  AI xato {tag}: {str(e)[:90]}"))
-                    continue
+                    )
+                else:
+                    lang = LANG_NAMES.get(
+                        (payload.get("language") or "uz").lower(), LANG_NAMES["uz"]
+                    )
+                    batch_size = 3
+                    try:
+                        for start in range(0, len(questions), batch_size):
+                            batch = questions[start : start + batch_size]
+                            self.stdout.write(
+                                f"      … AI izoh qayta yozish "
+                                f"{start + 1}–{start + len(batch)}/{len(questions)} "
+                                f"(1–3 daqiqa kutishi mumkin)"
+                            )
+                            text = generate_openai_text(
+                                api_key,
+                                system_instruction=context,
+                                user_text=build_rewrite_prompt(batch, lang),
+                                json_only=True,
+                                max_tokens=8192,
+                                temperature=0.25,
+                            )
+                            parsed = parse_rewrite_response(text, len(batch))
+                            for local_i, row in parsed.items():
+                                rewrites[start + local_i] = row
+                    except OpenAiClientError as e:
+                        stats["xato"] += 1
+                        self.stdout.write(self.style.ERROR(f"  AI xato {tag}: {str(e)[:90]}"))
+                        continue
 
             if per_question:
                 new_payload, touched = apply_per_question_sources_to_payload(
