@@ -232,6 +232,9 @@ ALLOW_LEGACY_PREPARED_CONTENT_API = env_bool("DJANGO_ALLOW_LEGACY_PREPARED_CONTE
 # Tashqi servislar uchun API kalitlari (vergul bilan). Masalan: key1,key2
 EXTERNAL_API_KEYS = (os.getenv("IMENTOR_EXTERNAL_API_KEYS") or os.getenv("EXTERNAL_API_KEYS") or "").strip()
 
+# OnlineTest — talaba auth (bitta login manbai). Masalan: https://onlinetest.example.com
+ONLINE_TEST_API_BASE_URL = (os.getenv("ONLINE_TEST_API_BASE_URL") or "").strip().rstrip("/")
+
 # OpenAI — test, keys, ma'ruza, tarjima va boshqalar. Kalit gitga kirmaydi.
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "").strip()
 OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o").strip() or "gpt-4o"

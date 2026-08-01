@@ -71,6 +71,7 @@ import CaseStudies from './components/CaseStudies';
 import UserProfile from './components/UserProfile';
 import SyllabusView from './components/SyllabusView';
 import TestQuestions from './components/TestQuestions';
+import StudentMyTests from './components/StudentMyTests';
 import LectureNotes from './components/LectureNotes';
 import AdminDashboardHome from './components/admin/AdminDashboardHome';
 import AdminStaffManagement from './components/admin/AdminStaffManagement';
@@ -123,7 +124,8 @@ type View =
   | 'handouts'
   | 'content-catalog'
   | 'startup'
-  | 'startup-dossier';
+  | 'startup-dossier'
+  | 'my-tests';
 
 type NavItemDef = { id: View; label: string; icon: LucideIcon };
 
@@ -150,6 +152,7 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   profile: UserCircle,
   startup: Rocket,
   'startup-dossier': FolderOpen,
+  'my-tests': ClipboardList,
 };
 
 const HODIM_NAV_IDS: View[] = ['syllabus', 'lectures', 'presentation', 'handouts', 'cases', 'tests', 'profile'];
@@ -169,6 +172,7 @@ const ADMIN_NAV_IDS: View[] = [
   'profile',
 ];
 const STARTUPER_NAV_IDS: View[] = ['startup', 'startup-dossier', 'profile'];
+const STUDENT_NAV_IDS: View[] = ['my-tests', 'profile'];
 
 function navItemsForRole(role: UserRole, lang: AppLanguage): NavItemDef[] {
   const ids =
@@ -176,7 +180,9 @@ function navItemsForRole(role: UserRole, lang: AppLanguage): NavItemDef[] {
       ? ADMIN_NAV_IDS
       : role === 'startuper'
         ? STARTUPER_NAV_IDS
-        : HODIM_NAV_IDS;
+        : role === 'student'
+          ? STUDENT_NAV_IDS
+          : HODIM_NAV_IDS;
   return ids.map((id) => ({ id, label: navLabel(lang, id), icon: NAV_ICONS[id] }));
 }
 
@@ -444,7 +450,12 @@ export default function App() {
   useEffect(() => {
     if (!user || !userRole) return;
     const allowed = navItemsForRole(userRole, language).map((i) => i.id);
-    setActiveView((current) => (allowed.includes(current) ? current : allowed[0]));
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = (params.get('view') || '').trim() as View;
+    setActiveView((current) => {
+      if (viewParam && allowed.includes(viewParam)) return viewParam;
+      return allowed.includes(current) ? current : allowed[0];
+    });
   }, [user?.uid, user?.role, userRole, language]);
 
   useEffect(() => {
@@ -543,6 +554,8 @@ export default function App() {
         return <CaseStudies />;
       case 'tests':
         return <TestQuestions />;
+      case 'my-tests':
+        return <StudentMyTests />;
       default:
         return (
           <SyllabusView

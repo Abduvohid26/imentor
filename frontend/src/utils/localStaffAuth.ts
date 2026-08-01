@@ -1,7 +1,7 @@
 import { logStaffActivity } from './staffActivityLog';
 
-/** admin — to‘liq kirish; hodim — ta'lim modullari; startuper — innovatsiya loyihalari */
-export type UserRole = 'admin' | 'hodim' | 'startuper';
+/** admin — to‘liq kirish; hodim — ta'lim; startuper — innovatsiya; student — OnlineTest talaba */
+export type UserRole = 'admin' | 'hodim' | 'startuper' | 'student';
 
 export interface LocalStaffUser {
   uid: string;
@@ -26,6 +26,8 @@ export interface LocalStaffUser {
   participantKind?: 'student' | 'employee';
   /** Talaba: o‘quv guruhi */
   studyGroup?: string;
+  /** OnlineTest AppUser.id (faqat role=student) */
+  onlineTestStudentId?: string;
   /** Xodim: lavozim */
   jobTitle?: string;
 }
@@ -89,7 +91,7 @@ export function getDemoRoleLogins(): DemoRoleLogin[] {
 
 export function normalizeUserRole(user: LocalStaffUser | null | undefined): UserRole {
   const r = user?.role;
-  if (r === 'admin' || r === 'hodim' || r === 'startuper') return r;
+  if (r === 'admin' || r === 'hodim' || r === 'startuper' || r === 'student') return r;
   if (r === 'tarjimon') return 'hodim';
   return 'hodim';
 }

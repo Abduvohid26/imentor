@@ -42,7 +42,7 @@ export type LiveTestFinalizeResult = {
 
 const PARTICIPANT_KEY_PREFIX = 'imentor-live-test-participant-';
 
-/** Talaba QR rejimi: login talab qilinmaydi (`?mode=student&sid=` yoki `id=`). */
+/** Talaba QR rejimi (`?mode=student&sid=` / `id=`) — login OnlineTest orqali. */
 export function isPublicStudentTestUrl(): boolean {
   if (typeof window === 'undefined') return false;
   const p = new URLSearchParams(window.location.search);
@@ -164,7 +164,7 @@ export async function fetchLiveTestSessionFromServer(
   }
 }
 
-/** Talaba: draft javoblarni serverga saqlaydi (QR skaner qilgan, hali yubormagan). */
+/** Talaba: draft javoblarni serverga saqlaydi (JWT majburiy). */
 export async function upsertLiveTestDraftOnServer(
   sessionKey: string,
   body: {
@@ -174,8 +174,11 @@ export async function upsertLiveTestDraftOnServer(
     answers: number[];
   }
 ): Promise<void> {
+  const token = await getBackendAccessToken();
+  if (!token) throw new Error('no-backend-token');
   await httpJson(`${apiBaseUrl()}/v1/live-tests/${encodeURIComponent(sessionKey)}/drafts/`, {
     method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
     body: {
       participant_key: body.participantKey,
       first_name: body.firstName,
@@ -186,13 +189,16 @@ export async function upsertLiveTestDraftOnServer(
   });
 }
 
-/** Talaba: javoblarni serverga yuboradi. */
+/** Talaba: javoblarni serverga yuboradi (JWT majburiy). */
 export async function submitLiveTestOnServer(
   sessionKey: string,
   body: { participantKey?: string; firstName: string; lastName: string; answers: number[] }
 ): Promise<void> {
+  const token = await getBackendAccessToken();
+  if (!token) throw new Error('no-backend-token');
   await httpJson(`${apiBaseUrl()}/v1/live-tests/${encodeURIComponent(sessionKey)}/submissions/`, {
     method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
     body: {
       participant_key: body.participantKey || '',
       first_name: body.firstName,
@@ -201,6 +207,49 @@ export async function submitLiveTestOnServer(
     },
     timeoutMs: 30000,
   });
+}
+
+export type StudentMySubmissionRow = {
+  id: number;
+  sessionKey: string;
+  topic: string;
+  firstName: string;
+  lastName: string;
+  answers: number[];
+  submittedAt: number;
+  isClosed: boolean;
+};
+
+/** Talaba: o'zi topshirgan dars testlari. */
+export async function fetchMyLiveTestSubmissions(): Promise<StudentMySubmissionRow[]> {
+  const token = await getBackendAccessToken();
+  if (!token) return [];
+  const rows = await httpJson<
+    Array<{
+      id: number;
+      session_key: string;
+      topic: string;
+      first_name: string;
+      last_name: string;
+      answers: number[];
+      submitted_at: string;
+      is_closed: boolean;
+    }>
+  >(`${apiBaseUrl()}/v1/live-tests/my-submissions/`, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeoutMs: 20000,
+  });
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => ({
+    id: r.id,
+    sessionKey: r.session_key,
+    topic: r.topic || '',
+    firstName: r.first_name,
+    lastName: r.last_name,
+    answers: Array.isArray(r.answers) ? r.answers : [],
+    submittedAt: Date.parse(r.submitted_at),
+    isClosed: Boolean(r.is_closed),
+  }));
 }
 
 /** O‘qituvchi: draftlarni avtomatik topshirish va sessiyani yopish. */

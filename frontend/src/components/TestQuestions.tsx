@@ -19,6 +19,7 @@ import { AppLanguageContext, GlobalTopicContext } from '../App';
 import type { AppLanguage } from '../i18n/language';
 import { useUiText } from '../i18n/useUiText';
 import { getCurrentLocalUser, normalizeUserRole } from '../utils/localStaffAuth';
+import { getBackendAccessToken, loginStudentWithOnlineTest } from '../utils/backendAuth';
 import { appendTestToLibrary } from '../utils/staffContentLibrary';
 import {
   listPreparedForTopic,
@@ -252,6 +253,13 @@ export default function TestQuestions() {
 
   const [studentFirstName, setStudentFirstName] = useState('');
   const [studentLastName, setStudentLastName] = useState('');
+  const [studentLoginId, setStudentLoginId] = useState('');
+  const [studentLoginPassword, setStudentLoginPassword] = useState('');
+  const [studentAuthLoading, setStudentAuthLoading] = useState(false);
+  const [studentAuthed, setStudentAuthed] = useState(() => {
+    const u = getCurrentLocalUser();
+    return normalizeUserRole(u) === 'student';
+  });
   const [studentAnswers, setStudentAnswers] = useState<number[]>([]);
   const [studentSubmitted, setStudentSubmitted] = useState(false);
   const [studentLoading, setStudentLoading] = useState(false);
@@ -651,8 +659,46 @@ export default function TestQuestions() {
     }
   };
 
+  const handleStudentLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!studentLoginId.trim() || !studentLoginPassword) {
+      setError(t('test.studentLoginRequired'));
+      return;
+    }
+    setStudentAuthLoading(true);
+    try {
+      const u = await loginStudentWithOnlineTest(studentLoginId.trim(), studentLoginPassword);
+      setStudentFirstName(u.firstName || '');
+      setStudentLastName(u.lastName || '');
+      setStudentAuthed(true);
+      setStudentLoginPassword('');
+      await getBackendAccessToken();
+    } catch (err) {
+      console.error(err);
+      const code = err instanceof Error ? err.message : '';
+      setError(
+        code === 'forbidden' ? t('test.studentLoginForbidden') : t('test.studentLoginError'),
+      );
+    } finally {
+      setStudentAuthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isStudentMode || !studentAuthed) return;
+    const u = getCurrentLocalUser();
+    if (normalizeUserRole(u) !== 'student' || !u) return;
+    if (!studentFirstName.trim() && u.firstName) setStudentFirstName(u.firstName);
+    if (!studentLastName.trim() && u.lastName) setStudentLastName(u.lastName);
+  }, [isStudentMode, studentAuthed, studentFirstName, studentLastName]);
+
   const handleStudentSubmit = async () => {
     if (!studentTest || !studentSessionId) return;
+    if (!studentAuthed) {
+      setError(t('test.studentLoginRequired'));
+      return;
+    }
     if (!studentFirstName.trim() || !studentLastName.trim()) {
       setError(t('test.studentErrorName'));
       return;
@@ -697,7 +743,46 @@ export default function TestQuestions() {
             <h1 className="text-3xl font-bold text-gray-900">{t('test.studentTitle')}</h1>
             <p className="text-gray-500">{t('test.studentSubtitle')}</p>
           </div>
-          {sessionLoading ? (
+          {!studentAuthed ? (
+            <form
+              onSubmit={handleStudentLogin}
+              className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-100 space-y-4 max-w-md mx-auto w-full"
+            >
+              <div className="flex items-center gap-2 text-blue-700 font-semibold">
+                <KeyRound size={20} />
+                {t('test.studentLoginTitle')}
+              </div>
+              <p className="text-sm text-gray-500">{t('test.studentLoginHint')}</p>
+              <input
+                value={studentLoginId}
+                onChange={(e) => setStudentLoginId(e.target.value)}
+                placeholder={t('test.studentLoginId')}
+                autoComplete="username"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              <input
+                type="password"
+                value={studentLoginPassword}
+                onChange={(e) => setStudentLoginPassword(e.target.value)}
+                placeholder={t('test.studentLoginPassword')}
+                autoComplete="current-password"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              {error && (
+                <div className="bg-rose-50 text-rose-700 border border-rose-200 p-3 rounded-xl text-sm">
+                  {error}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={studentAuthLoading}
+                className="w-full h-12 bg-blue-600 text-white rounded-2xl font-semibold hover:bg-blue-500 flex items-center justify-center gap-2"
+              >
+                {studentAuthLoading ? <Loader2 size={18} className="animate-spin" /> : null}
+                {t('test.studentLoginBtn')}
+              </button>
+            </form>
+          ) : sessionLoading ? (
             <div className="bg-white rounded-3xl p-8 border border-gray-100 text-center">
               <Loader2 className="animate-spin text-blue-600 mx-auto mb-3" />
               <p className="text-gray-600">{t('test.studentLoading')}</p>
@@ -766,8 +851,17 @@ export default function TestQuestions() {
                   {t('test.studentSubmit')}
                 </button>
               ) : studentSubmitted ? (
-                <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-4 rounded-xl font-semibold">
-                  {t('test.studentSuccess')}
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-4 rounded-xl space-y-3">
+                  <p className="font-semibold">{t('test.studentSuccess')}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href = `${window.location.pathname}?view=my-tests`;
+                    }}
+                    className="w-full h-11 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-500"
+                  >
+                    {t('student.myTestsTitle')}
+                  </button>
                 </div>
               ) : null}
             </>

@@ -10,7 +10,12 @@ import {
   getDemoRoleLogins,
   isDemoAuthEnabled,
 } from '../../utils/localStaffAuth';
-import { getBackendAccessToken, loginStaffWithBackendFallback, syncSessionRoleFromServer } from '../../utils/backendAuth';
+import {
+  getBackendAccessToken,
+  loginStaffWithBackendFallback,
+  loginStudentWithOnlineTest,
+  syncSessionRoleFromServer,
+} from '../../utils/backendAuth';
 import { isDesktopBrowser } from '../../utils/deviceDetection';
 import { useUiText } from '../../i18n/useUiText';
 
@@ -21,7 +26,9 @@ interface LoginPageProps {
 
 export default function LoginPage({ onSwitchToRegister, onBackToQr }: LoginPageProps) {
   const { t } = useUiText();
+  const [loginMode, setLoginMode] = useState<'staff' | 'student'>('staff');
   const [phone, setPhone] = useState('');
+  const [studentId, setStudentId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +89,26 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr }: LoginPageP
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (loginMode === 'student') {
+      if (!studentId.trim() || !password) {
+        setError(t('test.studentLoginRequired'));
+        return;
+      }
+      setLoading(true);
+      try {
+        await loginStudentWithOnlineTest(studentId.trim(), password);
+        await getBackendAccessToken();
+        await syncSessionRoleFromServer();
+      } catch (err: unknown) {
+        const code = err instanceof Error ? err.message : '';
+        setError(
+          code === 'forbidden' ? t('test.studentLoginForbidden') : t('test.studentLoginError'),
+        );
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     const digits = normalizePhoneDigits(phone);
     if (!isValidPhoneDigits(digits)) {
       setError(t('auth.phoneRequired'));
@@ -145,21 +172,56 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr }: LoginPageP
           )}
         </div>
 
+        <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-black/[0.04] p-1">
+          <button
+            type="button"
+            onClick={() => { setLoginMode('staff'); setError(null); }}
+            className={`rounded-lg py-2 text-[13px] font-semibold transition ${
+              loginMode === 'staff' ? 'bg-white text-black/90 shadow-sm' : 'text-black/45'
+            }`}
+          >
+            {t('auth.loginModeStaff')}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setLoginMode('student'); setError(null); }}
+            className={`rounded-lg py-2 text-[13px] font-semibold transition ${
+              loginMode === 'student' ? 'bg-white text-black/90 shadow-sm' : 'text-black/45'
+            }`}
+          >
+            {t('auth.loginModeStudent')}
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-black/55 uppercase tracking-wide">{t('auth.phoneLabel')}</label>
-            <div className="relative">
-              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35" size={18} />
+          {loginMode === 'student' ? (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-black/55 uppercase tracking-wide">{t('test.studentLoginId')}</label>
               <input
-                type="tel"
-                autoComplete="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full rounded-xl border border-black/10 bg-white/70 py-3.5 pl-12 pr-4 text-[15px] font-medium text-black/90 outline-none focus:ring-2 focus:ring-blue-500/40"
-                placeholder="+998 90 123 45 67"
+                type="text"
+                autoComplete="username"
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white/70 py-3.5 px-4 text-[15px] font-medium text-black/90 outline-none focus:ring-2 focus:ring-blue-500/40"
+                placeholder={t('test.studentLoginId')}
               />
             </div>
-          </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-black/55 uppercase tracking-wide">{t('auth.phoneLabel')}</label>
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35" size={18} />
+                <input
+                  type="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full rounded-xl border border-black/10 bg-white/70 py-3.5 pl-12 pr-4 text-[15px] font-medium text-black/90 outline-none focus:ring-2 focus:ring-blue-500/40"
+                  placeholder="+998 90 123 45 67"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-black/55 uppercase tracking-wide">{t('auth.passwordLabel')}</label>
@@ -176,13 +238,19 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr }: LoginPageP
             </div>
           </div>
 
-          <p className="text-[11px] text-black/45 leading-relaxed bg-black/[0.03] rounded-xl px-3 py-2 border border-black/5">
-            <span className="font-semibold text-black/55">{t('auth.newAccountLabel')}</span> {t('auth.newAccountIntro')}{' '}
-            <button type="button" onClick={onSwitchToRegister} className="text-blue-600 font-semibold underline-offset-2 hover:underline">
-              {t('auth.registerLink')}
-            </button>{' '}
-            {t('auth.newAccountRoles', { hodim: t('auth.hodimRole'), startuper: t('auth.startuperRole') })}
-          </p>
+          {loginMode === 'staff' ? (
+            <p className="text-[11px] text-black/45 leading-relaxed bg-black/[0.03] rounded-xl px-3 py-2 border border-black/5">
+              <span className="font-semibold text-black/55">{t('auth.newAccountLabel')}</span> {t('auth.newAccountIntro')}{' '}
+              <button type="button" onClick={onSwitchToRegister} className="text-blue-600 font-semibold underline-offset-2 hover:underline">
+                {t('auth.registerLink')}
+              </button>{' '}
+              {t('auth.newAccountRoles', { hodim: t('auth.hodimRole'), startuper: t('auth.startuperRole') })}
+            </p>
+          ) : (
+            <p className="text-[11px] text-black/45 leading-relaxed bg-black/[0.03] rounded-xl px-3 py-2 border border-black/5">
+              {t('test.studentLoginHint')}
+            </p>
+          )}
 
           {error && (
             <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[13px] text-rose-700">

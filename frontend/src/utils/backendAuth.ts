@@ -16,11 +16,13 @@ import { normalizePhotoUrlForCompare } from './profilePhotoApi';
 type BackendTokenBundle = {
   access: string;
   refresh: string;
-  role: 'admin' | 'hodim' | 'startuper';
+  role: 'admin' | 'hodim' | 'startuper' | 'student';
   username: string;
   first_name?: string;
   last_name?: string;
   photo_url?: string;
+  student_id?: string;
+  group_name?: string;
 };
 
 type CachedBundle = BackendTokenBundle & {
@@ -55,6 +57,8 @@ export type AuthMeResponse = {
   first_name?: string;
   last_name?: string;
   photo_url?: string;
+  student_id?: string;
+  group_name?: string;
 };
 
 function apiBaseUrl(): string {
@@ -104,12 +108,14 @@ export function writeBackendTokensFromPair(bundle: {
   refresh: string;
   role: BackendTokenBundle['role'];
   username: string;
+  student_id?: string;
 }): void {
   writeCached({
     access: bundle.access,
     refresh: bundle.refresh,
     role: bundle.role,
     username: bundle.username,
+    student_id: bundle.student_id,
   });
 }
 
@@ -135,6 +141,61 @@ export async function performBackendLocalLogin(input: {
     method: 'POST',
     body,
   });
+}
+
+/** OnlineTest ID+parol → iMentor student JWT */
+export async function performOnlineTestStudentLogin(input: {
+  id: string;
+  password: string;
+}): Promise<BackendTokenBundle> {
+  return httpJson<BackendTokenBundle>(`${apiBaseUrl()}/v1/auth/online-test-login/`, {
+    method: 'POST',
+    body: { id: input.id.trim(), password: input.password },
+  });
+}
+
+export async function loginStudentWithOnlineTest(
+  studentId: string,
+  password: string,
+): Promise<LocalStaffUser> {
+  const sid = studentId.trim();
+  if (!sid || !password) throw new Error('wrong-password');
+  try {
+    const bundle = await performOnlineTestStudentLogin({ id: sid, password });
+    if (bundle.role !== 'student') throw new Error('wrong-password');
+    writeCached(bundle);
+    const now = Date.now();
+    const firstName = bundle.first_name || '';
+    const lastName = bundle.last_name || '';
+    const displayName = `${firstName} ${lastName}`.trim() || sid;
+    return establishLocalSessionFromProfile({
+      uid: `ot_${bundle.student_id || sid}`,
+      displayName,
+      firstName,
+      lastName,
+      phoneDisplay: sid,
+      phoneDigits: sid,
+      faculty: '',
+      department: '',
+      direction: '',
+      email: `${sid}@onlinetest.local`,
+      password: '',
+      role: 'student',
+      createdAt: now,
+      updatedAt: now,
+      lastActiveAt: now,
+      onlineTestStudentId: bundle.student_id || sid,
+      studyGroup: bundle.group_name || '',
+      participantKind: 'student',
+    });
+  } catch (err) {
+    if (err instanceof HttpError) {
+      if (err.status === 401) throw new Error('wrong-password');
+      if (err.status === 403) throw new Error('forbidden');
+      throw new Error('login-error');
+    }
+    throw err;
+  }
 }
 
 function findStoredUserByPhone(digits: string): LocalStaffUser | null {
@@ -370,6 +431,7 @@ export async function syncSessionRoleFromServer(): Promise<UserRole | null> {
     if (me.first_name) patch.firstName = me.first_name;
     if (me.last_name) patch.lastName = me.last_name;
     if (me.photo_url !== undefined) patch.photoURL = me.photo_url?.trim() || null;
+    if (me.student_id) patch.onlineTestStudentId = me.student_id;
     updateCurrentLocalUser(patch);
   }
   const cached = readCached();
@@ -381,6 +443,7 @@ export async function syncSessionRoleFromServer(): Promise<UserRole | null> {
       first_name: me.first_name,
       last_name: me.last_name,
       photo_url: me.photo_url,
+      student_id: me.student_id,
     });
   }
   return role;

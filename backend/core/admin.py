@@ -97,8 +97,8 @@ class LiveTestSessionAdmin(ReadOnlyTimestampAdmin):
 
 @admin.register(LiveTestSubmission)
 class LiveTestSubmissionAdmin(ReadOnlyTimestampAdmin):
-    list_display = ("id", "session", "last_name", "first_name", "submitted_at")
-    search_fields = ("first_name", "last_name", "session__session_key")
+    list_display = ("id", "session", "student_id", "last_name", "first_name", "submitted_at")
+    search_fields = ("student_id", "first_name", "last_name", "session__session_key")
     readonly_fields = ("submitted_at",)
 
 

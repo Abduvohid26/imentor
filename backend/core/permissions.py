@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from rest_framework.permissions import BasePermission
 
-ALLOWED_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+# Xodim / ta'lim rollari (o'qituvchi paneli)
+STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+# OnlineTest orqali kelgan talaba (shadow user + JWT claim)
+STUDENT_ROLE = "student"
+ALLOWED_ROLES = STAFF_ROLES + (STUDENT_ROLE,)
 
 
 def _jwt_role_claim(request) -> str | None:
@@ -32,6 +36,29 @@ def _jwt_role_claim(request) -> str | None:
     return r if r in ALLOWED_ROLES else None
 
 
+def _jwt_student_id_claim(request) -> str | None:
+    if request is None or not hasattr(request, "auth") or request.auth is None:
+        return None
+    auth = request.auth
+    raw: object | None = None
+    try:
+        if isinstance(auth, dict):
+            raw = auth.get("student_id")
+        elif hasattr(auth, "get"):
+            raw = auth.get("student_id", None)
+        if raw is None and hasattr(auth, "__getitem__"):
+            try:
+                raw = auth["student_id"]
+            except (KeyError, TypeError):
+                raw = None
+    except Exception:
+        return None
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    return s or None
+
+
 def resolve_user_role_from_db(user) -> str | None:
     """DB guruhlari — asosiy manba (JWT dan ustun)."""
     if not user or not user.is_authenticated:
@@ -58,6 +85,20 @@ def resolve_user_role(user, request=None) -> str | None:
     return None
 
 
+def resolve_student_id(user, request=None) -> str | None:
+    """OnlineTest talaba ID — JWT claim yoki shadow username `ot_<id>`."""
+    claim = _jwt_student_id_claim(request) if request is not None else None
+    if claim:
+        return claim
+    if not user or not user.is_authenticated:
+        return None
+    uname = str(getattr(user, "username", "") or "")
+    if uname.startswith("ot_"):
+        sid = uname[3:].strip()
+        return sid or None
+    return None
+
+
 def user_has_admin_db_role(user) -> bool:
     if not user or not user.is_authenticated:
         return False
@@ -67,15 +108,29 @@ def user_has_admin_db_role(user) -> bool:
 
 
 class HasEducationRole(BasePermission):
-    """
-    Allow only users with one of project roles:
-    admin, hodim, startuper.
-    """
+    """Xodim rollari: admin, hodim, startuper, klinika_admin (talaba emas)."""
+
+    message = "You do not have a permitted role for this endpoint."
+
+    def has_permission(self, request, view) -> bool:
+        role = resolve_user_role(request.user, request)
+        return role in STAFF_ROLES
+
+
+class HasAnyPlatformRole(BasePermission):
+    """Xodim yoki talaba — /auth/me kabi umumiy endpointlar."""
 
     message = "You do not have a permitted role for this endpoint."
 
     def has_permission(self, request, view) -> bool:
         return resolve_user_role(request.user, request) is not None
+
+
+class IsStudentRole(BasePermission):
+    message = "Faqat talaba roli ruxsat etilgan."
+
+    def has_permission(self, request, view) -> bool:
+        return resolve_user_role(request.user, request) == STUDENT_ROLE
 
 
 class IsAdminRole(BasePermission):

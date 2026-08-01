@@ -212,6 +212,8 @@ class LiveTestSession(models.Model):
 class LiveTestSubmission(models.Model):
     session = models.ForeignKey(LiveTestSession, on_delete=models.CASCADE, related_name='submissions')
     participant_key = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    # OnlineTest AppUser.id — login qilgan talaba (guest bo'lsa bo'sh)
+    student_id = models.CharField(max_length=64, blank=True, default='', db_index=True)
     first_name = models.CharField(max_length=128)
     last_name = models.CharField(max_length=128)
     answers = models.JSONField()

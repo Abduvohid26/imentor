@@ -3,6 +3,30 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
+
+
+def _student_access_token(student_id: str = 'STU001', first_name: str = 'Ali', last_name: str = 'Valiyev') -> str:
+    """OnlineTest shadow student JWT (role=student + student_id claim)."""
+    Group.objects.get_or_create(name='student')
+    username = f'ot_{student_id}'
+    user, _ = User.objects.get_or_create(
+        username=username,
+        defaults={'first_name': first_name, 'last_name': last_name},
+    )
+    user.first_name = first_name
+    user.last_name = last_name
+    user.set_unusable_password()
+    user.save()
+    group = Group.objects.get(name='student')
+    user.groups.set([group])
+    refresh = RefreshToken.for_user(user)
+    refresh['role'] = 'student'
+    refresh['student_id'] = student_id
+    access = refresh.access_token
+    access['role'] = 'student'
+    access['student_id'] = student_id
+    return str(access)
 
 
 @override_settings(SECURE_SSL_REDIRECT=False, ALLOW_LEGACY_PREPARED_CONTENT_API=True)
@@ -198,6 +222,8 @@ class PreparedContentApiTests(TestCase):
         self.assertNotIn('correctOptionIndex', pub_q)
         self.assertNotIn('explanation', pub_q)
 
+        student_tok = _student_access_token('STU_QR_1')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {student_tok}')
         sub = self.client.post(
             '/api/v1/live-tests/lts_qr_demo_1/submissions/',
             {
@@ -241,7 +267,8 @@ class PreparedContentApiTests(TestCase):
             format='json',
         )
 
-        self.client.credentials()
+        st1 = _student_access_token('STU_FIN_1', 'Ali', 'Complete')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {st1}')
         self.client.post(
             '/api/v1/live-tests/lts_finalize_demo/drafts/',
             {
@@ -252,6 +279,8 @@ class PreparedContentApiTests(TestCase):
             },
             format='json',
         )
+        st2 = _student_access_token('STU_FIN_2', 'Vali', 'Incomplete')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {st2}')
         self.client.post(
             '/api/v1/live-tests/lts_finalize_demo/drafts/',
             {
@@ -1133,7 +1162,8 @@ class SecurityAndFeatureApiTests(TestCase):
             format='json',
         )
         session_key = up.json()['session_key']
-        self.client.credentials()
+        student_tok = _student_access_token('STU_DUP_1')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {student_tok}')
         payload = {
             'participant_key': 'student-abc',
             'first_name': 'Ali',
