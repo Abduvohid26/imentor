@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 
-from core.permissions import ALLOWED_ROLES
+from core.permissions import STAFF_ROLES
 from core.phone import normalize_uz_phone_digits
 
 from config.settings.env import env_bool
@@ -43,7 +43,7 @@ class Command(BaseCommand):
             self.stdout.write("Demo role users skipped (set DJANGO_ENSURE_DEMO_USERS=True to enable).")
             return
 
-        for role in ALLOWED_ROLES:
+        for role in STAFF_ROLES:
             phone_raw, password = demo_credentials_for_role(role)
             if len(password) < 6:
                 self.stderr.write(
@@ -78,7 +78,7 @@ class Command(BaseCommand):
             )
 
             group, _ = Group.objects.get_or_create(name=role)
-            for other_role in ALLOWED_ROLES:
+            for other_role in STAFF_ROLES:
                 if other_role != role:
                     other_group = Group.objects.filter(name=other_role).first()
                     if other_group is not None:
