@@ -693,6 +693,14 @@ export default function TestQuestions() {
     if (!studentLastName.trim() && u.lastName) setStudentLastName(u.lastName);
   }, [isStudentMode, studentAuthed, studentFirstName, studentLastName]);
 
+  useEffect(() => {
+    if (!studentSubmitted) return;
+    const timer = window.setTimeout(() => {
+      window.location.href = `${window.location.pathname}?view=my-tests`;
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [studentSubmitted]);
+
   const handleStudentSubmit = async () => {
     if (!studentTest || !studentSessionId) return;
     if (!studentAuthed) {

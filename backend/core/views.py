@@ -28,7 +28,12 @@ from .permissions import (
     resolve_student_id,
     resolve_user_role,
 )
-from .online_test_client import OnlineTestAuthError, online_test_login, split_person_name
+from .online_test_client import (
+    OnlineTestAuthError,
+    fetch_academic_catalog,
+    online_test_login,
+    split_person_name,
+)
 from .models import (
     CampusBuilding,
     CourseSyllabus,
@@ -344,6 +349,25 @@ def _ensure_online_test_student_user(student_id: str, first_name: str, last_name
         user.save(update_fields=["first_name", "last_name"])
     _set_user_role_group(user, "student")
     return user
+
+
+class AcademicCatalogView(APIView):
+    """
+    OnlineTest'dagi Kafedra -> Yo'nalish -> Guruh daraxtini frontendga beradi
+    (StaffProfile/ClinicalGroupMember formalaridagi dropdown'lar uchun).
+    Kalit (ONLINE_TEST_CONSUMER_API_KEY) faqat backend tomonida — frontend
+    hech qachon ko'rmaydi (`online_test_login` bilan bir xil naqsh).
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, HasAnyPlatformRole]
+
+    def get(self, request):
+        try:
+            data = fetch_academic_catalog()
+        except OnlineTestAuthError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response(data)
 
 
 class OnlineTestStudentLoginView(APIView):

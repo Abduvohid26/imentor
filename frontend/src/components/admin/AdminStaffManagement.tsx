@@ -8,6 +8,7 @@ import {
   upsertStaffMember,
   type StaffDirectoryEntry,
 } from '../../utils/staffDirectoryApi';
+import { fetchAcademicCatalog, type AcademicCatalog } from '../../utils/academicCatalogApi';
 import { HttpError } from '../../api/httpClient';
 import { roleLabel } from '../../i18n/translations';
 import { useUiText } from '../../i18n/useUiText';
@@ -63,6 +64,7 @@ export default function AdminStaffManagement() {
   const [editing, setEditing] = useState<StaffDirectoryEntry | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [showAdd, setShowAdd] = useState(false);
+  const [catalog, setCatalog] = useState<AcademicCatalog | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +82,20 @@ export default function AdminStaffManagement() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    fetchAcademicCatalog()
+      .then(setCatalog)
+      .catch(() => setCatalog(null)); // katalog ixtiyoriy — bo'lmasa oddiy matn kiritish davom etadi
+  }, []);
+
+  // form.department/direction/studyGroup — mavjud CharField'lar (nom matni sifatida
+  // saqlanadi, ID emas). Dropdown'lar shu matnni katalog nomlaridan tanlab to'ldiradi;
+  // katalogda mavjud bo'lmagan eski qiymatlar ham (moslik topilmasa) saqlanib qoladi.
+  const selectedKafedra = catalog?.kafedralar.find((k) => k.name === form.department) || null;
+  const directionOptions = selectedKafedra?.directions ?? catalog?.unassigned_directions ?? [];
+  const selectedDirection = directionOptions.find((d) => d.name === form.direction) || null;
+  const groupOptions = selectedDirection?.groups ?? [];
 
   const startEdit = (u: StaffDirectoryEntry) => {
     setEditing(u);
@@ -435,19 +451,53 @@ export default function AdminStaffManagement() {
               </label>
               <label className="space-y-1">
                 <span className="text-[11px] font-semibold text-black/50">{t('admin.department')}</span>
-                <input
-                  className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                  value={form.department}
-                  onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
-                />
+                {catalog ? (
+                  <select
+                    className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
+                    value={form.department}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, department: e.target.value, direction: '', studyGroup: '' }))
+                    }
+                  >
+                    <option value="">{t('admin.notSelected')}</option>
+                    {form.department && !catalog.kafedralar.some((k) => k.name === form.department) && (
+                      <option value={form.department}>{form.department}</option>
+                    )}
+                    {catalog.kafedralar.map((k) => (
+                      <option key={k.id} value={k.name}>{k.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
+                    value={form.department}
+                    onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+                  />
+                )}
               </label>
               <label className="space-y-1">
                 <span className="text-[11px] font-semibold text-black/50">{t('admin.direction')}</span>
-                <input
-                  className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                  value={form.direction}
-                  onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value }))}
-                />
+                {catalog ? (
+                  <select
+                    className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
+                    value={form.direction}
+                    onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value, studyGroup: '' }))}
+                  >
+                    <option value="">{t('admin.notSelected')}</option>
+                    {form.direction && !directionOptions.some((d) => d.name === form.direction) && (
+                      <option value={form.direction}>{form.direction}</option>
+                    )}
+                    {directionOptions.map((d) => (
+                      <option key={d.id} value={d.name}>{d.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
+                    value={form.direction}
+                    onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value }))}
+                  />
+                )}
               </label>
               <label className="space-y-1 sm:col-span-2">
                 <span className="text-[11px] font-semibold text-black/50">{t('admin.role')}</span>
@@ -482,11 +532,27 @@ export default function AdminStaffManagement() {
                   {form.participantKind === 'student' ? (
                     <label className="space-y-1 sm:col-span-2">
                       <span className="text-[11px] font-semibold text-black/50">{t('admin.studyGroup')}</span>
-                      <input
-                        className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                        value={form.studyGroup}
-                        onChange={(e) => setForm((f) => ({ ...f, studyGroup: e.target.value }))}
-                      />
+                      {catalog && groupOptions.length > 0 ? (
+                        <select
+                          className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
+                          value={form.studyGroup}
+                          onChange={(e) => setForm((f) => ({ ...f, studyGroup: e.target.value }))}
+                        >
+                          <option value="">{t('admin.notSelected')}</option>
+                          {form.studyGroup && !groupOptions.some((g) => g.name === form.studyGroup) && (
+                            <option value={form.studyGroup}>{form.studyGroup}</option>
+                          )}
+                          {groupOptions.map((g) => (
+                            <option key={g.id} value={g.name}>{g.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
+                          value={form.studyGroup}
+                          onChange={(e) => setForm((f) => ({ ...f, studyGroup: e.target.value }))}
+                        />
+                      )}
                     </label>
                   ) : (
                     <label className="space-y-1 sm:col-span-2">

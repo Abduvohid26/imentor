@@ -7,8 +7,12 @@ from urllib.parse import urljoin
 
 import requests
 from django.conf import settings
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
+
+ACADEMIC_CATALOG_CACHE_KEY = "online_test:academic_catalog"
+ACADEMIC_CATALOG_CACHE_TTL = 600  # 10 daqiqa
 
 
 class OnlineTestAuthError(Exception):
@@ -65,6 +69,63 @@ def online_test_login(student_id: str, password: str, *, timeout: float = 12.0) 
     if role != "student":
         raise OnlineTestAuthError("Faqat talaba akkaunti bilan kirish mumkin.", status_code=403)
     return {"token": token, "user": user}
+
+
+def online_test_consumer_api_key() -> str:
+    return (getattr(settings, "ONLINE_TEST_CONSUMER_API_KEY", "") or "").strip()
+
+
+def fetch_academic_catalog(*, timeout: float = 12.0, use_cache: bool = True) -> dict[str, Any]:
+    """
+    OnlineTest GET /api/public/academic-catalog/ — Kafedra -> Yo'nalish -> Guruh
+    daraxti (X-Api-Key bilan himoyalangan, faqat o'qish).
+
+    Muvaffaqiyat: {kafedralar: [{id,name,code,directions:[{id,name,groups:[
+    {id,name,level,student_count}]}]}], unassigned_directions: [...]}
+
+    Natija `ACADEMIC_CATALOG_CACHE_TTL` (10 daqiqa) davomida keshlanadi — bu
+    ma'lumot tez-tez o'zgarmaydi, har so'rovda OnlineTest'ga urilmaslik uchun.
+    """
+    if use_cache:
+        cached = cache.get(ACADEMIC_CATALOG_CACHE_KEY)
+        if cached is not None:
+            return cached
+
+    base = online_test_api_base()
+    if not base:
+        raise OnlineTestAuthError("ONLINE_TEST_API_BASE_URL sozlanmagan.", status_code=503)
+    api_key = online_test_consumer_api_key()
+    if not api_key:
+        raise OnlineTestAuthError("ONLINE_TEST_CONSUMER_API_KEY sozlanmagan.", status_code=503)
+
+    url = urljoin(base + "/", "api/public/academic-catalog/")
+    try:
+        res = requests.get(
+            url,
+            timeout=timeout,
+            headers={"Accept": "application/json", "X-Api-Key": api_key},
+        )
+    except requests.RequestException as exc:
+        logger.warning("OnlineTest academic-catalog network error: %s", exc)
+        raise OnlineTestAuthError("OnlineTest ga ulanib bo'lmadi.", status_code=502) from exc
+
+    try:
+        body = res.json() if res.content else {}
+    except ValueError:
+        body = {}
+
+    if res.status_code == 403:
+        raise OnlineTestAuthError("OnlineTest API kalit rad etildi.", status_code=502)
+    if res.status_code >= 400:
+        detail = str(body.get("error") or "OnlineTest academic-catalog xatosi.")
+        raise OnlineTestAuthError(detail, status_code=502)
+
+    if not isinstance(body, dict) or "kafedralar" not in body:
+        raise OnlineTestAuthError("OnlineTest javobi noto'g'ri.", status_code=502)
+
+    if use_cache:
+        cache.set(ACADEMIC_CATALOG_CACHE_KEY, body, timeout=ACADEMIC_CATALOG_CACHE_TTL)
+    return body
 
 
 def split_person_name(full_name: str) -> tuple[str, str]:

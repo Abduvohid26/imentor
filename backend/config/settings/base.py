@@ -235,6 +235,10 @@ EXTERNAL_API_KEYS = (os.getenv("IMENTOR_EXTERNAL_API_KEYS") or os.getenv("EXTERN
 # OnlineTest — talaba auth (bitta login manbai). Masalan: https://onlinetest.example.com
 ONLINE_TEST_API_BASE_URL = (os.getenv("ONLINE_TEST_API_BASE_URL") or "").strip().rstrip("/")
 
+# OnlineTest — Kafedra/Yo'nalish/Guruh katalogini o'qish uchun X-Api-Key
+# (OnlineTest tomonidagi ONLINE_TEST_PUBLIC_API_KEYS ro'yxatiga mos bo'lishi kerak)
+ONLINE_TEST_CONSUMER_API_KEY = (os.getenv("ONLINE_TEST_CONSUMER_API_KEY") or "").strip()
+
 # OpenAI — test, keys, ma'ruza, tarjima va boshqalar. Kalit gitga kirmaydi.
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "").strip()
 OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o").strip() or "gpt-4o"
