@@ -259,3 +259,30 @@ export async function listAdminStaffAlerts(ownerKey?: string): Promise<StaffLoca
   );
   return unwrapPagedResults(data);
 }
+
+/** "Katta ekran" jonli monitoring — hozir kim darsda, kim yo'q. */
+export type LiveTeachingRow = {
+  owner_key: string;
+  display_name: string;
+  department: string;
+  building_name: string;
+  slot_start: string;
+  slot_end: string;
+  title: string;
+  present: boolean;
+  ping_age_min: number | null;
+};
+
+export type LiveTeachingStatusDto = {
+  jami: number;
+  joyida: number;
+  joyida_emas: number;
+  royxat: LiveTeachingRow[];
+};
+
+export async function fetchLiveTeachingStatus(): Promise<LiveTeachingStatusDto> {
+  return httpJson(`${apiBaseUrl()}/v1/admin/live-teaching-status/`, {
+    headers: await authHeaders(),
+    timeoutMs: 15000,
+  });
+}

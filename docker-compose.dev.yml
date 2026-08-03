@@ -71,17 +71,90 @@ services:
       retries: 10
     restart: unless-stopped
 
-  migrate:
+  # Django backend — FastAPI'ga cutover qilingandan keyin dev'da ham
+  # o'chirilgan (prod bilan bir xil "imentor" compose loyihasini baham
+  # ko'rgani uchun — bir xil nomdagi konteynerlar bir-birini almashtiradi).
+  # Kerak bo'lsa qayta yoqing va `frontend`ning `depends_on`ini
+  # `backend`ga qaytaring.
+  #
+  # migrate:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   entrypoint: ["sh", "/app/migrate-entrypoint.sh"]
+  #   environment:
+  #     <<: *backend-env
+  #   volumes:
+  #     - media_data:/app/media
+  #     - ./backend:/app
+  #     - ./books:/books:ro
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   restart: "no"
+  #
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     <<: *backend-env
+  #     RUN_MIGRATIONS: "0"
+  #     MANBA_CATALOG_ROOT: /manba/fanlarning yonalishilari va unga mos manbalar
+  #   volumes:
+  #     - media_data:/app/media
+  #     - ./backend:/app
+  #     - ./manba:/manba:ro
+  #     - ./books:/books:ro
+  #   depends_on:
+  #     migrate:
+  #       condition: service_completed_successfully
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health/"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 8
+  #     start_period: 40s
+  #   restart: unless-stopped
+  #
+  # celery_worker:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   entrypoint: ["sh", "/app/celery-entrypoint.sh"]
+  #   environment:
+  #     <<: *backend-env
+  #     RUN_MIGRATIONS: "0"
+  #   volumes:
+  #     - media_data:/app/media
+  #     - ./backend:/app
+  #     - ./books:/books:ro
+  #   depends_on:
+  #     migrate:
+  #       condition: service_completed_successfully
+  #     redis:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  migrate_fastapi:
     build:
-      context: ./backend
+      context: ./backend_fastapi
       dockerfile: Dockerfile
     entrypoint: ["sh", "/app/migrate-entrypoint.sh"]
     environment:
-      <<: *backend-env
+      DJANGO_DB_ENGINE: postgresql
+      DJANGO_DB_NAME: ${POSTGRES_DB:-imentor}
+      DJANGO_DB_USER: ${POSTGRES_USER:-imentor}
+      DJANGO_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DJANGO_DB_HOST: postgres
+      DJANGO_DB_PORT: "5432"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_MEDIA_ROOT: /app/media
     volumes:
+      - ./backend_fastapi:/app
       - media_data:/app/media
-      - ./backend:/app
-      - ./books:/books:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,47 +162,45 @@ services:
         condition: service_healthy
     restart: "no"
 
-  backend:
+  backend_fastapi:
     build:
-      context: ./backend
+      context: ./backend_fastapi
       dockerfile: Dockerfile
     environment:
-      <<: *backend-env
+      DJANGO_ENV: dev
+      DJANGO_DEBUG: "True"
+      DJANGO_DB_ENGINE: postgresql
+      DJANGO_DB_NAME: ${POSTGRES_DB:-imentor}
+      DJANGO_DB_USER: ${POSTGRES_USER:-imentor}
+      DJANGO_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DJANGO_DB_HOST: postgres
+      DJANGO_DB_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
+      DJANGO_ALLOW_OPEN_REGISTRATION: "True"
+      DEMO_ADMIN_PHONES: ${DEMO_ADMIN_PHONES:-998907863888}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ONLINE_TEST_API_BASE_URL: ${ONLINE_TEST_API_BASE_URL:-}
+      ONLINE_TEST_CONSUMER_API_KEY: ${ONLINE_TEST_CONSUMER_API_KEY:-}
+      DJANGO_MEDIA_ROOT: /app/media
+      IMENTOR_EXTERNAL_API_KEYS: ${IMENTOR_EXTERNAL_API_KEYS:-dev-partner-key}
       RUN_MIGRATIONS: "0"
-      MANBA_CATALOG_ROOT: /manba/fanlarning yonalishilari va unga mos manbalar
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS_FASTAPI:-2}
     volumes:
+      - ./backend_fastapi:/app
       - media_data:/app/media
-      - ./backend:/app
-      - ./manba:/manba:ro
-      - ./books:/books:ro
+    ports:
+      - "127.0.0.1:8100:8000"
     depends_on:
-      migrate:
+      migrate_fastapi:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health/"]
       interval: 15s
       timeout: 5s
       retries: 8
-      start_period: 40s
-    restart: unless-stopped
-
-  celery_worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    entrypoint: ["sh", "/app/celery-entrypoint.sh"]
-    environment:
-      <<: *backend-env
-      RUN_MIGRATIONS: "0"
-    volumes:
-      - media_data:/app/media
-      - ./backend:/app
-      - ./books:/books:ro
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
+      start_period: 20s
     restart: unless-stopped
 
   frontend:
@@ -139,7 +210,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     depends_on:
-      backend:
+      backend_fastapi:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost/"]
@@ -148,22 +219,40 @@ services:
       retries: 5
     restart: unless-stopped
 
-  nginx:
+  # Django uchun gateway edi (8080) — Django retire qilingani uchun
+  # o'chirilgan (backend servisi endi yo'q). Endi `nginx_fastapi` (8081)
+  # dev'dagi yagona gateway.
+  #
+  # nginx:
+  #   build:
+  #     context: .
+  #     dockerfile: deploy/nginx/Dockerfile
+  #   ports:
+  #     - "127.0.0.1:8080:80"
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+  #     frontend:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/api/health/"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: unless-stopped
+
+  # Dev gateway — /api/, /media/ FastAPI'ga yo'naltiradi (backend_fastapi:8000).
+  nginx_fastapi:
     build:
       context: .
-      dockerfile: deploy/nginx/Dockerfile
+      dockerfile: deploy/nginx/Dockerfile.fastapi
     ports:
-      - "127.0.0.1:8080:80"
+      - "127.0.0.1:8081:80"
     depends_on:
-      backend:
+      backend_fastapi:
         condition: service_healthy
       frontend:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/api/health/"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
 
 volumes:

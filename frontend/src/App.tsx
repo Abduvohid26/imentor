@@ -31,6 +31,7 @@ import {
   BookMarked,
   GraduationCap,
   Youtube,
+  Monitor,
   type LucideIcon,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -79,6 +80,7 @@ import AdminCasesLibrary from './components/admin/AdminCasesLibrary';
 import AdminTestsLibrary from './components/admin/AdminTestsLibrary';
 import AdminStartupInbox from './components/admin/AdminStartupInbox';
 import AdminStaffLocationConsole from './components/admin/AdminStaffLocationConsole';
+import AdminLiveTeachingBoard from './components/admin/AdminLiveTeachingBoard';
 import AdminCampusBuildingsPage from './components/admin/AdminCampusBuildingsPage';
 import AdminSyllabusCatalog from './components/admin/AdminSyllabusCatalog';
 import AdminCourseAssignments from './components/admin/AdminCourseAssignments';
@@ -106,6 +108,7 @@ type View =
   | 'admin-dashboard'
   | 'admin-staff'
   | 'admin-staff-location'
+  | 'admin-live-teaching'
   | 'admin-campus-buildings'
   | 'admin-cases'
   | 'admin-tests'
@@ -133,6 +136,7 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   'admin-dashboard': LayoutDashboard,
   'admin-staff': Users,
   'admin-staff-location': MapPin,
+  'admin-live-teaching': Monitor,
   'admin-campus-buildings': Building2,
   'admin-cases': BriefcaseMedical,
   'admin-tests': ClipboardList,
@@ -160,6 +164,7 @@ const ADMIN_NAV_IDS: View[] = [
   'admin-dashboard',
   'admin-staff',
   'admin-staff-location',
+  'admin-live-teaching',
   'admin-campus-buildings',
   'admin-startups',
   'admin-syllabuses',
@@ -509,6 +514,8 @@ export default function App() {
         return <AdminStaffManagement />;
       case 'admin-staff-location':
         return <AdminStaffLocationConsole />;
+      case 'admin-live-teaching':
+        return <AdminLiveTeachingBoard />;
       case 'admin-campus-buildings':
         return <AdminCampusBuildingsPage />;
       case 'admin-cases':

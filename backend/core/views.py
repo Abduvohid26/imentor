@@ -1280,3 +1280,15 @@ class AdminStaffLocationAlertsView(APIView):
             max_page_size=200,
             mapper=lambda alert: StaffLocationAlertSerializer(alert).data,
         )
+
+
+class AdminLiveTeachingStatusView(APIView):
+    """"Katta ekran" jonli monitoring — hozir kim darsda, kim yo'q."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request):
+        from .location_service import get_live_teaching_status
+
+        return Response(get_live_teaching_status())

@@ -84,6 +84,7 @@ from .staff_profile_views import AdminStaffListView, StaffAvatarView
 from .views import (
     AdminCampusBuildingDetailView,
     AdminCampusBuildingListCreateView,
+    AdminLiveTeachingStatusView,
     AdminStaffLocationAlertsView,
     AdminStaffLocationPingsView,
     AdminStaffScheduleBulkView,
@@ -244,4 +245,5 @@ urlpatterns = [
     path('v1/admin/staff-schedule/<int:pk>/', AdminStaffScheduleDetailView.as_view(), name='admin-staff-schedule-detail'),
     path('v1/admin/staff-location-pings/', AdminStaffLocationPingsView.as_view(), name='admin-staff-location-pings'),
     path('v1/admin/staff-location-alerts/', AdminStaffLocationAlertsView.as_view(), name='admin-staff-location-alerts'),
+    path('v1/admin/live-teaching-status/', AdminLiveTeachingStatusView.as_view(), name='admin-live-teaching-status'),
 ]

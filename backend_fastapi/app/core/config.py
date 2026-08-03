@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Env o'zgaruvchilari — mavjud Django backend (config/settings/base.py) bilan
+    bir xil nomlarda, shunda docker-compose env bloki o'zgarishsiz qoladi."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    django_env: str = "dev"
+    django_debug: bool = True
+    django_secret_key: str = "CHANGE_ME_IN_PRODUCTION_very_long_random_secret_key_please_replace"
+
+    django_db_engine: str = "postgresql"
+    django_db_name: str = "imentor"
+    django_db_user: str = "imentor"
+    django_db_password: str = ""
+    django_db_host: str = "127.0.0.1"
+    django_db_port: str = "5432"
+
+    redis_url: str = "redis://127.0.0.1:6379/0"
+
+    django_jwt_access_minutes: int = 30
+    django_jwt_refresh_days: int = 7
+
+    openai_api_key: str = ""
+    openai_chat_model: str = "gpt-4o"
+    openai_fast_model: str = "gpt-4o-mini"
+    openai_reasoner_model: str = "gpt-4o"
+
+    online_test_api_base_url: str = ""
+    online_test_consumer_api_key: str = ""
+
+    django_media_root: str = ""
+    django_media_url: str = "/media/"
+
+    django_cors_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    django_allow_open_registration: bool = True
+    django_allow_legacy_prepared_content_api: bool = True
+
+    @property
+    def database_url(self) -> str:
+        return (
+            f"postgresql+psycopg://{self.django_db_user}:{self.django_db_password}"
+            f"@{self.django_db_host}:{self.django_db_port}/{self.django_db_name}"
+        )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.django_cors_allowed_origins.split(",") if o.strip()]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
