@@ -36,6 +36,8 @@ type Props = {
   isMobileDevice: boolean;
   desktopStaffLogin: boolean;
   setDesktopStaffLogin: (v: boolean) => void;
+  staffPasswordUnlocked: boolean;
+  setStaffPasswordUnlocked: (v: boolean) => void;
 };
 
 function t(lang: AppLanguage, key: Parameters<typeof translate>[1]) {
@@ -108,6 +110,8 @@ export default function PublicLandingPage({
   isMobileDevice,
   desktopStaffLogin,
   setDesktopStaffLogin,
+  staffPasswordUnlocked,
+  setStaffPasswordUnlocked,
 }: Props) {
   const [authOpen, setAuthOpen] = useState(false);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('login');
@@ -541,12 +545,19 @@ export default function PublicLandingPage({
                     <RegisterPage onSwitchToLogin={() => setAuthScreen('login')} />
                   )
                 ) : isDesktopBrowser() && !desktopStaffLogin ? (
-                  <DesktopHodimQrLogin onOtherRoles={() => setDesktopStaffLogin(true)} />
+                  <DesktopHodimQrLogin
+                    onOtherRoles={() => {
+                      setStaffPasswordUnlocked(true);
+                      setDesktopStaffLogin(true);
+                    }}
+                  />
                 ) : authScreen === 'login' ? (
                   <LoginPage
                     onSwitchToRegister={() => setAuthScreen('register')}
                     onBackToQr={isDesktopBrowser() ? () => setDesktopStaffLogin(false) : undefined}
-                    onWantsHodimQr={isDesktopBrowser() ? () => setDesktopStaffLogin(false) : undefined}
+                    onWantsHodimQr={
+                      isDesktopBrowser() && !staffPasswordUnlocked ? () => setDesktopStaffLogin(false) : undefined
+                    }
                   />
                 ) : (
                   <RegisterPage

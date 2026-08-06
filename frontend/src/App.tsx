@@ -290,6 +290,10 @@ export default function App() {
   /** Kompyuterda standart holat — telefon/parol (yoki Talaba ID) login formasi;
    * faqat "Xodim" tab tanlanganda QR ko'rsatiladi (LoginPage'dagi onWantsHodimQr). */
   const [desktopStaffLogin, setDesktopStaffLogin] = useState(true);
+  /** QR ekranidagi "Boshqa rollar (telefon + parol)" bosilgandan keyin — "Xodim"
+   * tab endi QR'ga qaytarmaydi, haqiqiy telefon+parol formasini ko'rsatadi
+   * (admin/startuper uchun; hodim baribir submit vaqtida rad etiladi). */
+  const [staffPasswordUnlocked, setStaffPasswordUnlocked] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<SyllabusTopicContext | null>(() =>
     loadPersistedSelectedTopic(),
   );
@@ -651,6 +655,8 @@ export default function App() {
           isMobileDevice={isMobileDevice}
           desktopStaffLogin={desktopStaffLogin}
           setDesktopStaffLogin={setDesktopStaffLogin}
+          staffPasswordUnlocked={staffPasswordUnlocked}
+          setStaffPasswordUnlocked={setStaffPasswordUnlocked}
         />
       ) : shouldHodimUseMobileCompanion(user, isMobileDevice) ? (
         <HodimMobileCompanion />

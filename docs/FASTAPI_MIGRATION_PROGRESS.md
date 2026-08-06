@@ -808,6 +808,32 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — Login modal UX qayta qurildi (frontend, foydalanuvchi
+  so'rovi bo'yicha): `App.tsx`, `PublicLandingPage.tsx`,
+  `LoginPage.tsx`.
+  1. "Kirish" bosilganda standart holat endi **Talaba** login formasi
+     (avval standart QR ekrani edi — `desktopStaffLogin` boshlang'ich
+     qiymati `false`→`true`ga o'zgartirildi).
+  2. Tab tartibi **Talaba, Xodim** qilib almashtirildi (avval Xodim
+     birinchi edi).
+  3. "Xodim" tab bosilganda (desktop'da) QR ekrani ko'rsatiladi — yangi
+     `onWantsHodimQr` prop orqali.
+  4. **Muhim tuzatish**: eng birinchi implementatsiyada "Xodim" tab har
+     doim QR'ga qat'iy yo'naltirilar edi — bu admin/startuper uchun
+     telefon+parol bilan kirish yo'lini butunlay yopib qo'yardi (chunki
+     ular ham "Xodim" tab orqali kirishadi). Tuzatildi: yangi
+     `staffPasswordUnlocked` state qo'shildi — QR ekranidagi "Boshqa
+     rollar (telefon + parol)" bosilgach, "Xodim" tab endi QR'ga emas,
+     balki haqiqiy telefon+parol formasiga o'tadi (hodim baribir submit
+     vaqtida mavjud tekshiruv orqali rad etiladi).
+  5. "DEMO KIRISH" tezkor-login bloki (Admin/Assistant professor/
+     Startuper tugmalari) LoginPage'dan butunlay olib tashlandi, shu
+     bilan bog'liq o'lik kod (`handleDemoRoleClick`, `loginWithCredentials`,
+     ishlatilmay qolgan import'lar) tozalandi.
+  Real production'da (`https://imentor.devfliq.uz` → `127.0.0.1:9050`)
+  to'liq tsikl tekshirildi: Kirish → Talaba forma (standart) → Xodim tab →
+  QR → "Boshqa rollar" → Xodim tab (endi parol) → admin login → boshqaruv
+  paneli muvaffaqiyatli yuklandi, konsolda xatolik yo'q.
 - **2026-08-03** — 🐛 **Real production'da topilgan ENG JIDDIY bug**:
   foydalanuvchilar taxminan 30 daqiqadan keyin "o'zidan-o'zi" tizimdan
   chiqib ketayotgani xabar qilindi. Sabab: **`POST

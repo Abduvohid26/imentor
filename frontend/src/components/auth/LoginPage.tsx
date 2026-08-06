@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, Phone, Lock, Shield, BriefcaseMedical, Languages, Rocket } from 'lucide-react';
+import { Loader2, AlertCircle, Phone, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
   isValidPhoneDigits,
@@ -7,8 +7,6 @@ import {
   logoutLocalStaff,
   normalizePhoneDigits,
   normalizeUserRole,
-  getDemoRoleLogins,
-  isDemoAuthEnabled,
 } from '../../utils/localStaffAuth';
 import {
   getBackendAccessToken,
@@ -39,55 +37,6 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr, onWantsHodim
   useEffect(() => {
     ensureDefaultRoleDemosExist();
   }, []);
-
-  const loginWithCredentials = async (phoneVal: string, passwordVal: string) => {
-    setError(null);
-    setPhone(phoneVal);
-    setPassword(passwordVal);
-    const digits = normalizePhoneDigits(phoneVal);
-    if (!isValidPhoneDigits(digits)) {
-      setError(t('auth.phoneRequired'));
-      return;
-    }
-    if (isDesktopBrowser()) {
-      const digits = normalizePhoneDigits(phoneVal);
-      const users = JSON.parse(localStorage.getItem('salomatlik-local-staff-users-v1') || '[]') as { phoneDigits?: string; role?: string }[];
-      const found = users.find((u) => u.phoneDigits === digits);
-      if (found && (found.role === 'hodim' || !found.role)) {
-        setError(t('auth.hodimDesktopQrOnly'));
-        return;
-      }
-    }
-    setLoading(true);
-    try {
-      const u = await loginStaffWithBackendFallback(phoneVal, passwordVal);
-      if (normalizeUserRole(u) === 'hodim' && isDesktopBrowser()) {
-        setError(t('auth.hodimDesktopRestriction'));
-        logoutLocalStaff();
-        return;
-      }
-      await getBackendAccessToken();
-      await syncSessionRoleFromServer();
-    } catch (err: unknown) {
-      const code = err instanceof Error ? err.message : '';
-      if (code === 'user-not-found' || code === 'wrong-password') {
-        setError(t('auth.wrongCredentials'));
-      } else {
-        setError(t('auth.loginError'));
-        console.error(err);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDemoRoleClick = (phoneVal: string, passwordVal: string, role: string) => {
-    if (isDesktopBrowser() && role === 'hodim') {
-      setError(t('auth.hodimDemoDesktop'));
-      return;
-    }
-    loginWithCredentials(phoneVal, passwordVal);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,6 +127,15 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr, onWantsHodim
         <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-black/[0.04] p-1">
           <button
             type="button"
+            onClick={() => { setLoginMode('student'); setError(null); }}
+            className={`rounded-lg py-2 text-[13px] font-semibold transition ${
+              loginMode === 'student' ? 'bg-white text-black/90 shadow-sm' : 'text-black/45'
+            }`}
+          >
+            {t('auth.loginModeStudent')}
+          </button>
+          <button
+            type="button"
             onClick={() => {
               if (isDesktopBrowser() && onWantsHodimQr) {
                 onWantsHodimQr();
@@ -191,15 +149,6 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr, onWantsHodim
             }`}
           >
             {t('auth.loginModeStaff')}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setLoginMode('student'); setError(null); }}
-            className={`rounded-lg py-2 text-[13px] font-semibold transition ${
-              loginMode === 'student' ? 'bg-white text-black/90 shadow-sm' : 'text-black/45'
-            }`}
-          >
-            {t('auth.loginModeStudent')}
           </button>
         </div>
 
@@ -278,44 +227,6 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr, onWantsHodim
             {t('auth.submitLogin')}
           </button>
         </form>
-
-        {isDemoAuthEnabled() && getDemoRoleLogins().length > 0 && (
-        <div className="mt-8 pt-6 border-t border-black/10 space-y-3">
-          <p className="text-[11px] font-semibold text-black/45 uppercase tracking-wide text-center">
-            {t('auth.demoTitle')}
-          </p>
-          <div className="grid gap-2">
-            {getDemoRoleLogins().map((demo) => {
-              const Icon =
-                demo.role === 'admin'
-                  ? Shield
-                  : demo.role === 'hodim'
-                    ? BriefcaseMedical
-                    : demo.role === 'startuper'
-                      ? Rocket
-                      : Languages;
-              return (
-                <button
-                  key={demo.role}
-                  type="button"
-                  onClick={() => handleDemoRoleClick(demo.phone, demo.password, demo.role)}
-                  disabled={loading}
-                  className="flex items-center gap-3 w-full text-left rounded-xl border border-black/10 bg-white/80 hover:bg-white hover:border-blue-300/60 px-3 py-2.5 transition shadow-sm disabled:opacity-60"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-blue-600/10 text-blue-700 flex items-center justify-center shrink-0">
-                    <Icon size={18} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold text-black/90">{demo.title}</p>
-                    <p className="text-[11px] text-black/45 truncate">{demo.subtitle}</p>
-                    <p className="text-[10px] text-black/35 font-mono mt-0.5">{demo.phone}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        )}
 
         <p className="mt-6 text-center text-[13px] text-black/50">
           {t('auth.noAccount')}{' '}
