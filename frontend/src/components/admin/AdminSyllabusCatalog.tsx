@@ -142,9 +142,10 @@ export default function AdminSyllabusCatalog() {
   const [newFanDescription, setNewFanDescription] = useState('');
   const [creatingFan, setCreatingFan] = useState(false);
 
-  const singleInputRef = useRef<HTMLInputElement>(null);
-  const bulkInputRef = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const appendInputRef = useRef<HTMLInputElement>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -356,7 +357,7 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
-  const startUploadForDepartment = async (files: FileList | File[], mode: 'single' | 'bulk') => {
+  const startUploadForDepartment = async (files: FileList | File[]) => {
     if (!selectedDept || selectedDept.id <= 0) {
       setError(t('admin.error.catalogSaveFailed'));
       return;
@@ -366,14 +367,10 @@ export default function AdminSyllabusCatalog() {
       setError(t('admin.error.filesRequired'));
       return;
     }
-    if (mode === 'single' && uploadFiles.length > 1) {
-      // still allow first file only for single button semantics
-    }
     const result = await extractVariantsFromFiles(uploadFiles, 'uz');
     if (!result) return;
 
-    // Har bir variant = alohida fan (bulk da bir nechta PDF → bir nechta fan)
-    // Preview da bitta subjectName; bulk uchun birinchi fayl nomi asosida.
+    // 1 yoki ko'p PDF — bitta tugma; har variant/fayl fan sifatida saqlanadi.
     const subjectGuess =
       uploadFiles.length === 1
         ? uploadFiles[0].name.replace(/\.(pdf|docx?)$/i, '').replace(/\([^)]*\)\s*$/, '').trim()
@@ -509,22 +506,65 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
+  const deleteErrorMessage = (err: unknown): string => {
+    if (err instanceof HttpError) {
+      const detail =
+        err.body && typeof err.body === 'object' && 'detail' in err.body
+          ? String((err.body as { detail: unknown }).detail)
+          : '';
+      if (detail && detail !== '[object Object]') return detail;
+      if (err.status === 401) return t('admin.error.reloginRequired');
+      if (err.status === 403) return t('admin.error.adminRequiredShort');
+    }
+    return t('admin.error.deleteFailedGeneric');
+  };
+
   const handleDelete = async (row: CourseSyllabusRow) => {
     if (!window.confirm(t('admin.confirmDeleteCourse', { name: row.subject_name }))) return;
+    setDeletingId(row.id);
+    setError(null);
     try {
       await deleteAdminCourseSyllabus(row.id);
       setExpandedId((id) => (id === row.id ? null : id));
+      setDraftTopicsByFan((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
       await load();
     } catch (err) {
-      if (err instanceof HttpError && (err.status === 409 || err.status === 400)) {
-        const detail =
-          err.body && typeof err.body === 'object' && 'detail' in err.body
-            ? String((err.body as { detail: unknown }).detail)
-            : '';
-        setError(detail || t('admin.error.deleteFailedGeneric'));
-      } else {
-        setError(t('admin.error.deleteFailedGeneric'));
+      setError(deleteErrorMessage(err));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteAllInDept = async () => {
+    if (!selectedDept || selectedDept.id <= 0) return;
+    const fans = fansForDept(selectedDept);
+    if (!fans.length) return;
+    if (!window.confirm(t('admin.confirmDeleteAllCourses', { count: fans.length, name: selectedDept.name }))) {
+      return;
+    }
+    setDeletingAll(true);
+    setError(null);
+    try {
+      const failures: string[] = [];
+      for (const row of fans) {
+        try {
+          await deleteAdminCourseSyllabus(row.id);
+        } catch (err) {
+          failures.push(`${row.subject_name}: ${deleteErrorMessage(err)}`);
+        }
       }
+      setExpandedId(null);
+      setDraftTopicsByFan({});
+      await load();
+      if (failures.length) {
+        setError(failures.slice(0, 3).join(' · '));
+      }
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -601,7 +641,7 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
-  const busy = uploading || creatingFan;
+  const busy = uploading || creatingFan || deletingAll || deletingId != null;
 
   return (
     <div className="p-3 sm:p-5 lg:p-6 h-full overflow-y-auto w-full space-y-6">
@@ -627,25 +667,14 @@ export default function AdminSyllabusCatalog() {
         </div>
 
         <input
-          ref={singleInputRef}
-          type="file"
-          accept={SYLLABUS_UPLOAD_ACCEPT}
-          className="hidden"
-          onChange={(e) => {
-            const files = e.target.files;
-            if (files?.length) void startUploadForDepartment(files, 'single');
-            e.target.value = '';
-          }}
-        />
-        <input
-          ref={bulkInputRef}
+          ref={uploadInputRef}
           type="file"
           accept={SYLLABUS_UPLOAD_ACCEPT}
           multiple
           className="hidden"
           onChange={(e) => {
             const files = e.target.files;
-            if (files?.length) void startUploadForDepartment(files, 'bulk');
+            if (files?.length) void startUploadForDepartment(files);
             e.target.value = '';
           }}
         />
@@ -754,20 +783,32 @@ export default function AdminSyllabusCatalog() {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => singleInputRef.current?.click()}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-[13px] font-semibold text-slate-700"
-                      >
-                        <Upload size={16} /> {t('admin.uploadSyllabusSingle')}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => bulkInputRef.current?.click()}
+                        onClick={() => uploadInputRef.current?.click()}
                         className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-[13px] font-semibold text-indigo-800"
                       >
-                        <Upload size={16} /> {t('admin.uploadSyllabusBulk')}
+                        <Upload size={16} /> {t('admin.uploadSyllabusCombined')}
                       </button>
+                      {fans.length > 0 ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void handleDeleteAllInDept()}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-[13px] font-semibold text-rose-700"
+                        >
+                          {deletingAll ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={16} />
+                          )}
+                          {t('admin.deleteAllCourses')}
+                        </button>
+                      ) : null}
                     </div>
+                    {error && openDeptId === dept.id ? (
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-800">
+                        {error}
+                      </div>
+                    ) : null}
 
                     {showNewFanForm && (
                       <div className="rounded-2xl border border-indigo-100 bg-white p-4 space-y-3">
@@ -916,10 +957,20 @@ export default function AdminSyllabusCatalog() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleDelete(row)}
-                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"
+                    disabled={busy}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleDelete(row);
+                    }}
+                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg disabled:opacity-50"
+                    title={t('admin.delete')}
                   >
-                    <Trash2 size={18} />
+                    {deletingId === row.id ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={18} />
+                    )}
                   </button>
                 </div>
 

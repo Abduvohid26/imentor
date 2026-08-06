@@ -453,7 +453,7 @@ def admin_delete_syllabus(
     if obj is None:
         raise HTTPException(status_code=404, detail="Topilmadi.")
 
-    # Bog'liq yozuvlarni avval tozalash (DB CASCADE/SET NULL ba'zan ishlamaydi).
+    # Bog'liq yozuvlarni avval tozalash (Postgres FK da ON DELETE yo'q — RESTRICT).
     db.execute(sa_delete(StaffCourseSelection).where(StaffCourseSelection.syllabus_id == pk))
     db.execute(
         update(PreparedContent).where(PreparedContent.syllabus_id == pk).values(syllabus_id=None)

@@ -242,13 +242,27 @@ export default function AdminCourseAssignments() {
             <SearchableSelect
               value={fanId}
               onChange={setFanId}
-              disabled={assigning || !phone}
+              disabled={assigning}
               placeholder={t('admin.selectSubjectPlaceholder')}
               noMatchText={t('admin.noResults')}
-              options={fans.map((f) => ({
-                value: String(f.id),
-                label: f.is_active ? f.subject_name : `${f.subject_name} · ${t('admin.toggleInactive')}`,
-              }))}
+              options={[...fans]
+                .sort((a, b) => {
+                  const da = (a.department_name || '').localeCompare(b.department_name || '', 'uz');
+                  if (da !== 0) return da;
+                  return a.subject_name.localeCompare(b.subject_name, 'uz');
+                })
+                .map((f) => {
+                  const tracks = resolveSyllabusVariants(f).length;
+                  const dept = (f.department_name || '').trim();
+                  const base = dept ? `${f.subject_name} · ${dept}` : f.subject_name;
+                  const meta = tracks > 0 ? ` (${tracks})` : '';
+                  const inactive = f.is_active ? '' : ` · ${t('admin.toggleInactive')}`;
+                  return {
+                    value: String(f.id),
+                    label: `${base}${meta}${inactive}`,
+                    searchText: `${f.subject_name} ${dept} ${f.subject_code || ''} ${f.department_code || ''}`,
+                  };
+                })}
             />
           </label>
         </div>
