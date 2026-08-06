@@ -808,6 +808,56 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — Foydalanuvchi: "Keys yaratish"da vaziyat/yechim matnlari
+  juda qisqa va isbotsiz ekanini, hech qanday real manba (kitob/PubMed)
+  ishlatilmayotganini ta'kidladi — bu klassik "RAG yo'qligi" muammosi
+  (pure generation, retrieval'siz). To'liq RAG pipeline qurildi:
+  1. **Backend**: yangi `app/services/external_literature.py` — PubMed
+     E-utilities (esearch→esummary→efetch, abstraktlar bilan) va Semantic
+     Scholar (`/graph/v1/paper/search`) uchun REAL, key'siz qidiruv;
+     xato/429 bo'lsa bo'sh ro'yxat qaytaradi (generatsiya to'xtamaydi).
+     PubMed natijalari `phrasesnotfound` ko'p bo'lsa (deyarli tarjima
+     qilinmagan so'rov) butunlay bekor qilinadi — aloqasiz natijalar
+     chiqmasin uchun.
+  2. **Backend**: yangi `POST /education-ai/case-context/` endpoint —
+     mavzuni (o'zbek/rus bo'lishi mumkin) avval kichik OpenAI chaqiruv
+     bilan ingliz MeSH-uslubidagi kalit so'zlarga aylantiradi (muhim bug
+     topildi va tuzatildi: "Meyor" (o'zbekcha "me'yor/normal") AI
+     tomonidan "Meyer" familiyasiga noto'g'ri tarjima qilinib, PubMed'dan
+     mutlaqo aloqasiz maqolalar kelayotgan edi — promptga aniq
+     ta'kidlangan misol qo'shib tuzatildi), so'ng kitob RAG (`book_retrieval`)
+     + PubMed + Semantic Scholar natijalarini bitta raqamlangan
+     (`[1]`, `[2]`, ...) manba to'plamiga yig'adi va qaytaradi.
+  3. **Frontend**: `generateCaseStudy`/`generateSingleCaseQuestion` qayta
+     yozildi — mavzu uchun kontekst BIR MARTA olinadi (3 fokus orasida
+     baham ko'riladi), prompt endi qat'iy talab qiladi: vaziyat kamida
+     150-200 so'z (bemor yoshi/anamnezi/klinik ko'rinishi to'liq), yechim
+     400-600 so'z va a-e struktura (tashxis→differensial→tekshiruvlar→
+     davolash→tavsiyalar), har muhim da'vodan keyin `[n]` iqtibos.
+     ENG MUHIM QOIDA: "Foydalanilgan adabiyotlar" ro'yxati LLM javobidan
+     PARSE QILINMAYDI — u dasturiy ravishda, faqat javob matnida
+     haqiqatan ishlatilgan `[n]` raqamlarini aniqlab, backend'dan kelgan
+     REAL metadata (kitob nomi+bet yoki PubMed/Scholar sarlavha+link)
+     asosida quriladi. LLM hech qachon link/PMID o'ylab topmaydi.
+  4. **Yon topilma**: shu ishni tekshirish jarayonida `httpClient.ts`ning
+     `httpJson()` funksiyasi `body`ni o'zi `JSON.stringify` qilishini,
+     lekin `aiService.ts`dagi ikkita chaqiruv (`case-context` va mavjud
+     `attachPerQuestionBookReferences` — testlar uchun per-savol kitob
+     manbalari) bodyni OLDINDAN `JSON.stringify` qilib yuborayotganini
+     aniqladim — natijada backend "string ichida string" olib 422
+     qaytarardi va bu funksiyalar sukut bo'yicha HECH QACHON ishlamagan
+     edi (xato `catch`da yutilib, kuzatilmasdan qolgan). Ikkalasi ham
+     tuzatildi — endi testlarda ham per-savol kitob manbalari ishlaydi.
+  5. **Real production (port 88) da brauzer orqali to'liq tasdiqlandi**:
+     "Normal fiziologiya" fanidan yangi 3 ta keys yaratildi — natija:
+     vaziyat ~150-200 so'z (to'liq klinik anamnez), yechim 400-600 so'z
+     a-e strukturada, matn ichida `[2]` kabi real iqtibos va oxirida
+     "FOYDALANILGAN ADABIYOTLAR: [2] Ganaong Physiology, 532-bet" —
+     bu haqiqiy backend RAG orqali topilgan kitob chunk'i, LLM o'ylab
+     topmagan. `case-context` endpoint alohida `curl` bilan ham
+     tekshirildi: "Bolalarda atopik dermatit" mavzusi uchun 4 ta haqiqiy,
+     mavzuga mos PubMed maqolasi (haqiqiy PMID/link bilan) qaytdi.
+
 - **2026-08-06** — Foydalanuvchi: "Ma'ruza matni va Taqdimot bo'limida
   stream qilib ChatGPT'dek yozib ketish yo'q" deb shikoyat qildi.
   Tekshiruv natijasi — **transport (SSE) hech qachon buzilmagan edi**:

@@ -139,13 +139,18 @@ def create_prepared_content(
         topic_code = topic_code or parsed.get("topic_code", "")
 
     obj = PreparedContent(
-        owner_key=auth.user.username,
-        kind=payload.kind,
-        topic=payload.topic,
-        topic_norm=topic_norm,
-        author_display_name=payload.author_display_name,
-        subject_name=subject_name,
-        subject_code=subject_code,
+        owner_key=auth.user.username[:128],
+        kind=payload.kind[:32],
+        # DB ustunlari (Django bilan bir xil sxema) VARCHAR(255)/(128)/(64) —
+        # mavzu nomlari juda uzun bo'lishi mumkin (masalan, ko'p qatorli
+        # sarlavhalar), shuning uchun DB xatosiga olib kelmasligi uchun
+        # kesib qo'yiladi (Django DRF ham xuddi shu max_length'larga
+        # validatsiya qiladi).
+        topic=payload.topic[:255],
+        topic_norm=topic_norm[:255],
+        author_display_name=payload.author_display_name[:128],
+        subject_name=subject_name[:255],
+        subject_code=subject_code[:64],
         variant_label=variant_label[:128],
         topic_code=topic_code[:32],
         syllabus_id=syllabus.id if syllabus else None,

@@ -72,15 +72,18 @@ def generate_openai_chat(
     max_tokens: int = 4096,
     temperature: float = 0.35,
     timeout_sec: int = 280,
+    response_format: dict | None = None,
 ) -> str:
     """Tayyor `messages` ro'yxati (system/user/assistant) bilan chat completion."""
-    body = {
+    body: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "stream": False,
     }
+    if response_format:
+        body["response_format"] = response_format
     resp = _http_post(api_key, body, url=OPENAI_CHAT_URL, timeout_sec=timeout_sec)
     return _extract_text(resp)
 

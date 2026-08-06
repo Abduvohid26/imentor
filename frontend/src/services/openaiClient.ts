@@ -89,6 +89,7 @@ async function chatViaBackend(params: {
   maxTokens: number;
   temperature?: number;
   bookContext?: BookContext;
+  responseFormat?: Record<string, unknown>;
   /** Server RAG uchun ISHLATGAN darsliklar (AI o'ylab topgani emas). */
   onBookReferences?: (refs: MedicalReference[]) => void;
 }): Promise<string> {
@@ -104,6 +105,7 @@ async function chatViaBackend(params: {
         ...(params.bookContext?.subjectCode
           ? { subject_code: params.bookContext.subjectCode, topic_query: params.bookContext.topicQuery }
           : {}),
+        ...(params.responseFormat ? { response_format: params.responseFormat } : {}),
       },
       timeoutMs: 290_000,
     });
@@ -239,6 +241,7 @@ async function chatViaDirectApi(params: {
   messages: ChatMessage[];
   maxTokens: number;
   temperature?: number;
+  responseFormat?: Record<string, unknown>;
 }): Promise<string> {
   const key = localApiKey();
   if (!key) throw new Error('OPENAI_API_KEY yo‘q (mahalliy dev).');
@@ -255,6 +258,7 @@ async function chatViaDirectApi(params: {
       max_tokens: params.maxTokens,
       temperature: params.temperature ?? 0.35,
       stream: false,
+      ...(params.responseFormat ? { response_format: params.responseFormat } : {}),
     }),
   });
 
@@ -286,6 +290,7 @@ async function chatCompletion(params: {
   maxTokens: number;
   temperature?: number;
   bookContext?: BookContext;
+  responseFormat?: Record<string, unknown>;
   onBookReferences?: (refs: MedicalReference[]) => void;
 }): Promise<string> {
   const msgs: ChatMessage[] = [];
@@ -301,6 +306,7 @@ async function chatCompletion(params: {
       maxTokens: params.maxTokens,
       temperature: params.temperature,
       bookContext: params.bookContext,
+      responseFormat: params.responseFormat,
       onBookReferences: params.onBookReferences,
     });
   }
@@ -309,6 +315,7 @@ async function chatCompletion(params: {
     messages: msgs,
     maxTokens: params.maxTokens,
     temperature: params.temperature,
+    responseFormat: params.responseFormat,
   });
 }
 
@@ -380,15 +387,17 @@ export async function openaiJson<T>(opts: {
   temperature?: number;
   parse: (text: string) => T;
   bookContext?: BookContext;
+  responseFormat?: Record<string, unknown>;
   onBookReferences?: (refs: MedicalReference[]) => void;
 }): Promise<T> {
   const text = await chatCompletion({
     model: opts.model ?? OPENAI_CHAT,
-    system: opts.system + JSON_ONLY_SUFFIX,
+    system: opts.system + (opts.responseFormat ? '' : JSON_ONLY_SUFFIX),
     messages: [{ role: 'user', content: opts.user }],
     maxTokens: opts.maxTokens ?? 8192,
     temperature: opts.temperature ?? 0.3,
     bookContext: opts.bookContext,
+    responseFormat: opts.responseFormat,
     onBookReferences: opts.onBookReferences,
   });
   return opts.parse(text);

@@ -1,6 +1,12 @@
 import { type AppLanguage, inferPdfLanguage } from '../i18n/language';
 import { translate } from '../i18n/translations';
-import type { PresentationDeck } from '../utils/buildPresentationPptx';
+import type { PresentationContent } from '../utils/presentationContentSchema';
+import {
+  PRESENTATION_JSON_SCHEMA,
+  normalizePresentationContent,
+} from '../utils/presentationContentSchema';
+import { qaPresentationContent } from '../utils/presentationQa';
+import { resolvePresentationImages } from '../utils/presentationImages';
 import {
   extractTopicsByRegex,
   guessSubjectFromDocumentText,
@@ -20,7 +26,6 @@ import {
   assertOpenAiApiKey,
   type BookContext,
   openaiJson,
-  openaiJsonStream,
   openaiText,
   openaiTextStream,
 } from './openaiClient';
@@ -372,171 +377,6 @@ function syllabusExtractionErrorMessage(err: unknown, fileName: string, lang: Ap
 
 export { syllabusExtractionErrorMessage };
 
-function sanitizeImagePrompt(prompt: string, maxLen: number): string {
-  const compact = prompt.replace(/\s+/g, ' ').trim();
-  return compact.slice(0, maxLen);
-}
-
-async function fetchImageAsDataUrl(url: string, timeoutMs: number = 14000): Promise<string | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-store',
-      signal: controller.signal,
-    });
-    window.clearTimeout(timeoutId);
-    if (!res.ok) return null;
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.startsWith('image/')) return null;
-    const blob = await res.blob();
-    if (!blob || blob.size < 8_000) return null;
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('read-failed'));
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
-
-/** Wikimedia Commons'dan ochiq litsenziyali (CC) rasm izlaydi — API kalit
- * kerak emas, CORS `origin=*` bilan ochiq. Taqdimot slaydlariga real
- * rasm biriktirish uchun ishlatiladi (AI o'ylab topgan emas — haqiqiy
- * ochiq manbadan). */
-/** Sarlavha/tavsifda tibbiyotga aloqasi yo'qligini ko'rsatuvchi so'zlar —
- * fotograf/rassom portretlari, san'at asarlari va h.k. tasodifan mos
- * kelib qolishining oldini olish uchun (masalan mavzu bilan bog'liq
- * bo'lmagan mashhur fotograf nomlari). */
-const IRRELEVANT_IMAGE_HINTS =
-  /portrait|photographer|painting|artwork|album cover|logo|flag of|coat of arms|stamp|banknote|coin\b/i;
-
-async function searchOpenImage(query: string): Promise<{ url: string; credit: string } | null> {
-  const q = query.replace(/\s+/g, ' ').trim().slice(0, 120);
-  if (!q) return null;
-  try {
-    const searchUrl =
-      'https://commons.wikimedia.org/w/api.php?action=query&generator=search' +
-      `&gsrsearch=${encodeURIComponent(q)}&gsrnamespace=6&gsrlimit=8` +
-      '&prop=imageinfo&iiprop=url|extmetadata|mime&iiurlwidth=900&format=json&origin=*';
-    const res = await fetch(searchUrl, { signal: AbortSignal.timeout(9000) });
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      query?: {
-        pages?: Record<
-          string,
-          {
-            title?: string;
-            imageinfo?: {
-              thumburl?: string;
-              url?: string;
-              mime?: string;
-              extmetadata?: {
-                Artist?: { value?: string };
-                LicenseShortName?: { value?: string };
-                Categories?: { value?: string };
-                ObjectName?: { value?: string };
-              };
-            }[];
-          }
-        >;
-      };
-    };
-    const pages = Object.values(data.query?.pages || {});
-    for (const page of pages) {
-      const info = page.imageinfo?.[0];
-      if (!info) continue;
-      const mime = info.mime || '';
-      if (!mime.startsWith('image/') || mime.includes('svg')) continue;
-      const imgUrl = info.thumburl || info.url;
-      if (!imgUrl) continue;
-      const haystack = `${page.title || ''} ${info.extmetadata?.ObjectName?.value || ''} ${
-        info.extmetadata?.Categories?.value || ''
-      }`;
-      if (IRRELEVANT_IMAGE_HINTS.test(haystack)) continue;
-      const license = info.extmetadata?.LicenseShortName?.value || 'Wikimedia Commons';
-      const artist = (info.extmetadata?.Artist?.value || '').replace(/<[^>]+>/g, '').trim();
-      const credit = artist ? `${artist} · ${license} (Wikimedia Commons)` : `${license} (Wikimedia Commons)`;
-      return { url: imgUrl, credit };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** Bir nechta slayd uchun parallel ravishda ochiq manba rasm topib
- * biriktiradi. Topilmasa slayd matnli holicha qoladi (xato bermaydi). */
-/** Wikimedia Commons asosan INGLIZCHA tavsif/nomlarga ega — o'zbek/rus
- * tilidagi sarlavha bilan qidirilsa deyarli hech narsa topilmaydi. Shu
- * sabab slayd sarlavhalarini bitta AI so'rov bilan qisqa inglizcha qidiruv
- * so'zlariga o'tkazamiz (har slayd uchun alohida so'rov emas — tez va
- * arzon). Muvaffaqiyatsiz bo'lsa, xom sarlavhalar bilan davom etiladi. */
-async function translateTitlesForImageSearch(
-  titles: string[],
-  subjectName: string,
-): Promise<string[]> {
-  if (!titles.length) return titles;
-  try {
-    const result = await openaiJson<{ queries?: string[] }>({
-      model: OPENAI_FAST,
-      system:
-        'For each numbered medical topic title, output a short (2-5 word) ENGLISH search ' +
-        'query for Wikimedia Commons that will find a RELEVANT clinical/anatomical image — ' +
-        'a specific medical term (organ, disease, pathology, procedure, anatomy diagram) using ' +
-        'standard English medical terminology. NEVER output a generic word alone, a person\'s ' +
-        'name, or a non-medical term — always ground it in the medical subject. Return ONLY ' +
-        'JSON: {"queries":["...", ...]} — SAME COUNT and SAME ORDER as input, no commentary.',
-      user: `Subject: ${subjectName}\nTitles:\n${titles.map((t, i) => `${i + 1}. ${t}`).join('\n')}`,
-      maxTokens: 800,
-      temperature: 0.2,
-      parse: (t) => parseJSONSafe<{ queries?: string[] }>(t),
-    });
-    if (Array.isArray(result.queries) && result.queries.length === titles.length) {
-      return result.queries.map((q, i) => (q?.trim() ? q.trim() : titles[i]));
-    }
-  } catch {
-    /* xom sarlavhalar bilan davom etamiz */
-  }
-  return titles;
-}
-
-/** Bir nechta slayd uchun ochiq manba rasm biriktiradi.
- * Parallel so'rovlar Commons/AI ni bosmasin — ketma-ket, eng ko'pi 6 rasm
- * (B uslub: chap/o'ng/tepada/pastda aylanishi uchun yetarli). */
-async function attachOpenImagesToDeck(
-  deck: PresentationDeck,
-  subjectName: string,
-): Promise<PresentationDeck> {
-  const contentIdx = deck.slides
-    .map((_, idx) => idx)
-    .filter((idx) => idx !== 0 && idx !== deck.slides.length - 1)
-    .slice(0, 6);
-  const rawTitles = contentIdx.map((idx) => deck.slides[idx].title);
-  const searchQueries = await translateTitlesForImageSearch(rawTitles, subjectName).catch(() => rawTitles);
-  const queryByIdx = new Map(contentIdx.map((idx, i) => [idx, searchQueries[i] || rawTitles[i]]));
-
-  const slides = [...deck.slides];
-  for (const idx of contentIdx) {
-    const query = queryByIdx.get(idx);
-    if (!query) continue;
-    try {
-      const found = await searchOpenImage(query);
-      if (!found) continue;
-      const dataUrl = await fetchImageAsDataUrl(found.url);
-      if (!dataUrl) continue;
-      slides[idx] = { ...slides[idx], imageUrl: dataUrl, imageCredit: found.credit };
-    } catch {
-      /* bitta rasm xatosi butun taqdimotni to'xtatmasin */
-    }
-  }
-  return { ...deck, slides };
-}
-
 function isWeakCaseSession(data: CaseStudySession | null | undefined): boolean {
   if (!data || !Array.isArray(data.questions) || data.questions.length < 3) return true;
   const lengths = data.questions.map((q) => ({
@@ -559,45 +399,65 @@ async function generateSingleCaseQuestion(
   language: AppLanguage,
   keywordFocus: string,
   avoid: string,
-  subjectCode?: string,
+  contextText: string,
+  sources: CaseSource[],
 ): Promise<CaseStudyQuestion> {
   const outLang = languageName(language);
   const structure = buildCaseStructurePrompt(topic);
-  const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
-  const hasBookContext = Boolean(bookContext);
+  const hasContext = Boolean(contextText.trim());
   const request = (strict: boolean) =>
-    openaiJson<{ scenario?: string; answer?: string; references?: MedicalReference[]; focus?: string }>({
+    openaiJson<{ scenario?: string; answer?: string; focus?: string }>({
       model: OPENAI_CHAT,
       system:
         `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} Return ONLY valid JSON object: ` +
-        `{"scenario":"...","answer":"...","references":[]}. ` +
-        `If book excerpts (manba context) were given, cite them inside "answer" text as "(Manba: kitob nomi, sahifa-bet)" — never outside the JSON. ` +
-        `Language: ${outLang}. focus="${focus}". ${jsonReferencesRule(hasBookContext)}`,
+        `{"scenario":"...","answer":"..."}. Language: ${outLang}. focus="${focus}". ` +
+        (hasContext
+          ? 'MANBALAR (raqamlangan) sizga user xabarida berilgan — "answer" matnida HAR bir muhim klinik ' +
+            'da\'vodan keyin mos manba raqamini [n] shaklida qo\'ying (masalan "...tavsiya etiladi [2]."). ' +
+            'Manbada bo\'lmagan narsani manba raqami bilan bog\'lamang; agar manbada yetarli ma\'lumot bo\'lmasa, ' +
+            'ochiq tan oling ("berilgan manbalarda aniq ma\'lumot yo\'q, umumiy klinik amaliyotga asoslanib...") ' +
+            'va bu qismni raqamsiz qoldiring. HECH QACHON o\'zingiz PMID/DOI/link yoki manba raqami o\'ylab topmang — ' +
+            'faqat sizga berilgan manbalar ro\'yxatidagi raqamlardan foydalaning. "Foydalanilgan adabiyotlar" ' +
+            'bo\'limini o\'zingiz yozmang — u dasturiy ravishda alohida qo\'shiladi.'
+          : 'Hech qanday manba berilmagan — hech qanday raqamli iqtibos [n], link yoki "Manba:" degan matn yozmang, faqat umumiy klinik bilim asosida yozing.'),
       user:
         `${structure}${keywordFocus}${avoid}\n\n` +
         `Generate ONE clinical case with focus="${focus}" (${CASE_FOCUS_HINTS[focus]}). ` +
-        'Scenario: 2–4 paragraphs with patient details. Answer: 2–4 paragraphs, focus-specific clinical reasoning. ' +
-        (hasBookContext
-          ? 'Leave "references" as an empty array — cite the book inline in "answer" instead. '
-          : 'Leave "references" as an empty array — do not fabricate or cite any sources. ') +
-        (strict ? 'Strict valid JSON only.' : ''),
-      maxTokens: 3072,
+        'QATTIQ QOIDALAR:\n' +
+        '1. "scenario" — kamida 150-200 so\'z: bemor yoshi/jinsi, anamnez, shikoyatlar, klinik ko\'rinish ' +
+        'tafsilotlari, tekshiruv natijalari, ijtimoiy/oilaviy kontekst — real bemor tarixiga o\'xshash to\'liq klinik rasm.\n' +
+        '2. "answer" — kamida 400-600 so\'z, quyidagi tuzilishda (mos sarlavhalar bilan, focus\'ga qarab moslashtiring):\n' +
+        '   a) Dastlabki (taxminiy) tashxis va uning asoslanishi\n' +
+        '   b) Differensial tashxis (kamida 2-3 muqobil tashxis va nega ular rad etilgani)\n' +
+        '   c) Tavsiya etilgan qo\'shimcha tekshiruvlar\n' +
+        '   d) Davolash/profilaktika taktikasi, bosqichma-bosqich\n' +
+        '   e) Amaliy tavsiyalar (bemorga/ota-onaga)\n' +
+        (hasContext ? `\nMANBALAR:\n${contextText}\n` : '') +
+        (strict ? '\nStrict valid JSON only.' : ''),
+      maxTokens: 4096,
       temperature: strict ? 0.4 : 0.58,
       parse: (t) => parseJSONSafe(t),
-      bookContext,
     });
 
-  let raw: { scenario?: string; answer?: string; references?: MedicalReference[]; focus?: string };
+  let raw: { scenario?: string; answer?: string; focus?: string };
   try {
     raw = await request(false);
   } catch {
     raw = await request(true);
   }
 
+  const answer = (raw.answer || '').trim();
+  const usedIndices = new Set(
+    Array.from(answer.matchAll(/\[(\d+)\]/g)).map((m) => Number(m[1])),
+  );
+  const citedSources = sources.filter((s) => usedIndices.has(s.index));
+  const referencesSection = buildReferencesSection(citedSources.length ? citedSources : []);
+
   return {
     scenario: (raw.scenario || '').trim(),
-    answer: (raw.answer || '').trim(),
+    answer: answer + referencesSection,
     focus: normalizeCaseFocus(raw.focus, CASE_STUDY_FOCUS_ORDER.indexOf(focus)),
+    ...(citedSources.length ? { references: sourcesToMedicalReferences(citedSources) } : {}),
   };
 }
 
@@ -624,10 +484,12 @@ function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudyS
         "(5) bemor xavfsizligi hamda keyingi kuzatuv rejasi.",
       ].join(' ');
       const focus = normalizeCaseFocus((q as CaseStudyQuestion).focus, i);
+      const refs = (q as CaseStudyQuestion).references;
       return {
         scenario: scenario.length >= 120 ? scenario : fallbackScenario,
         answer: answer.length >= 120 ? answer : fallbackAnswer,
         focus,
+        ...(refs?.length ? { references: refs } : {}),
       };
     });
   return {
@@ -720,11 +582,15 @@ async function attachPerQuestionBookReferences(
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
+        // MUHIM: httpJson body'ni o'zi JSON.stringify qiladi — bu yerda oldindan
+        // stringify qilinsa, backend "string ichida string" qabul qilib 422
+        // qaytaradi (shu bug tufayli test uchun per-savol kitob manbalari
+        // sukut bo'yicha hech qachon ishlamagan edi).
+        body: {
           subject_code: code,
           queries: questions.map((q) => q.question || ''),
           top_k: 3,
-        }),
+        },
       },
     );
     const results = Array.isArray(data.results) ? data.results : [];
@@ -739,6 +605,79 @@ async function attachPerQuestionBookReferences(
     console.warn('Per-question book references failed, keeping session refs', err);
     return session;
   }
+}
+
+/** Keys (klinik vaziyat) uchun RAG manba — backend'dan REAL retrieval orqali
+ * keladi (kitob chunk'i yoki PubMed/Semantic Scholar maqolasi). LLM bu
+ * ro'yxatni o'zi to'ldirmaydi — faqat shu manbalarni raqami bilan
+ * iqtibos qiladi ([1], [2], ...). */
+export interface CaseSource {
+  index: number;
+  type: 'book' | 'pubmed' | 'scholar';
+  title: string;
+  authors?: string;
+  meta?: string;
+  url?: string;
+  text?: string;
+}
+
+async function fetchCaseContext(
+  topic: string,
+  subjectCode: string | undefined,
+): Promise<{ sources: CaseSource[]; contextText: string }> {
+  try {
+    await ensureBackendAccessToken();
+    const token = getBackendAccessToken();
+    if (!token) return { sources: [], contextText: '' };
+    const data = await httpJson<{ sources?: CaseSource[]; context_text?: string }>(
+      `${apiBaseUrlForCase()}/v1/education-ai/case-context/`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: { topic, subject_code: subjectCode || '' },
+      },
+    );
+    return {
+      sources: Array.isArray(data.sources) ? data.sources : [],
+      contextText: data.context_text || '',
+    };
+  } catch (err) {
+    console.warn('Case RAG context (book + PubMed/Semantic Scholar) fetch failed:', err);
+    return { sources: [], contextText: '' };
+  }
+}
+
+function apiBaseUrlForCase(): string {
+  return (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL?.trim() || '/api';
+}
+
+/** `sources` ro'yxatidan haqiqiy metadata asosida (LLM ishtirokisiz) "Foydalanilgan
+ * adabiyotlar" bo'limini quradi — havolalar 100% real, chunki API'dan olingan. */
+function buildReferencesSection(sources: CaseSource[]): string {
+  if (!sources.length) return '';
+  const lines = sources.map((s) => {
+    if (s.type === 'book') {
+      return `[${s.index}] ${s.title}${s.meta ? `, ${s.meta}` : ''}`;
+    }
+    const kind = s.type === 'pubmed' ? 'PubMed' : 'Semantic Scholar';
+    const authorBit = s.authors ? `${s.authors}. ` : '';
+    const metaBit = s.meta ? ` (${s.meta})` : '';
+    return `[${s.index}] ${authorBit}${s.title}${metaBit}. ${kind}: ${s.url || ''}`.trim();
+  });
+  return `\n\nFOYDALANILGAN ADABIYOTLAR:\n${lines.join('\n')}`;
+}
+
+function sourcesToMedicalReferences(sources: CaseSource[]): MedicalReference[] {
+  return sources.map((s) => ({
+    title: s.title,
+    ...(s.authors ? { authors: s.authors } : {}),
+    publisher: s.type === 'book' ? 'Darslik' : s.type === 'pubmed' ? 'PubMed' : 'Semantic Scholar',
+    ...(s.url ? { url: s.url } : {}),
+    ...(s.type === 'book' && s.meta ? { pages: s.meta.replace(/-bet$/, '') } : {}),
+  }));
 }
 
 const ALL_TEST_LANGUAGES: AppLanguage[] = ['uz', 'ru', 'en'];
@@ -847,211 +786,6 @@ async function attachTestTranslations(session: TestSession, primaryLang: AppLang
   };
 }
 
-const PRESENTATION_MIN_SLIDES = 10;
-const PRESENTATION_MIN_BULLETS = 7;
-/** Kontent-slayd: qisqa 1–2 gap EMAS — har bullet to'liq matn bloki */
-const PRESENTATION_MIN_BULLET_CHARS = 110;
-const PRESENTATION_MAX_BULLETS = 10;
-
-function fallbackPresentationSlides(fallbackTitle: string): PresentationDeck['slides'] {
-  return [
-    {
-      title: 'Kirish',
-      bullets: [
-        `Mavzu: ${fallbackTitle} — dars maqsadi va ahamiyati`,
-        'Asosiy tushunchalar va ta\'riflar — keyingi slaydda batafsil',
-        'Etiologiya va xavf omillari — sabablar tizimi',
-        'Patogenez / mexanizm — jarayon bosqichlari',
-        'Klinik ko\'rinish va diagnostika — belgi va tekshiruvlar',
-        'Davolash, profilaktika va xulosa — amaliy yo\'nalish',
-      ],
-      notes: 'Kirishda faqat reja. Har tema keyingi slaydlarda chuqur ochiladi.',
-    },
-    {
-      title: 'Asosiy tushunchalar',
-      bullets: [
-        'Markaziy atamalar aniq ta\'rif bilan ochiladi: nima ekanligi, qayerda uchrashi va klinik amaliyotda nima uchun muhimligi tushuntiriladi.',
-        'Tasniflash mezonlari bo\'yicha guruhlash: asosiy turlari, farqlovchi belgilari va har bir guruhning amaliy ahamiyati ko\'rsatiladi.',
-        'Normal holat bilan patologik o\'zgarish farqi: qaysi belgilar ogohlantiruvchi ekanligi va qachon chuqurroq tekshiruv kerakligi aytiladi.',
-        'Qisqa klinik misol orqali tushunchalar mustahkamlanadi: bemor shikoyati, kutiladigan topilma va birinchi qadam.',
-        'Talaba eslab qolishi kerak bo\'lgan asosiy xulosa: ta\'rif + tasnif + klinik signal — uchlik sifatida takrorlanadi.',
-        'Keyingi slaydga o\'tish: etiologiya sabab omillarini shu tushunchalar bilan bog\'lab ochish.',
-      ],
-      notes: 'Har bir ta\'rifni misol bilan bog\'lang; faqat atama sanab o\'tish yetarli emas.',
-    },
-    {
-      title: 'Etiologiya',
-      bullets: [
-        'Asosiy sabab omillari guruhlarga bo\'linadi: ichki, tashqi va aralash omillar, har biriga qisqa klinik izoh beriladi.',
-        'Xavf guruhlari aniq sanab o\'tiladi: yosh, jins, kasbiy ta\'sir, surunkali kasalliklar va genetik moyillik.',
-        'Trigger mexanizmlar: qaysi sharoitda jarayon faollashishi, qanday belgi bilan namoyon bo\'lishi tushuntiriladi.',
-        'Oldini olish imkoniyatlari: birlamchi profilaktika choralari va bemorga beriladigan amaliy tavsiyalar.',
-        'Klinik ahamiyat: sababni bilish davolash strategiyasini qanday o\'zgartirishi misol bilan ochiladi.',
-        'Xulosa: etiologiya — tasodifiy ro\'yxat emas, diagnostika va terapiyani yo\'naltiruvchi asos.',
-      ],
-      notes: 'Sabablarni jadval yoki sxema sifatida sanab, keyin klinik bog\'lanishni so\'rang.',
-    },
-    {
-      title: 'Patogenez / mexanizm',
-      bullets: [
-        'Jarayon bosqichma-bosqich: boshlang\'ich omil → zanjir reaksiya → klinik namoyon bo\'lish ketma-ketligi ochiladi.',
-        'Asosiy zanjirlar va o\'zaro bog\'liqlik: qaysi tizimlar ishtirok etadi va ular bir-birini qanday kuchaytiradi.',
-        'Kompensatsiya mexanizmlari: organizm qanday moslashadi, qachon kompensatsiya yetarli bo\'lmaydi.',
-        'Asoratlar yo\'li: kechikkan yoki noto\'g\'ri boshqarilgan holatda qanday og\'irlashishlar kutiladi.',
-        'Amaliy xulosa: mexanizmni tushunish davolash nuqtalarini (qayerga ta\'sir qilish) aniqlaydi.',
-        'Talaba uchun eslatma: mexanizmni 3 bosqichda qayta aytib berish mashqi.',
-      ],
-      notes: 'Doskada oddiy 3–4 bosqichli sxema chizing.',
-    },
-    {
-      title: 'Klinik ko\'rinish',
-      bullets: [
-        'Asosiy simptomlar batafsil: bemor nima shikoyat qiladi, qancha vaqtdan beri, nima kuchaytiradi yoki yengillashtiradi.',
-        'Obyektiv belgilar va topilmalar: ko\'rikda nima ko\'rinadi, qaysi belgi yuqori xavfni bildiradi.',
-        'Og\'irlik darajalari: engil, o\'rtacha, og\'ir — har biri uchun farqlovchi mezonlar.',
-        'Differensial jihatlar: o\'xshash holatlar bilan qanday ajratiladi, qaysi belgi chalkashtirmaslikka yordam beradi.',
-        'Urgentsiya belgilari: qachon zudlik bilan yo\'naltirish yoki shoshilinch choralar kerak.',
-        'Amaliy tip: qisqa "shikoyat → topilma → keyingi qadam" zanjiri.',
-      ],
-      notes: 'Real klinik hikoya bilan oching; faqat simptom ro\'yxati bilan cheklanmang.',
-    },
-    {
-      title: 'Diagnostika',
-      bullets: [
-        'Anamnez va fizikal ko\'rik: qaysi savollar majburiy, qaysi topilmalar yo\'nalish beradi.',
-        'Laborator tekshiruvlar: asosiy ko\'rsatkichlar, ularning talqini va yolg\'on musbat/manfiy ehtimoli.',
-        'Instrumental usullar: qachon qaysi usul tanlanadi, nima kutish mumkin.',
-        'Diagnostik mezonlar: tasdiqlash uchun minimal majburiy to\'plam.',
-        'Xatoliklarga yo\'l qo\'ymaslik: kechikkan tashxis va ortiqcha tekshiruvlardan qochish tamoyillari.',
-        'Xulosa: diagnostika ketma-ketligi — arzon/xavfsizdan murakkabgacha.',
-      ],
-      notes: 'Algoritm chizing: 1-qadam, 2-qadam, tasdiqlash.',
-    },
-    {
-      title: 'Davolash tamoyillari',
-      bullets: [
-        'Konservativ yondashuv: qachon dori-darmonsiz yoki dastlabki choralar yetarli.',
-        'Asosiy terapiya: preparat/usul tanlash mezonlari, dozaga oid umumiy tamoyillar (aniq dozani kitobdan tekshirish).',
-        'Jarrohlik yoki invaziv variantlar: ko\'rsatma va qarshi ko\'rsatmalar qisqa ochiladi.',
-        'Qo\'llab-quvvatlovchi choralar: og\'riq, infektsiya, ovqatlanish, reabilitatsiya.',
-        'Monitoring: qaysi belgi/analiz dinamikasi kuzatiladi, qachon rejim o\'zgartiriladi.',
-        'Xavfsizlik: asorat belgilarini bemorga tushuntirish muhimligi.',
-      ],
-      notes: 'Davolashni maqsad → usul → monitoring sxemasida bering.',
-    },
-    {
-      title: 'Profilaktika va kuzatuv',
-      bullets: [
-        'Birlamchi profilaktika: xavf omillarini kamaytirish bo\'yicha aniq tavsiyalar.',
-        'Ikkinchi darajali chora-tadbirlar: skrining, erta aniqlash, yuqori xavf guruhlarini kuzatish.',
-        'Bemorni kuzatish rejasi: qayta tashrif muddatlari va nimalarni qayta baholash.',
-        'Hayot tarzi uchun amaliy maslahatlar: ovqatlanish, faollik, zararli odatlar.',
-        'Oilaviy/ijtimoiy qo\'llab-quvvat: rioya qilishni oshiradigan omillar.',
-        'Xulosa: profilaktika davolashdan kam ahamiyatli emas.',
-      ],
-      notes: 'Talabalarga "bemorga 3 ta aniq tavsiya" mashqi bering.',
-    },
-    {
-      title: 'Klinik misol / amaliy vazifa',
-      bullets: [
-        'Qisqa klinik holat: yosh, asosiy shikoyat, muhim anamnez elementi beriladi.',
-        'Muhim savollar: talaba qanday qo\'shimcha ma\'lumot so\'rashi kerakligi.',
-        'Kutiladigan topilmalar: ko\'rik va birinchi tekshiruvlarda nima chiqishi mumkin.',
-        'Qaror qabul qilish: differensial → eng ehtimolli tashxis → birinchi chora.',
-        'Xavfni baholash: qachon shoshilinch yo\'naltirish kerakligi.',
-        'Muhokama: guruhda 2–3 daqiqalik javob va o\'qituvchi xulosasi.',
-      ],
-      notes: 'Holatni ovoz chiqarib o\'qing, keyin savollarni bosqichma-bosqich oching.',
-    },
-    {
-      title: 'Xulosa',
-      bullets: [
-        'Asosiy xulosalar: tushuncha, sabab, mexanizm, klinik belgi — qisqa zanjir.',
-        'Eslab qolish kerak: erta aniqlash va to\'g\'ri diagnostika ketma-ketligi.',
-        'Amaliy ahamiyat: bemor xavfsizligi va davolashni individual tanlash.',
-        'Keyingi mavzuga bog\'lanish: chuqurroq yo\'nalish yoki amaliy mashg\'ulot.',
-        'Savol-javob: 2–3 ta tekshiruv savoli bilan darsni yakunlash.',
-        'Manbalar: dars davomida ko\'rsatilgan darslik sahifalarini qayta ko\'rib chiqing.',
-      ],
-      notes: 'Xulosani doskada 5 nuqta qilib yozib qo\'ying.',
-    },
-  ];
-}
-
-function normalizePresentationDeck(
-  raw: Partial<PresentationDeck> | null | undefined,
-  fallbackTitle: string,
-): PresentationDeck {
-  const title = (raw?.title || fallbackTitle || 'Taqdimot').trim().slice(0, 120);
-  const slides = (Array.isArray(raw?.slides) ? raw!.slides! : [])
-    .map((s, i) => {
-      const st = String(s?.title || `Slayd ${i + 1}`).trim();
-      const isIntro = i === 0 || /^kirish|reja|outline|introduction/i.test(st);
-      const minLen = isIntro ? 25 : 40;
-      const bullets = (Array.isArray(s?.bullets) ? s.bullets : [])
-        .map((b) => String(b || '').trim())
-        .filter((b) => b.length >= minLen)
-        .slice(0, PRESENTATION_MAX_BULLETS);
-      let notes = String(s?.notes || '').trim();
-      if (!st || bullets.length < 3) return null;
-
-      // Notes dagi to'liq gaplarni slayd matniga qo'shish (sahifa bo'sh qolmasin)
-      if (notes) {
-        for (const part of notes.split(/(?<=[.!?])\s+/)) {
-          if (bullets.length >= PRESENTATION_MAX_BULLETS) break;
-          const p = part.trim();
-          if (p.length < (isIntro ? 25 : 50)) continue;
-          if (/^\(?manba:/i.test(p)) continue;
-          if (bullets.some((b) => b.includes(p.slice(0, 36)) || p.includes(b.slice(0, 36)))) continue;
-          bullets.push(p.slice(0, 420));
-        }
-      }
-
-      const manba =
-        notes.match(/\(Manba:\s*[^)]+\)/i)?.[0] ||
-        notes.match(/Manba:\s*[^\n.]+/i)?.[0] ||
-        '';
-      const notesKeep = manba
-        ? manba.startsWith('(')
-          ? manba
-          : `(${manba})`
-        : undefined;
-
-      return {
-        title: st.slice(0, 120),
-        bullets: bullets.slice(0, PRESENTATION_MAX_BULLETS),
-        notes: notesKeep,
-      };
-    })
-    .filter((s): s is NonNullable<typeof s> => Boolean(s));
-
-  if (slides.length >= PRESENTATION_MIN_SLIDES) {
-    return { title, slides: slides.slice(0, 28) };
-  }
-
-  const padded: PresentationDeck['slides'] = [...slides];
-  for (const filler of fallbackPresentationSlides(fallbackTitle)) {
-    if (padded.length >= PRESENTATION_MIN_SLIDES) break;
-    if (padded.some((s) => s.title.toLowerCase() === filler.title.toLowerCase())) continue;
-    padded.push(filler);
-  }
-  while (padded.length < PRESENTATION_MIN_SLIDES) {
-    padded.push({
-      title: `Qo'shimcha slayd ${padded.length + 1}`,
-      bullets: [
-        `${fallbackTitle} bo'yicha bu bo'limda nazariy asos, klinik mezonlar va amaliy qadamlar batafsil bayon etiladi; qisqa tezislar bilan cheklanmaydi.`,
-        'Avval ta\'rif va tasnif ochiladi: asosiy atamalar, farqlovchi belgilar, normal va patologik holatlar qiyoslanadi, talaba uchun aniq mezonlar beriladi.',
-        'Keyin etiologiya va mexanizm: sabab omillari, bosqichma-bosqich patogenez, kompensatsiya va asorat yo\'llari klinik misollar bilan bog\'lanadi.',
-        'Diagnostika ketma-ketligi: anamnez, fizikal topilmalar, laboratoriya va instrumental usullar, tasdiqlash mezonlari va chalkashtiriladigan holatlar sanab o\'tiladi.',
-        'Davolash va kuzatuv: birinchi qadam, asosiy terapiya tamoyillari, monitoring belgilari, bemorga tushuntiriladigan xavf signallari va profilaktika tavsiyalari yoziladi.',
-        'Amaliy xulosa: shikoyat → topilma → qaror → kuzatuv zanjiri qisqa algoritm sifatida beriladi; keyingi slaydda chuqurroq ochiladigan nuqtalar ko\'rsatiladi.',
-        'Muhim eslatma: doza, muddat va qarshi ko\'rsatmalar bo\'yicha aniq raqamlar mavjud bo\'lsa, ular kitob manbasidan olinadi va matnda ochiq ko\'rsatiladi.',
-      ],
-      notes: undefined,
-    });
-  }
-  return { title, slides: padded.slice(0, 28) };
-}
 
 async function requestPresentationDeckFromAi(params: {
   topicTitle: string;
@@ -1064,100 +798,85 @@ async function requestPresentationDeckFromAi(params: {
   sourceFileName?: string;
   sourceText?: string;
   subjectCode?: string;
-  /** Generatsiya davom etayotganda xom matn bilan chaqiriladi (birinchi
-   * urinishda) — foydalanuvchi jarayonni jonli kuzatishi uchun. */
   onProgress?: (rawTextSoFar: string) => void;
-}): Promise<PresentationDeck> {
+}): Promise<PresentationContent> {
   assertOpenAiApiKey();
   const outLang = languageName(params.language);
   const bookContext: BookContext | undefined = params.subjectCode
     ? { subjectCode: params.subjectCode, topicQuery: params.topicTitle }
     : undefined;
-  const kind = params.topicType === 'practical' ? 'amaliy mashg\'ulot' : 'ma\'ruza';
+  const kind = params.topicType === 'practical' ? "amaliy mashg'ulot" : "ma'ruza";
   const fallbackTitle = `${params.topicId} — ${params.topicTitle}`;
   const enhanceBlock =
     params.mode === 'enhance'
-      ? `O'qituvchi allaqachon taqdimot yuklagan ("${params.sourceFileName || 'fayl'}"). ` +
-        `Mavjud materialni SAQLAB, har slaydni TO'LIQ MATN bilan boyiting (qisqartirmang). ` +
+      ? `O'qituvchi taqdimot yuklagan ("${params.sourceFileName || 'fayl'}"). Kontentni boyiting, lekin slide_type tuzilmasini saqlang. ` +
         (params.sourceText?.trim()
-          ? `Yuklangan fayldan ajratilgan matn:\n${params.sourceText.slice(0, 12000)}\n`
+          ? `Manba matn:\n${params.sourceText.slice(0, 8000)}\n`
           : '')
-      : 'O\'qituvchida taqdimot yo\'q — mavzu bo\'yicha noldan dars taqdimoti yarating.';
+      : "Noldan dars taqdimoti yarating.";
 
-  const userPrompt =
+  const system =
+    `${SYS_MEDICAL} Sen FAQAT kontent qaytarasan — dizayn, rang, font haqida hech narsa yozma. ` +
+    'Akademik ohang: aniq, ilmiy, tibbiy ta\'lim (FJSTI) standartiga mos. ' +
+    'Har bir slaydda MAKSIMUM 5 ta bullet, har bir bullet MAKSIMUM 12 so\'z — paragraf-devor matn TAQIQLANGAN. ' +
+    '8–12 slayd; slide_type larini aralashtir: title, agenda, content_bullets (2–3), statistics, ' +
+    'comparison_table yoki process_flow, case_study yoki image_focus, summary. ' +
+    'Bir xil slide_type ketma-ket kelmasin. ' +
+    'Har slaydda image_query (inglizcha tibbiy kalit so\'z) va speaker_notes bo\'lsin. ' +
+    `Til: ${outLang}. ` +
+    (bookContext
+      ? 'Darslik parchalariga tayan; o\'ylab topilgan manba yozma.'
+      : "O'ylab topilgan manba/havola qo'shma.");
+
+  const user =
     `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
-    `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}\n\n` +
-    'MAJBURIY USLUB — kafedra ma\'ruza PPTX (matnga to\'la sahifalar):\n' +
-    '1) 1-slayd "Kirish": dars REJASI (temalar ro\'yxati). Bu yerda qisqa bo\'lishi mumkin.\n' +
-    '2) Keyingi HAR slayd = bitta tema, lekin SAHIFA MATNGA TO\'LA bo\'lishi shart. ' +
-    `Har kontent-slaydda ${PRESENTATION_MIN_BULLETS}-${PRESENTATION_MAX_BULLETS} ta bullet; ` +
-    `HAR bullet kamida ${PRESENTATION_MIN_BULLET_CHARS} belgi (2–4 to\'liq gap). ` +
-    'Qisqa "X muhim", "Y keng tarqalgan" tipidagi 1 qatorlik fakt — TAQIQLANGAN.\n' +
-    '3) Kontentga majburiy: ta\'rif, mezonlar, bosqichlar/tartib, klinik tafsilot, ' +
-    'kerak bo\'lsa doza/muddat/forma/qarshi ko\'rsatma, amaliy xulosa.\n' +
-    '4) "notes" maydoniga YANA 4–6 to\'liq gap qo\'shing (bullet\'larni takrorlamang) — ' +
-    'ular ham slaydga chiqadi. Agar aniq kitob/sahifa bilinsa oxirida (Manba: <haqiqiy nom>, ' +
-    '<haqiqiy sahifa>) qo\'shing — aks holda manba qatorini butunlay yozmang.\n' +
-    '5) Oxirgi slayd "Xulosa" — ham to\'liq matn + manbalar.\n' +
-    'Maqsad: talaba slayddan darsni o\'qib tushunadigan darajada TO\'LIQ matn.';
+    `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}\n` +
+    'JSON maydonlari: presentation_title, subject_area, author, slides[]. ' +
+    'slides[].slide_type, title, subtitle, body{bullets,key_stat,stats,columns,comparison_rows,process_steps,quote_text,quote_author}, ' +
+    'image_query, speaker_notes. Ishlatilmagan body maydonlari bo\'sh string/array bo\'lsin.';
 
-  const attempts: Array<{ maxTokens: number; temperature: number }> = [
-    { maxTokens: 16000, temperature: 0.35 },
-    { maxTokens: 14000, temperature: 0.28 },
-  ];
+  params.onProgress?.('Kontent generatsiya…');
 
-  for (const [attemptIdx, attempt] of attempts.entries()) {
-    try {
-      const requestOpts = {
-        model: OPENAI_CHAT,
-        system:
-          `${SYS_MEDICAL} Return ONLY valid JSON: ` +
-          '{"title":"...","slides":[{"title":"...","bullets":["..."],"notes":"..."}]} . ' +
-          `KAMIDA ${PRESENTATION_MIN_SLIDES} slayd. ` +
-          'CRITICAL: content slides must be TEXT-DENSE like a printed medical lecture PPT — ' +
-          'fill each slide with long bullets (full sentences/paragraphs), NOT 1-line slogans. ' +
-          'Language: ' +
-          outLang + '. ' +
-          (bookContext
-            ? 'Faqat berilgan darslik parchalariga tayaning; har kontent-slayd notes oxirida ' +
-              '"(Manba: <HAQIQIY kitob nomi>, <HAQIQIY sahifa raqami>)" ko\'rsating — "<...>" ' +
-              'belgilarini haqiqiy nom/raqam bilan almashtiring, "kitob nomi"/"sahifa-bet" so\'zlarini ' +
-              'o\'zgarishsiz qoldirmang; aniq bilmasangiz manba qatorini butunlay tashlab keting. ' +
-              'Tashqi DOI/PubMed qo\'shmang.'
-            : 'Tashqi havola / o\'ylab topilgan manba qo\'shmang.'),
-        user: userPrompt,
-        maxTokens: attempt.maxTokens,
-        temperature: attempt.temperature,
-        parse: (t: string) => parseJSONSafe<Partial<PresentationDeck>>(t),
-        bookContext,
-      };
-      const raw =
-        attemptIdx === 0
-          ? await openaiJsonStream<Partial<PresentationDeck>>({ ...requestOpts, onProgress: params.onProgress })
-          : await openaiJson<Partial<PresentationDeck>>(requestOpts);
-      const rawCount = Array.isArray(raw?.slides) ? raw.slides.length : 0;
-      if (rawCount > 0 && rawCount < 6) {
-        console.warn('Presentation AI returned too few slides, retrying…', rawCount);
-        continue;
-      }
-      const deck = normalizePresentationDeck(raw, fallbackTitle);
-      const contentSlides = deck.slides.slice(1);
-      const avgLen =
-        contentSlides.reduce(
-          (sum, s) => sum + s.bullets.reduce((a, b) => a + b.length, 0) / Math.max(s.bullets.length, 1),
-          0,
-        ) / Math.max(contentSlides.length, 1);
-      if (avgLen < PRESENTATION_MIN_BULLET_CHARS && attempt === attempts[0]) {
-        console.warn('Presentation bullets still too short, retrying…', Math.round(avgLen));
-        continue;
-      }
-      return await attachOpenImagesToDeck(deck, params.subjectName);
-    } catch (error) {
-      console.warn('Presentation AI attempt failed:', error);
-    }
+  const responseFormat = {
+    type: 'json_schema',
+    json_schema: PRESENTATION_JSON_SCHEMA,
+  };
+
+  let raw: Partial<PresentationContent> | null = null;
+  try {
+    raw = await openaiJson<Partial<PresentationContent>>({
+      model: OPENAI_CHAT,
+      system,
+      user,
+      maxTokens: 8000,
+      temperature: 0.35,
+      bookContext,
+      responseFormat,
+      parse: (t) => parseJSONSafe<Partial<PresentationContent>>(t),
+    });
+  } catch (err) {
+    console.warn('Presentation json_schema failed, prompt fallback:', err);
+    raw = await openaiJson<Partial<PresentationContent>>({
+      model: OPENAI_CHAT,
+      system: system + ' Return ONLY valid JSON matching the schema.',
+      user,
+      maxTokens: 8000,
+      temperature: 0.3,
+      bookContext,
+      parse: (t) => parseJSONSafe<Partial<PresentationContent>>(t),
+    });
   }
 
-  return normalizePresentationDeck(null, fallbackTitle);
+  params.onProgress?.('Kontent normalizatsiya…');
+  let content = normalizePresentationContent(raw, {
+    title: fallbackTitle,
+    subject: params.subjectName,
+    author: 'iMentor',
+  });
+  qaPresentationContent(content);
+  params.onProgress?.('Rasmlar…');
+  content = await resolvePresentationImages(content);
+  return content;
 }
 
 export const aiService = {
@@ -1191,6 +910,9 @@ export const aiService = {
       const avoid = await previousCaseAvoidBlock(topic);
       const keywordFocus = buildCaseKeywordsFocusPrompt(keywords);
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
+      // RAG: kitob chunk'lari + PubMed/Semantic Scholar'dan REAL manbalar — bir marta
+      // olinadi va 3 ta fokus (profilaktika/davolash/tashxis) uchun baravar ishlatiladi.
+      const { sources: caseSources, contextText: caseContextText } = await fetchCaseContext(topic, subjectCode);
 
       const requestBatch = async (strict: boolean): Promise<CaseStudySession> => {
         const structure = buildCaseStructurePrompt(topic);
@@ -1209,7 +931,7 @@ export const aiService = {
       try {
         questions = await Promise.all(
           CASE_STUDY_FOCUS_ORDER.map((focus) =>
-            generateSingleCaseQuestion(topic, focus, language, keywordFocus, avoid, subjectCode),
+            generateSingleCaseQuestion(topic, focus, language, keywordFocus, avoid, caseContextText, caseSources),
           ),
         );
       } catch (parallelError) {
@@ -1419,7 +1141,7 @@ export const aiService = {
     sourceText?: string;
     subjectCode?: string;
     onProgress?: (rawTextSoFar: string) => void;
-  }): Promise<PresentationDeck> {
+  }): Promise<PresentationContent> {
     return requestPresentationDeckFromAi(params);
   },
 

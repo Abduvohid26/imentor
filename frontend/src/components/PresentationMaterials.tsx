@@ -19,7 +19,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GlobalTopicContext, AppNavigationContext, AppLanguageContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
 import { aiService } from '../services/aiService';
-import { buildPresentationPptxFile, type PresentationDeck } from '../utils/buildPresentationPptx';
+import { buildPresentationPptxFile } from '../utils/buildPresentationPptx';
+import {
+  coercePresentationContent,
+  slidePreviewBullets,
+  type PresentationContent,
+} from '../utils/presentationContentSchema';
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
@@ -45,23 +50,6 @@ import StaffEmptyState from './staff/StaffEmptyState';
 import StaffErrorAlert from './staff/StaffErrorAlert';
 import StaffPanel from './staff/StaffPanel';
 import { staffBtnGhost, staffBtnPrimary, staffBtnSecondary } from './staff/staffUi';
-
-/** Streaming paytida kelayotgan xom JSON matnini foydalanuvchiga chiroyli
- * ko'rsatish uchun — necha slayd tayyor bo'lganini va oxirgi o'qilishi
- * mumkin bo'lgan matn parchasini taxminiy ajratib oladi (JSON to'liq
- * bo'lmagani uchun qat'iy parse qilinmaydi, faqat vizual maqsadda). */
-function parsePresentationProgress(raw: string): { slideCount: number; preview: string } {
-  const titleMatches = raw.match(/"title"\s*:\s*"/g) || [];
-  const slideCount = Math.max(0, titleMatches.length - 1);
-  const textMatches = raw.match(/"([^"\\]|\\.){24,300}"/g) || [];
-  const last = textMatches[textMatches.length - 1] || '';
-  const preview = last
-    .replace(/^"|"$/g, '')
-    .replace(/\\n/g, ' ')
-    .replace(/\\"/g, '"')
-    .trim();
-  return { slideCount, preview };
-}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -104,7 +92,7 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
   const item = items[index];
   const [fileSrc, setFileSrc] = useState('');
   const [downloadUrl, setDownloadUrl] = useState('');
-  const [deck, setDeck] = useState<PresentationDeck | null>(null);
+  const [deck, setDeck] = useState<PresentationContent | null>(null);
   const [deckChecked, setDeckChecked] = useState(false);
   const [slideIdx, setSlideIdx] = useState(0);
   if (!item) return null;
@@ -146,9 +134,17 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
       return;
     }
     (async () => {
-      const found = await loadLatestPreparedContent<PresentationDeck>('presentation', lookupTitle);
+      const found = await loadLatestPreparedContent<unknown>('presentation', lookupTitle);
       if (!cancelled) {
-        setDeck(found && Array.isArray(found.slides) && found.slides.length ? found : null);
+        if (found && typeof found === 'object') {
+          const coerced = coercePresentationContent(found, {
+            title: lookupTitle,
+            subject: '',
+          });
+          setDeck(coerced.slides.length ? coerced : null);
+        } else {
+          setDeck(null);
+        }
         setDeckChecked(true);
       }
     })();
@@ -222,16 +218,16 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
                   {deck.slides[slideIdx]?.title}
                 </h2>
                 <ul className="space-y-2.5 text-[14px] sm:text-[15px] text-black/85">
-                  {(deck.slides[slideIdx]?.bullets ?? []).map((b, i) => (
+                  {slidePreviewBullets(deck.slides[slideIdx]).map((b, i) => (
                     <li key={i} className="flex gap-3 leading-snug">
                       <span className="text-orange-500 shrink-0 mt-0.5">•</span>
                       <span>{b}</span>
                     </li>
                   ))}
                 </ul>
-                {deck.slides[slideIdx]?.notes && (
+                {deck.slides[slideIdx]?.speaker_notes && (
                   <p className="mt-6 pt-3 border-t border-black/10 text-[12px] text-black/45 italic leading-relaxed">
-                    {deck.slides[slideIdx]?.notes}
+                    {deck.slides[slideIdx]?.speaker_notes}
                   </p>
                 )}
               </div>
@@ -330,7 +326,7 @@ export default function PresentationMaterials() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [savedDecks, setSavedDecks] = useState<PreparedContentSummary[]>([]);
-  const [historyDeck, setHistoryDeck] = useState<PresentationDeck | null>(null);
+  const [historyDeck, setHistoryDeck] = useState<PresentationContent | null>(null);
   const [historySlideIdx, setHistorySlideIdx] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -339,9 +335,14 @@ export default function PresentationMaterials() {
   }, []);
 
   const openHistoryDeck = async (summary: PreparedContentSummary) => {
-    const deck = await loadPreparedByIdSynced<PresentationDeck>('presentation', summary.id);
-    if (!deck) return;
-    setHistoryDeck(deck);
+    const raw = await loadPreparedByIdSynced<unknown>('presentation', summary.id);
+    if (!raw) return;
+    setHistoryDeck(
+      coercePresentationContent(raw, {
+        title: summary.topic,
+        subject: globalTopic?.subjectName || '',
+      }),
+    );
     setHistorySlideIdx(0);
   };
 
@@ -431,12 +432,18 @@ export default function PresentationMaterials() {
         subjectCode: globalTopic.subjectCode,
         onProgress: (textSoFar) => setAiProgress(textSoFar),
       });
-      const file = await buildPresentationPptxFile(deck);
+      const file = await buildPresentationPptxFile(deck, {
+        meta: {
+          subjectName: globalTopic.subjectName,
+          topicId: globalTopic.id,
+          variantLabel: globalTopic.variantLabel,
+        },
+      });
       if (!file.size) {
         throw new Error('empty-pptx');
       }
       try {
-        await savePreparedContent('presentation', deck.title, deck, {
+        await savePreparedContent('presentation', deck.presentation_title, deck, {
           subjectName: globalTopic.subjectName,
           subjectCode: globalTopic.subjectCode,
           variantLabel: globalTopic.variantLabel,
@@ -451,7 +458,7 @@ export default function PresentationMaterials() {
       await uploadPresentation({
         topic: shortTopic,
         file,
-        title: (deck.title || shortTopic).slice(0, 240),
+        title: (deck.presentation_title || shortTopic).slice(0, 240),
         context: globalTopic,
       });
       await loadItems();
@@ -514,11 +521,19 @@ export default function PresentationMaterials() {
         {historyDeck && (
           <div className="fixed inset-0 z-[200] flex flex-col bg-black/92" role="dialog" aria-modal="true">
             <header className="flex items-center justify-between px-4 py-3 text-white shrink-0 gap-2">
-              <p className="text-[15px] font-semibold truncate flex-1">{historyDeck.title}</p>
+              <p className="text-[15px] font-semibold truncate flex-1">
+                {historyDeck.presentation_title}
+              </p>
               <button
                 type="button"
                 onClick={async () => {
-                  const file = await buildPresentationPptxFile(historyDeck);
+                  const file = await buildPresentationPptxFile(historyDeck, {
+                    meta: {
+                      subjectName: globalTopic?.subjectName || historyDeck.subject_area,
+                      topicId: globalTopic?.id || 'T',
+                      variantLabel: globalTopic?.variantLabel,
+                    },
+                  });
                   const url = URL.createObjectURL(file);
                   const a = document.createElement('a');
                   a.href = url;
@@ -561,7 +576,7 @@ export default function PresentationMaterials() {
                     />
                   )}
                   <ul className="space-y-2.5 text-[14px] sm:text-[15px] text-black/85">
-                    {(historyDeck.slides[historySlideIdx]?.bullets ?? []).map((b, i) => (
+                    {slidePreviewBullets(historyDeck.slides[historySlideIdx]).map((b, i) => (
                       <li key={i} className="flex gap-3 leading-snug">
                         <span className="text-orange-500 shrink-0 mt-0.5">•</span>
                         <span>{b}</span>
@@ -685,23 +700,9 @@ export default function PresentationMaterials() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-bold text-[#083047]">{t('presentation.aiGenerating')}</p>
-                {(() => {
-                  const { slideCount, preview } = parsePresentationProgress(aiProgress);
-                  return (
-                    <>
-                      {slideCount > 0 && (
-                        <p className="text-[12px] text-sky-700 font-semibold mt-0.5">
-                          {t('presentation.aiSlideCount', { count: String(slideCount) })}
-                        </p>
-                      )}
-                      {preview && (
-                        <p className="text-[12px] text-black/45 leading-relaxed mt-1 line-clamp-2 italic">
-                          "{preview}"
-                        </p>
-                      )}
-                    </>
-                  );
-                })()}
+                {aiProgress ? (
+                  <p className="text-[12px] text-sky-700 font-semibold mt-0.5 truncate">{aiProgress}</p>
+                ) : null}
               </div>
               <Loader2 size={18} className="animate-spin text-sky-600 shrink-0" />
             </div>
