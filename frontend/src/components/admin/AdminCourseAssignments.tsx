@@ -14,11 +14,13 @@ import {
 import {
   assignStaffToCourseSyllabus,
   fetchAdminCourseSyllabuses,
+  fetchAdminSyllabusCatalogStats,
   fetchAllStaffCourseSelections,
   removeStaffCourseSelection,
   type AdminStaffCourseSelectionRow,
   type CourseSyllabusRow,
 } from '../../utils/syllabusApi';
+import { fetchAcademicCatalog } from '../../utils/academicCatalogApi';
 import { fetchStaffDirectory, type StaffDirectoryEntry } from '../../utils/staffDirectoryApi';
 import { resolveSyllabusVariants } from '../../utils/syllabusVariant';
 import { useUiText } from '../../i18n/useUiText';
@@ -38,6 +40,29 @@ type TeacherGroup = {
   fans: FanBucket[];
 };
 
+type DeptOption = {
+  key: string;
+  name: string;
+  code: string;
+  academicId: number | null;
+};
+
+function softDeptKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function namesSoftMatch(a: string, b: string): boolean {
+  const ka = softDeptKey(a);
+  const kb = softDeptKey(b);
+  if (!ka || !kb) return false;
+  return ka === kb || ka.includes(kb) || kb.includes(ka);
+}
+
 function syllabusPdfNames(row: CourseSyllabusRow | AdminStaffCourseSelectionRow['syllabus']): string[] {
   const fromVariants = resolveSyllabusVariants(row)
     .map((v) => (v.file_name || '').trim())
@@ -52,6 +77,7 @@ export default function AdminCourseAssignments() {
   const [fans, setFans] = useState<CourseSyllabusRow[]>([]);
   const [teachers, setTeachers] = useState<StaffDirectoryEntry[]>([]);
   const [selections, setSelections] = useState<AdminStaffCourseSelectionRow[]>([]);
+  const [departments, setDepartments] = useState<DeptOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,19 +97,65 @@ export default function AdminCourseAssignments() {
     setLoading(true);
     setError(null);
     try {
-      const [fanRows, staff, sels] = await Promise.all([
+      const [fanRows, staff, sels, catalog, stats] = await Promise.all([
         fetchAdminCourseSyllabuses(),
         fetchStaffDirectory(),
         fetchAllStaffCourseSelections(),
+        fetchAcademicCatalog().catch(() => null),
+        fetchAdminSyllabusCatalogStats().catch(() => null),
       ]);
       setFans(fanRows);
       setTeachers(staff.filter((u) => u.role === 'hodim'));
       setSelections(sels);
+
+      const academic = (stats?.by_department || []).map((d) => ({
+        id: d.id,
+        name: d.name,
+        code: d.code || d.name,
+      }));
+      const kafedralar = catalog?.kafedralar || [];
+      if (kafedralar.length > 0) {
+        // OnlineTest academic-catalog — 28 kafedra (asosiy manba).
+        setDepartments(
+          kafedralar.map((k, idx) => {
+            const kn = softDeptKey(k.name);
+            const kc = softDeptKey(k.code || '');
+            const hit =
+              academic.find((d) => softDeptKey(d.name) === kn || (kc && softDeptKey(d.code) === kc)) ||
+              academic.find(
+                (d) =>
+                  softDeptKey(d.name).includes(kn) ||
+                  kn.includes(softDeptKey(d.name)) ||
+                  (kc && (softDeptKey(d.code).includes(kc) || kc.includes(softDeptKey(d.code)))),
+              ) ||
+              null;
+            return {
+              key: `catalog:${k.id || idx}`,
+              name: k.name,
+              code: (k.code || '').trim(),
+              academicId: hit?.id ?? null,
+            };
+          }),
+        );
+      } else {
+        // Fallback: DB / syllabusdan.
+        setDepartments(
+          academic
+            .map((d) => ({
+              key: `id:${d.id}`,
+              name: d.name,
+              code: d.code,
+              academicId: d.id,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'uz')),
+        );
+      }
     } catch {
       setError(t('admin.error.loadFailed'));
       setFans([]);
       setTeachers([]);
       setSelections([]);
+      setDepartments([]);
     } finally {
       setLoading(false);
     }
@@ -93,31 +165,24 @@ export default function AdminCourseAssignments() {
     void load();
   }, [load]);
 
-  const departmentKeyOf = useCallback((f: CourseSyllabusRow) => {
-    const name = (f.department_name || '').trim();
-    if (f.department != null) return `id:${f.department}`;
-    if (name) return `name:${name.toLowerCase()}`;
-    return 'none';
-  }, []);
-
-  const departments = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const f of fans) {
-      const key = departmentKeyOf(f);
-      const name = (f.department_name || '').trim() || t('admin.departmentUnassigned');
-      if (!map.has(key)) map.set(key, name);
-    }
-    return [...map.entries()]
-      .map(([key, name]) => ({ key, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'uz'));
-  }, [fans, departmentKeyOf, t]);
+  const selectedDept = useMemo(
+    () => departments.find((d) => d.key === deptKey) || null,
+    [departments, deptKey],
+  );
 
   const fansInDept = useMemo(() => {
-    if (!deptKey) return [];
+    if (!selectedDept) return [];
     return fans
-      .filter((f) => departmentKeyOf(f) === deptKey)
+      .filter((f) => {
+        if (selectedDept.academicId != null && f.department === selectedDept.academicId) return true;
+        const fanDept = (f.department_name || '').trim();
+        if (fanDept && namesSoftMatch(fanDept, selectedDept.name)) return true;
+        const fanCode = (f.department_code || '').trim();
+        if (fanCode && selectedDept.code && namesSoftMatch(fanCode, selectedDept.code)) return true;
+        return false;
+      })
       .sort((a, b) => a.subject_name.localeCompare(b.subject_name, 'uz'));
-  }, [fans, deptKey, departmentKeyOf]);
+  }, [fans, selectedDept]);
 
   const selectedFan = useMemo(() => fans.find((f) => String(f.id) === fanId) || null, [fans, fanId]);
   const selectedPdfs = useMemo(
@@ -181,7 +246,12 @@ export default function AdminCourseAssignments() {
     const q = search.trim().toLowerCase();
     return teacherGroups.filter((g) => {
       if (teacherFilter && g.ownerKey !== teacherFilter) return false;
-      if (deptFilter && !g.fans.some((f) => f.departmentName === deptFilter)) return false;
+      if (
+        deptFilter &&
+        !g.fans.some((f) => f.departmentName && namesSoftMatch(f.departmentName, deptFilter))
+      ) {
+        return false;
+      }
       if (fanFilter && !g.fans.some((f) => String(f.fanId) === fanFilter)) return false;
       if (q) {
         const inTeacher = g.name.toLowerCase().includes(q) || g.phone.toLowerCase().includes(q);
@@ -238,15 +308,10 @@ export default function AdminCourseAssignments() {
     }
   }, [detailKey, teacherGroups, loading]);
 
-  const listDeptNames = useMemo(() => {
-    const names = new Set<string>();
-    for (const g of teacherGroups) {
-      for (const f of g.fans) {
-        if (f.departmentName) names.add(f.departmentName);
-      }
-    }
-    return [...names].sort((a, b) => a.localeCompare(b, 'uz'));
-  }, [teacherGroups]);
+  const listDeptNames = useMemo(
+    () => departments.map((d) => d.name),
+    [departments],
+  );
 
   return (
     <div className="p-3 sm:p-5 lg:p-6 h-full overflow-y-auto w-full space-y-6">
