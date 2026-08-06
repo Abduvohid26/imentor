@@ -86,7 +86,9 @@ export async function createAdminTopicVideo(payload: {
 export async function deleteAdminTopicVideo(id: number): Promise<void> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
-  await httpJson<unknown>(`${apiBaseUrl()}/v1/admin/topic-videos/${id}/`, {
+  const pk = Number(id);
+  if (!Number.isFinite(pk) || pk <= 0) throw new Error('invalid-video-id');
+  await httpJson<unknown>(`${apiBaseUrl()}/v1/admin/topic-videos/${pk}/`, {
     method: 'DELETE',
     headers: authHeaders(token),
     timeoutMs: 20000,

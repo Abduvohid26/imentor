@@ -29,6 +29,8 @@ export default function AdminTopicVideos() {
   // Ro'yxat: qidiruv + fan filtri
   const [search, setSearch] = useState('');
   const [fanFilter, setFanFilter] = useState('');
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,12 +141,22 @@ export default function AdminTopicVideos() {
   };
 
   const removeVideo = async (id: number) => {
-    if (!window.confirm(t('admin.deleteConfirm'))) return;
+    const pk = Number(id);
+    if (pendingDeleteId !== pk) {
+      setPendingDeleteId(pk);
+      setError(null);
+      return;
+    }
+    setDeletingId(pk);
+    setError(null);
     try {
-      await deleteAdminTopicVideo(id);
-      setVideos((prev) => prev.filter((v) => v.id !== id));
-    } catch {
-      setError(t('admin.error.deleteFailedGeneric'));
+      await deleteAdminTopicVideo(pk);
+      setVideos((prev) => prev.filter((v) => Number(v.id) !== pk));
+      setPendingDeleteId(null);
+    } catch (err) {
+      setError(backendErrorMessage(err) || t('admin.error.deleteFailedGeneric'));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -264,6 +276,12 @@ export default function AdminTopicVideos() {
         </div>
       )}
 
+      {error && (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-[13px] text-rose-700 font-medium">
+          {error}
+        </p>
+      )}
+
       {/* Ro'yxat */}
       {loading ? (
         <div className="flex justify-center py-16">
@@ -286,8 +304,12 @@ export default function AdminTopicVideos() {
                 <span className="text-[11px] text-slate-400"> · {g.fanName}</span>
               </div>
               <ul className="divide-y divide-slate-50">
-                {g.rows.map((v) => (
-                  <li key={v.id} className="flex items-center gap-3 px-4 py-2.5">
+                {g.rows.map((v) => {
+                  const vid = Number(v.id);
+                  const isPending = pendingDeleteId === vid;
+                  const isDeleting = deletingId === vid;
+                  return (
+                  <li key={vid} className="flex items-center gap-3 px-4 py-2.5">
                     <img
                       src={`https://img.youtube.com/vi/${v.youtube_id}/default.jpg`}
                       alt=""
@@ -306,16 +328,40 @@ export default function AdminTopicVideos() {
                         {v.youtube_url}
                       </a>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void removeVideo(v.id)}
-                      className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg shrink-0"
-                      title={t('admin.delete')}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {isPending ? (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          disabled={isDeleting}
+                          onClick={() => void removeVideo(vid)}
+                          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 disabled:opacity-50"
+                        >
+                          {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          {t('admin.confirmDelete')}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isDeleting}
+                          onClick={() => setPendingDeleteId(null)}
+                          className="h-8 px-2.5 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void removeVideo(vid)}
+                        className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 shrink-0"
+                        title={t('admin.delete')}
+                      >
+                        <Trash2 size={14} />
+                        {t('admin.delete')}
+                      </button>
+                    )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </li>
           ))}

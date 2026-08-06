@@ -32,13 +32,15 @@ async function fetchOnce(url: string, options: RequestOptions): Promise<Response
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   try {
+    const hasBody = options.body !== undefined;
     return await fetch(url, {
       method: options.method ?? 'GET',
       headers: {
-        'Content-Type': 'application/json',
+        // DELETE/GET da bo'sh body bilan Content-Type yubormaslik — ba'zi proxy/serverlarda 4xx beradi.
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         ...(options.headers || {}),
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: hasBody ? JSON.stringify(options.body) : undefined,
       signal: controller.signal,
     });
   } finally {

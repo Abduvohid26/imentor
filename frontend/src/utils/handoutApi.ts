@@ -229,13 +229,11 @@ export async function uploadAdminHandout(params: {
 export async function deleteAdminHandout(id: number): Promise<void> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
-  const res = await fetch(`${apiBaseUrl()}/v1/admin/handouts/${id}/`, {
+  await httpJson<unknown>(`${apiBaseUrl()}/v1/admin/handouts/${Number(id)}/`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
+    timeoutMs: 20000,
   });
-  if (!res.ok && res.status !== 204) {
-    throw new HttpError(`HTTP ${res.status}`, res.status, null);
-  }
 }
 
 export { isAllowedHandoutFile, HANDOUT_FILE_ACCEPT, handoutFileTypeLabel } from './handoutFileTypes';
