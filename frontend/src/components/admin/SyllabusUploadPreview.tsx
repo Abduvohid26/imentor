@@ -41,13 +41,6 @@ export default function SyllabusUploadPreview({
   );
   const totalTopics = data.variants.reduce((n, v) => n + v.topics.length, 0);
 
-  const updateVariantLabel = (index: number, label: string) => {
-    const variants = data.variants.map((v, i) =>
-      i === index ? { ...v, label: label.trim() || v.label, editableLabel: label } : v,
-    );
-    onChange({ ...data, variants });
-  };
-
   const updateTopicTitle = (variantIndex: number, topicIndex: number, title: string) => {
     const variants = data.variants.map((v, i) => {
       if (i !== variantIndex) return v;
@@ -77,16 +70,6 @@ export default function SyllabusUploadPreview({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <label className="block space-y-1">
-            <span className="text-[12px] font-semibold text-slate-600">{t('admin.subjectName')}</span>
-            <input
-              value={data.subjectName}
-              onChange={(e) => onChange({ ...data, subjectName: e.target.value })}
-              className="w-full h-11 px-3 rounded-xl border border-slate-200"
-              disabled={saving}
-            />
-          </label>
-
           <div className="grid grid-cols-3 gap-2">
             <StatCard label={t('admin.previewTotal')} value={String(totalTopics)} />
             <StatCard label={t('admin.previewLecture')} value={String(totalLectures)} icon={<BookOpen size={14} />} />
@@ -107,16 +90,9 @@ export default function SyllabusUploadPreview({
                 className="rounded-2xl border border-slate-200 overflow-hidden"
               >
                 <div className="bg-slate-50 px-3 py-2 flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 flex-1 min-w-[140px]">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">{t('admin.previewVariant')}</span>
-                    <input
-                      value={variant.editableLabel}
-                      onChange={(e) => updateVariantLabel(index, e.target.value)}
-                      className="h-8 px-2 rounded-lg border border-slate-200 text-[12px] font-semibold flex-1 min-w-0"
-                      disabled={saving}
-                    />
-                  </label>
-                  <span className="text-[10px] text-slate-500 truncate max-w-[180px]">{variant.file_name}</span>
+                  <span className="text-[12px] font-semibold text-slate-800 truncate flex-1 min-w-0">
+                    {variant.file_name}
+                  </span>
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200">
                     {instructionLanguageBadge(data.instructionLanguage)}
                   </span>
@@ -169,7 +145,7 @@ export default function SyllabusUploadPreview({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={saving || !data.subjectName.trim() || totalTopics === 0}
+            disabled={saving || totalTopics === 0}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold disabled:opacity-50"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}

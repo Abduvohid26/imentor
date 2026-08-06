@@ -373,7 +373,7 @@ export default function AdminSyllabusCatalog() {
     // 1 yoki ko'p PDF — bitta tugma; har variant/fayl fan sifatida saqlanadi.
     const subjectGuess =
       uploadFiles.length === 1
-        ? uploadFiles[0].name.replace(/\.(pdf|docx?)$/i, '').replace(/\([^)]*\)\s*$/, '').trim()
+        ? uploadFiles[0].name.replace(/\.(pdf|docx?)$/i, '').trim()
         : t('admin.newSubject');
 
     setPreviewMode('create');
@@ -415,61 +415,20 @@ export default function AdminSyllabusCatalog() {
       topics: v.topics,
     }));
 
-    const labels = variants.map((v) => v.label.toLowerCase());
-    if (new Set(labels).size !== labels.length) {
-      setError(t('admin.error.duplicateLabels'));
-      return;
-    }
-
     setUploading(true);
     setError(null);
     try {
       if (previewMode === 'create') {
-        // Bulk: har bir variant alohida fan; single: bitta fan ichida barcha variantlar.
-        if (variants.length > 1 && preview.variants.every((v) => v.file_name)) {
-          const uniqueFiles = new Set(variants.map((v) => v.file_name));
-          if (uniqueFiles.size === variants.length) {
-            for (const v of variants) {
-              const nameFromFile = v.file_name
-                .replace(/\.(pdf|docx?)$/i, '')
-                .replace(/\([^)]*\)\s*$/, '')
-                .trim();
-              await createAdminCourseSyllabus({
-                subject_name: nameFromFile || preview.subjectName.trim() || v.label,
-                description: preview.description.trim(),
-                instruction_language: preview.instructionLanguage,
-                department_id: selectedDept.id,
-                variants: [v],
-                sort_order: deptFans.length,
-              });
-            }
-          } else {
-            const subjectName = preview.subjectName.trim();
-            if (!subjectName) {
-              setError(t('admin.error.enterSubjectName'));
-              return;
-            }
-            await createAdminCourseSyllabus({
-              subject_name: subjectName,
-              description: preview.description.trim(),
-              instruction_language: preview.instructionLanguage,
-              department_id: selectedDept.id,
-              variants,
-              sort_order: deptFans.length,
-            });
-          }
-        } else {
-          const subjectName = preview.subjectName.trim();
-          if (!subjectName) {
-            setError(t('admin.error.enterSubjectName'));
-            return;
-          }
+        // Har bir PDF = alohida fan; fan nomi = fayl nomi.
+        for (const v of variants) {
+          const nameFromFile = (v.file_name || '').replace(/\.(pdf|docx?)$/i, '').trim();
+          const subjectName = nameFromFile || v.label || t('admin.newSubject');
           await createAdminCourseSyllabus({
             subject_name: subjectName,
             description: preview.description.trim(),
             instruction_language: preview.instructionLanguage,
             department_id: selectedDept.id,
-            variants,
+            variants: [v],
             sort_order: deptFans.length,
           });
         }
@@ -858,14 +817,19 @@ export default function AdminSyllabusCatalog() {
                     {fans.length === 0 ? (
                       <p className="text-center text-slate-500 text-[13px] py-6">{t('admin.emptyDepartmentFans')}</p>
                     ) : (
-                      <ul className="space-y-3">
+                      <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {fans.map((row) => {
             const variants = draftTopicsByFan[row.id] || resolveSyllabusVariants(row);
             const open = expandedId === row.id;
             const topicTotal = totalTopicCount(variants);
             const editing = editingNameId === row.id;
             return (
-              <li key={row.id} className="ios-glass rounded-2xl border border-white/70 overflow-hidden">
+              <li
+                key={row.id}
+                className={`ios-glass rounded-2xl border border-white/70 overflow-hidden min-w-0 ${
+                  open ? 'sm:col-span-2 xl:col-span-4' : ''
+                }`}
+              >
                 <div className="p-4 flex flex-wrap items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
                     <FileText size={20} className="text-slate-600" />
@@ -908,13 +872,10 @@ export default function AdminSyllabusCatalog() {
                       </p>
                     )}
                     <p className="text-[12px] text-slate-500">
-                      {t('admin.subjectStats', {
-                        tracks: variants.length,
-                        topics: topicTotal,
-                      })}
+                      {t('admin.subjectStats', { topics: topicTotal })}
                       {row.description ? ` · ${row.description}` : ''}
                     </p>
-                    <p className="text-[11px] text-slate-400 font-mono">{row.subject_code}</p>
+                    <p className="text-[11px] text-slate-400 font-mono truncate">{row.subject_code}</p>
                   </div>
                   <button
                     type="button"
@@ -1007,10 +968,9 @@ export default function AdminSyllabusCatalog() {
                             className="rounded-xl bg-white border border-slate-100 overflow-hidden"
                           >
                             <div className="flex items-center gap-3 px-3 py-2 border-b border-slate-50">
-                              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md shrink-0">
-                                {v.label}
+                              <span className="text-[12px] text-slate-700 truncate flex-1 min-w-0">
+                                {v.file_name}
                               </span>
-                              <span className="text-[12px] text-slate-700 truncate flex-1">{v.file_name}</span>
                               <span className="text-[11px] text-slate-400 shrink-0">
                                 {t('admin.topicsBreakdown', {
                                   total: v.topics.length,
@@ -1108,26 +1068,28 @@ function TopicEditGroup({
   return (
     <div className="space-y-1.5">
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{title}</p>
-      {topics.map((topic) => {
-        const key = `${topic.type}-${topic.id}`;
-        const isLecture = topic.type === 'lecture';
-        return (
-          <div key={key} className="flex items-center gap-2">
-            <span
-              className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                isLecture ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'
-              }`}
-            >
-              {topic.id}
-            </span>
-            <input
-              value={topic.title}
-              onChange={(e) => onChange(key, e.target.value)}
-              className="flex-1 min-w-0 h-8 px-2 rounded-lg border border-slate-200 text-[12px]"
-            />
-          </div>
-        );
-      })}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        {topics.map((topic) => {
+          const key = `${topic.type}-${topic.id}`;
+          const isLecture = topic.type === 'lecture';
+          return (
+            <div key={key} className="flex items-center gap-1.5 min-w-0">
+              <span
+                className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  isLecture ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'
+                }`}
+              >
+                {topic.id}
+              </span>
+              <input
+                value={topic.title}
+                onChange={(e) => onChange(key, e.target.value)}
+                className="flex-1 min-w-0 h-8 px-2 rounded-lg border border-slate-200 text-[12px]"
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
