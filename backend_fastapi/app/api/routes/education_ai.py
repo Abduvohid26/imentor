@@ -102,6 +102,8 @@ def education_ai_completion_stream(
     model = payload.model.strip() or settings.openai_chat_model
 
     def _gen():
+        # Birinchi baytni darhol yuborish — proxy/buffer kutmasin
+        yield ": stream-open\n\n"
         try:
             for delta in oai.stream_openai_chat(
                 api_key,
@@ -111,13 +113,21 @@ def education_ai_completion_stream(
                 temperature=payload.temperature,
                 timeout_sec=280,
             ):
-                yield f"data: {json.dumps({'delta': delta})}\n\n"
+                yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
         except oai.OpenAiClientError as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
             return
-        yield f"data: {json.dumps({'done': True, 'book_references': book_references})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'book_references': book_references}, ensure_ascii=False)}\n\n"
 
-    return StreamingResponse(_gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/education-ai/book-references/", response_model=EducationAiBookReferencesResponse)

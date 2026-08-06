@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import {
   FileText,
   Sparkles,
@@ -127,7 +128,9 @@ export default function LectureNotes() {
         description,
         contentLanguage,
         globalTopic?.subjectCode,
-        (textSoFar) => setStreamingContent(textSoFar),
+        (textSoFar) => {
+          flushSync(() => setStreamingContent(textSoFar));
+        },
       );
       setLectureSession(data);
       setEditedContent(data.content);
