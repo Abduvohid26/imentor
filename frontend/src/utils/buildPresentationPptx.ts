@@ -1,11 +1,3 @@
-export type PresentationSlideLayout =
-  | 'agenda'
-  | 'cards'
-  | 'process'
-  | 'split'
-  | 'checklist'
-  | 'bullets';
-
 export type PresentationSlide = {
   title: string;
   bullets: string[];
@@ -14,8 +6,6 @@ export type PresentationSlide = {
   imageUrl?: string;
   /** Rasm manbasi/muallifi qisqa matni (litsenziya talabiga ko'ra). */
   imageCredit?: string;
-  /** Infografika uslubi — AI yoki builder tanlaydi. */
-  layout?: PresentationSlideLayout;
 };
 
 export type PresentationDeck = {
@@ -23,22 +13,15 @@ export type PresentationDeck = {
   slides: PresentationSlide[];
 };
 
-// ---------------- Brand — AiShifokor-namuna uslub (16:9, kartochkalar,
-// raqamli doira, jarayon oqimi, split + rasm) ----------------
-const BG = 'F4F8FC';
-const TITLE_COLOR = '0B2A3D';
+// ---------------- Brand — iMentor korporativ uslub (16:9, kicker + raqamli
+// belgilar + footer) ----------------
+const BG = 'F6FAFD';
+const TITLE_COLOR = '083047';
 const ACCENT = '0284C7';
-const ACCENT_SOFT = 'E0F2FE';
-const CARD_BG = 'FFFFFF';
-const CARD_BORDER = 'D7E6F2';
 const MUTED = '5B6B7A';
 const BODY_COLOR = '1C2733';
 const KICKER_COLOR = '5B7A8C';
 const WHITE = 'FFFFFF';
-const SUCCESS = '0F766E';
-const SUCCESS_SOFT = 'CCFBF1';
-
-type PptxSlide = import('pptxgenjs').default.Slide;
 
 /** AI ba'zan haqiqiy kitob topilmasa ham ko'rsatma ichidagi NAMUNA matnini
  * ("kitob nomi, sahifa-bet") o'zgarishsiz qaytarib yuboradi — bu haqiqiy
@@ -57,43 +40,29 @@ function extractManba(notes: string | undefined): string {
 }
 
 /** Har bir bullet matnidan mumkin bo'lsa qisqa "sarlavha" va qolgan tavsifni
- * ajratadi (birinchi ":" yoki "—" gacha) — agenda/kartochka uslubi uchun. */
+ * ajratadi (birinchi ":" yoki "—" gacha) — agenda-uslub kartochkalar uchun. */
 function splitBulletHeadTail(bullet: string): { head: string; tail: string } {
-  const m = bullet.match(/^([^:—–-]{3,72})[:—–-]\s*(.+)$/);
+  const m = bullet.match(/^([^:—–-]{3,60})[:—–-]\s*(.+)$/);
   if (m) return { head: m[1].trim(), tail: m[2].trim() };
-  if (bullet.length <= 70) return { head: bullet.trim(), tail: '' };
-  const cut = bullet.slice(0, 68);
-  const sp = cut.lastIndexOf(' ');
-  return {
-    head: (sp > 24 ? cut.slice(0, sp) : cut).trim(),
-    tail: bullet.slice(sp > 24 ? sp : 68).trim(),
-  };
+  return { head: bullet.slice(0, 60).trim(), tail: '' };
 }
 
-function addFooter(s: PptxSlide, pageNum: number, total: number): void {
+function addFooter(s: import('pptxgenjs').default.Slide, pageNum: number, total: number): void {
   const year = new Date().getFullYear();
-  s.addShape('rect', {
-    x: 0,
-    y: 7.08,
-    w: 13.333,
-    h: 0.42,
-    fill: { color: 'EAF3FA' },
-    line: { type: 'none' },
-  });
   s.addText(`© iMentor · Farg‘ona jamoat salomatligi tibbiyot instituti · ${year}`, {
     x: 0.5,
-    y: 7.12,
+    y: 7.02,
     w: 10.5,
-    h: 0.32,
+    h: 0.3,
     fontSize: 9,
     color: MUTED,
     valign: 'middle',
   });
   s.addText(`${pageNum} / ${total}`, {
     x: 12.0,
-    y: 7.12,
+    y: 7.02,
     w: 0.83,
-    h: 0.32,
+    h: 0.3,
     fontSize: 9,
     color: MUTED,
     align: 'right',
@@ -101,451 +70,14 @@ function addFooter(s: PptxSlide, pageNum: number, total: number): void {
   });
 }
 
-function addKicker(s: PptxSlide, text: string): void {
+function addKicker(s: import('pptxgenjs').default.Slide, text: string): void {
   if (!text.trim()) return;
   s.addText(
     [
       { text: text, options: { color: KICKER_COLOR, bold: true } },
       { text: '   |   iMentor', options: { color: ACCENT, bold: true } },
     ],
-    { x: 0.5, y: 0.28, w: 12.3, h: 0.32, fontSize: 11, fontFace: 'Calibri' },
-  );
-}
-
-function addAccentBar(s: PptxSlide, x: number, y: number, w: number): void {
-  s.addShape('rect', {
-    x,
-    y,
-    w,
-    h: 0.06,
-    fill: { color: ACCENT },
-    line: { type: 'none' },
-  });
-}
-
-function addNumberBadge(s: PptxSlide, n: number, x: number, y: number, size = 0.52): void {
-  s.addShape('ellipse', {
-    x,
-    y,
-    w: size,
-    h: size,
-    fill: { color: ACCENT },
-    line: { type: 'none' },
-  });
-  s.addText(String(n), {
-    x,
-    y,
-    w: size,
-    h: size,
-    fontSize: size >= 0.55 ? 18 : 15,
-    bold: true,
-    color: WHITE,
-    align: 'center',
-    valign: 'middle',
-    fontFace: 'Georgia',
-  });
-}
-
-function addCard(
-  s: PptxSlide,
-  opts: { x: number; y: number; w: number; h: number; fill?: string; border?: string },
-): void {
-  s.addShape('roundRect', {
-    x: opts.x,
-    y: opts.y,
-    w: opts.w,
-    h: opts.h,
-    fill: { color: opts.fill || CARD_BG },
-    line: { color: opts.border || CARD_BORDER, width: 1 },
-    shadow: { type: 'outer', color: '0B2A3D', blur: 8, offset: 2, opacity: 0.08 },
-  });
-}
-
-function inferLayout(slide: PresentationSlide, idx: number, total: number): PresentationSlideLayout {
-  if (slide.layout) return slide.layout;
-  if (idx === 0) return 'agenda';
-  if (slide.imageUrl && idx !== total - 1) return 'split';
-  const bullets = slide.bullets || [];
-  const n = bullets.length;
-  const avg = n ? bullets.reduce((a, b) => a + b.length, 0) / n : 0;
-  const processHints = /bosqich|qadam|jarayon|sxema|ketma|tartib|1-|2-|3-/i;
-  if (n >= 3 && n <= 5 && (processHints.test(slide.title) || bullets.every((b) => b.length < 140))) {
-    if (processHints.test(slide.title)) return 'process';
-  }
-  if (n >= 3 && n <= 6 && avg < 160) return 'cards';
-  if (n >= 3 && n <= 6 && /ko'rsatma|qarshi|afzallik|mezon|checklist|✓/i.test(slide.title + bullets.join(' '))) {
-    return 'checklist';
-  }
-  if (n >= 3 && n <= 6) return 'cards';
-  return 'bullets';
-}
-
-function renderAgenda(s: PptxSlide, slide: PresentationSlide): void {
-  s.addText(slide.title, {
-    x: 0.5,
-    y: 0.78,
-    w: 12.3,
-    h: 0.7,
-    fontSize: 30,
-    bold: true,
-    color: TITLE_COLOR,
-    fontFace: 'Georgia',
-  });
-  s.addText('Dars rejasi — har bir bo‘lim keyingi slaydlarda batafsil ochiladi', {
-    x: 0.5,
-    y: 1.48,
-    w: 12.3,
-    h: 0.35,
-    fontSize: 13,
-    color: MUTED,
-  });
-
-  const bullets = slide.bullets.slice(0, 6);
-  const cardCount = Math.max(bullets.length, 1);
-  const startY = 2.0;
-  const gap = 0.14;
-  const rowH = Math.min(0.78, (6.85 - startY - gap * (cardCount - 1)) / cardCount);
-
-  bullets.forEach((b, i) => {
-    const y = startY + i * (rowH + gap);
-    const { head, tail } = splitBulletHeadTail(b);
-    addCard(s, { x: 0.5, y, w: 12.3, h: rowH });
-    addNumberBadge(s, i + 1, 0.72, y + rowH / 2 - 0.26, 0.52);
-    s.addText(head, {
-      x: 1.5,
-      y: y + 0.08,
-      w: 11.0,
-      h: 0.32,
-      fontSize: 15,
-      bold: true,
-      color: TITLE_COLOR,
-    });
-    if (tail) {
-      s.addText(tail.slice(0, 180), {
-        x: 1.5,
-        y: y + 0.38,
-        w: 11.0,
-        h: rowH - 0.42,
-        fontSize: 12,
-        color: MUTED,
-        valign: 'top',
-      });
-    }
-  });
-}
-
-function renderCards(s: PptxSlide, slide: PresentationSlide, manba: string): void {
-  s.addText(slide.title, {
-    x: 0.5,
-    y: 0.72,
-    w: 12.3,
-    h: 0.55,
-    fontSize: 24,
-    bold: true,
-    color: TITLE_COLOR,
-    fontFace: 'Georgia',
-  });
-  addAccentBar(s, 0.5, 1.32, 2.2);
-
-  const bullets = slide.bullets.slice(0, 6);
-  const cols = bullets.length <= 3 ? 1 : 2;
-  const rows = Math.ceil(bullets.length / cols);
-  const startY = 1.55;
-  const bottom = manba ? 6.45 : 6.85;
-  const gapX = 0.28;
-  const gapY = 0.18;
-  const cardW = cols === 1 ? 12.3 : (12.3 - gapX) / 2;
-  const cardH = Math.min(1.55, (bottom - startY - gapY * (rows - 1)) / rows);
-
-  bullets.forEach((b, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = 0.5 + col * (cardW + gapX);
-    const y = startY + row * (cardH + gapY);
-    const { head, tail } = splitBulletHeadTail(b);
-    addCard(s, { x, y, w: cardW, h: cardH });
-    s.addShape('rect', {
-      x,
-      y,
-      w: 0.12,
-      h: cardH,
-      fill: { color: ACCENT },
-      line: { type: 'none' },
-    });
-    addNumberBadge(s, i + 1, x + 0.28, y + 0.22, 0.46);
-    s.addText(head, {
-      x: x + 0.9,
-      y: y + 0.18,
-      w: cardW - 1.1,
-      h: 0.35,
-      fontSize: 14,
-      bold: true,
-      color: TITLE_COLOR,
-    });
-    s.addText((tail || b).slice(0, 280), {
-      x: x + 0.28,
-      y: y + 0.72,
-      w: cardW - 0.5,
-      h: cardH - 0.85,
-      fontSize: 12,
-      color: BODY_COLOR,
-      valign: 'top',
-    });
-  });
-}
-
-function renderProcess(s: PptxSlide, slide: PresentationSlide, manba: string): void {
-  s.addText(slide.title, {
-    x: 0.5,
-    y: 0.72,
-    w: 12.3,
-    h: 0.55,
-    fontSize: 24,
-    bold: true,
-    color: TITLE_COLOR,
-    fontFace: 'Georgia',
-  });
-  addAccentBar(s, 0.5, 1.32, 2.2);
-  s.addText('Bosqichma-bosqich jarayon', {
-    x: 0.5,
-    y: 1.45,
-    w: 12.3,
-    h: 0.3,
-    fontSize: 12,
-    color: MUTED,
-  });
-
-  const steps = slide.bullets.slice(0, 5);
-  const n = steps.length;
-  const startY = 2.1;
-  const bottom = manba ? 6.4 : 6.8;
-  const gap = 0.16;
-  const rowH = Math.min(0.95, (bottom - startY - gap * (n - 1)) / n);
-
-  steps.forEach((b, i) => {
-    const y = startY + i * (rowH + gap);
-    const { head, tail } = splitBulletHeadTail(b);
-    addCard(s, { x: 0.5, y, w: 12.3, h: rowH, fill: i % 2 === 0 ? CARD_BG : ACCENT_SOFT });
-    addNumberBadge(s, i + 1, 0.75, y + rowH / 2 - 0.28, 0.56);
-    s.addText(head, {
-      x: 1.55,
-      y: y + 0.12,
-      w: 10.8,
-      h: 0.32,
-      fontSize: 15,
-      bold: true,
-      color: TITLE_COLOR,
-    });
-    if (tail) {
-      s.addText(tail.slice(0, 220), {
-        x: 1.55,
-        y: y + 0.44,
-        w: 10.8,
-        h: rowH - 0.52,
-        fontSize: 12,
-        color: BODY_COLOR,
-      });
-    }
-    if (i < n - 1) {
-      s.addText('↓', {
-        x: 0.72,
-        y: y + rowH - 0.02,
-        w: 0.6,
-        h: gap + 0.08,
-        fontSize: 14,
-        color: ACCENT,
-        align: 'center',
-        bold: true,
-      });
-    }
-  });
-}
-
-function renderChecklist(s: PptxSlide, slide: PresentationSlide, manba: string): void {
-  s.addText(slide.title, {
-    x: 0.5,
-    y: 0.72,
-    w: 12.3,
-    h: 0.55,
-    fontSize: 24,
-    bold: true,
-    color: TITLE_COLOR,
-    fontFace: 'Georgia',
-  });
-  addAccentBar(s, 0.5, 1.32, 2.2);
-
-  const bullets = slide.bullets.slice(0, 7);
-  const startY = 1.55;
-  const bottom = manba ? 6.45 : 6.85;
-  const gap = 0.12;
-  const rowH = Math.min(0.72, (bottom - startY - gap * (bullets.length - 1)) / bullets.length);
-
-  bullets.forEach((b, i) => {
-    const y = startY + i * (rowH + gap);
-    const { head, tail } = splitBulletHeadTail(b);
-    addCard(s, { x: 0.5, y, w: 12.3, h: rowH, fill: i % 2 ? SUCCESS_SOFT : CARD_BG });
-    s.addShape('ellipse', {
-      x: 0.75,
-      y: y + rowH / 2 - 0.2,
-      w: 0.4,
-      h: 0.4,
-      fill: { color: SUCCESS },
-      line: { type: 'none' },
-    });
-    s.addText('✓', {
-      x: 0.75,
-      y: y + rowH / 2 - 0.2,
-      w: 0.4,
-      h: 0.4,
-      fontSize: 14,
-      bold: true,
-      color: WHITE,
-      align: 'center',
-      valign: 'middle',
-    });
-    s.addText(head, {
-      x: 1.4,
-      y: y + 0.06,
-      w: 11.1,
-      h: 0.28,
-      fontSize: 14,
-      bold: true,
-      color: TITLE_COLOR,
-    });
-    if (tail) {
-      s.addText(tail.slice(0, 200), {
-        x: 1.4,
-        y: y + 0.34,
-        w: 11.1,
-        h: rowH - 0.4,
-        fontSize: 12,
-        color: BODY_COLOR,
-      });
-    }
-  });
-}
-
-function renderSplit(s: PptxSlide, slide: PresentationSlide, manba: string): void {
-  s.addText(slide.title, {
-    x: 0.5,
-    y: 0.72,
-    w: 7.3,
-    h: 0.55,
-    fontSize: 22,
-    bold: true,
-    color: TITLE_COLOR,
-    fontFace: 'Georgia',
-  });
-  addAccentBar(s, 0.5, 1.32, 1.8);
-
-  const bullets = slide.bullets.slice(0, 5);
-  const startY = 1.55;
-  const bottom = manba ? 6.4 : 6.85;
-  const gap = 0.12;
-  const rowH = Math.min(0.95, (bottom - startY - gap * (bullets.length - 1)) / Math.max(bullets.length, 1));
-
-  bullets.forEach((b, i) => {
-    const y = startY + i * (rowH + gap);
-    const { head, tail } = splitBulletHeadTail(b);
-    addCard(s, { x: 0.5, y, w: 7.3, h: rowH });
-    addNumberBadge(s, i + 1, 0.68, y + 0.18, 0.42);
-    s.addText(head, {
-      x: 1.3,
-      y: y + 0.1,
-      w: 6.2,
-      h: 0.28,
-      fontSize: 13,
-      bold: true,
-      color: TITLE_COLOR,
-    });
-    s.addText((tail || b).slice(0, 220), {
-      x: 0.7,
-      y: y + 0.42,
-      w: 6.9,
-      h: rowH - 0.5,
-      fontSize: 11.5,
-      color: BODY_COLOR,
-      valign: 'top',
-    });
-  });
-
-  // Rasm paneli — infografika doirasida "vizual kartochka"
-  addCard(s, { x: 8.05, y: 1.55, w: 4.75, h: 4.85, fill: ACCENT_SOFT, border: ACCENT });
-  if (slide.imageUrl) {
-    try {
-      s.addImage({
-        data: slide.imageUrl,
-        x: 8.3,
-        y: 1.85,
-        w: 4.25,
-        h: 3.7,
-        sizing: { type: 'cover', w: 4.25, h: 3.7 },
-      });
-    } catch {
-      /* rasm buzilgan bo'lsa ham panel qoladi */
-    }
-  }
-  if (slide.imageCredit) {
-    s.addText(slide.imageCredit.slice(0, 120), {
-      x: 8.25,
-      y: 5.7,
-      w: 4.35,
-      h: 0.5,
-      fontSize: 8,
-      italic: true,
-      color: MUTED,
-      valign: 'top',
-    });
-  } else {
-    s.addText('Klinik / anatomik vizual', {
-      x: 8.25,
-      y: 5.75,
-      w: 4.35,
-      h: 0.35,
-      fontSize: 11,
-      color: ACCENT,
-      align: 'center',
-      bold: true,
-    });
-  }
-}
-
-function renderBullets(s: PptxSlide, slide: PresentationSlide, manba: string): void {
-  s.addText(slide.title, {
-    x: 0.5,
-    y: 0.72,
-    w: 12.3,
-    h: 0.55,
-    fontSize: 24,
-    bold: true,
-    color: TITLE_COLOR,
-    fontFace: 'Georgia',
-  });
-  addAccentBar(s, 0.5, 1.32, 2.0);
-
-  const bullets = slide.bullets.slice(0, 8);
-  const dense = bullets.some((b) => b.length >= 120) || bullets.length >= 7;
-  addCard(s, {
-    x: 0.5,
-    y: 1.55,
-    w: 12.3,
-    h: manba ? 4.8 : 5.2,
-  });
-  s.addText(
-    bullets.map((b) => ({
-      text: b,
-      options: { bullet: { code: '2022', indent: 18 }, breakLine: true, color: BODY_COLOR },
-    })),
-    {
-      x: 0.75,
-      y: 1.75,
-      w: 11.8,
-      h: manba ? 4.4 : 4.8,
-      fontSize: dense ? 12 : 13.5,
-      valign: 'top',
-      paraSpaceAfter: dense ? 6 : 9,
-      lineSpacingMultiple: 1.12,
-    },
+    { x: 0.5, y: 0.32, w: 12.3, h: 0.35, fontSize: 11, fontFace: 'Calibri' },
   );
 }
 
@@ -557,48 +89,164 @@ export async function buildPresentationPptxFile(deck: PresentationDeck): Promise
   pptx.layout = 'LAYOUT_WIDE'; // 13.333 x 7.5 in (16:9)
 
   const total = deck.slides.length;
-  const kickerTitle = deck.title.length > 70 ? `${deck.title.slice(0, 67)}...` : deck.title;
 
   deck.slides.forEach((slide, idx) => {
     const s = pptx.addSlide();
     s.background = { color: BG };
     const pageNum = idx + 1;
+    const isFirst = idx === 0;
+    const isLast = idx === total - 1;
+    const bullets = slide.bullets.slice(0, 10);
     const manba = extractManba(slide.notes);
-    const layout = inferLayout(slide, idx, total);
+    const hasImage = Boolean(slide.imageUrl) && !isFirst;
 
-    addKicker(s, kickerTitle);
+    addKicker(s, deck.title.length > 70 ? `${deck.title.slice(0, 67)}...` : deck.title);
 
-    switch (layout) {
-      case 'agenda':
-        renderAgenda(s, slide);
-        break;
-      case 'process':
-        renderProcess(s, slide, manba);
-        break;
-      case 'checklist':
-        renderChecklist(s, slide, manba);
-        break;
-      case 'split':
-        renderSplit(s, slide, manba);
-        break;
-      case 'cards':
-        renderCards(s, slide, manba);
-        break;
-      default:
-        renderBullets(s, slide, manba);
-        break;
-    }
-
-    if (manba) {
-      s.addText(manba, {
+    if (isFirst) {
+      // ---- Sarlavha/reja slaydi: katta title + agenda-uslub raqamli
+      // belgilar (namuna: doira ichida raqam + sarlavha + tavsif) ----
+      s.addText(slide.title, {
         x: 0.5,
-        y: 6.62,
+        y: 0.85,
         w: 12.3,
-        h: 0.3,
-        fontSize: 9.5,
-        italic: true,
-        color: MUTED,
+        h: 0.95,
+        fontSize: 32,
+        bold: true,
+        color: TITLE_COLOR,
+        fontFace: 'Georgia',
       });
+
+      const cardCount = Math.min(bullets.length, 6);
+      if (cardCount > 0) {
+        const startY = 2.05;
+        const rowH = (6.55 - startY) / cardCount;
+        bullets.slice(0, cardCount).forEach((b, i) => {
+          const y = startY + i * rowH;
+          const { head, tail } = splitBulletHeadTail(b);
+          s.addShape('ellipse', {
+            x: 0.7,
+            y: y + rowH / 2 - 0.31,
+            w: 0.62,
+            h: 0.62,
+            fill: { color: ACCENT },
+            line: { type: 'none' },
+          });
+          s.addText(String(i + 1), {
+            x: 0.7,
+            y: y + rowH / 2 - 0.31,
+            w: 0.62,
+            h: 0.62,
+            fontSize: 20,
+            bold: true,
+            color: WHITE,
+            align: 'center',
+            valign: 'middle',
+            fontFace: 'Georgia',
+          });
+          s.addText(head, {
+            x: 1.55,
+            y: y + 0.03,
+            w: 12.0,
+            h: 0.36,
+            fontSize: 15,
+            bold: true,
+            color: TITLE_COLOR,
+          });
+          if (tail) {
+            s.addText(tail, {
+              x: 1.55,
+              y: y + 0.38,
+              w: 12.0,
+              h: rowH - 0.42,
+              fontSize: 12.5,
+              color: MUTED,
+              valign: 'top',
+            });
+          }
+        });
+      }
+    } else {
+      // ---- Kontent slayd ----
+      const textW = hasImage ? 6.3 : 12.3;
+      const dense = bullets.some((b) => b.length >= 100) || bullets.length >= 7;
+      const fontSize = hasImage ? Math.max(10, dense ? 12 : 13) : dense ? 12 : bullets.length >= 6 ? 13 : 14;
+      const titleSize = isLast ? 28 : dense ? 20 : 22;
+
+      s.addText(slide.title, {
+        x: 0.5,
+        y: 0.78,
+        w: 12.3,
+        h: 0.7,
+        fontSize: titleSize,
+        bold: true,
+        color: TITLE_COLOR,
+        fontFace: 'Georgia',
+      });
+      s.addShape('line', {
+        x: 0.5,
+        y: 1.5,
+        w: hasImage ? 6.1 : 2.0,
+        h: 0,
+        line: { color: ACCENT, width: 2 },
+      });
+
+      if (bullets.length) {
+        s.addText(
+          bullets.map((b) => ({
+            text: b,
+            options: { bullet: { code: '2022', indent: 18 }, breakLine: true, color: BODY_COLOR },
+          })),
+          {
+            x: 0.5,
+            y: 1.7,
+            w: textW,
+            h: manba ? 4.85 : 5.15,
+            fontSize,
+            valign: 'top',
+            paraSpaceAfter: dense ? 5 : 8,
+            lineSpacingMultiple: 1.12,
+          },
+        );
+      }
+
+      if (hasImage && slide.imageUrl) {
+        try {
+          s.addImage({
+            data: slide.imageUrl,
+            x: 6.95,
+            y: 1.75,
+            w: 3.9,
+            h: 3.9,
+            sizing: { type: 'contain', w: 3.9, h: 3.9 },
+          });
+          if (slide.imageCredit) {
+            s.addText(slide.imageCredit, {
+              x: 6.95,
+              y: 5.72,
+              w: 3.9,
+              h: 0.4,
+              fontSize: 7.5,
+              italic: true,
+              color: MUTED,
+              valign: 'top',
+            });
+          }
+        } catch {
+          /* rasm noto'g'ri bo'lsa ham slayd matnsiz qolmasin */
+        }
+      }
+
+      if (manba) {
+        s.addText(manba, {
+          x: 0.5,
+          y: 6.6,
+          w: 12.3,
+          h: 0.32,
+          fontSize: 9.5,
+          italic: true,
+          color: MUTED,
+        });
+      }
     }
 
     if (slide.notes?.trim()) {

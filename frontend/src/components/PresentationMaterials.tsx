@@ -19,12 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GlobalTopicContext, AppNavigationContext, AppLanguageContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
 import { aiService } from '../services/aiService';
-import {
-  buildPresentationPptxFile,
-  type PresentationDeck,
-  type PresentationSlide,
-  type PresentationSlideLayout,
-} from '../utils/buildPresentationPptx';
+import { buildPresentationPptxFile, type PresentationDeck } from '../utils/buildPresentationPptx';
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
@@ -66,185 +61,6 @@ function parsePresentationProgress(raw: string): { slideCount: number; preview: 
     .replace(/\\"/g, '"')
     .trim();
   return { slideCount, preview };
-}
-
-function splitPreviewHeadTail(bullet: string): { head: string; tail: string } {
-  const m = bullet.match(/^([^:—–-]{3,72})[:—–-]\s*(.+)$/);
-  if (m) return { head: m[1].trim(), tail: m[2].trim() };
-  if (bullet.length <= 70) return { head: bullet.trim(), tail: '' };
-  const cut = bullet.slice(0, 68);
-  const sp = cut.lastIndexOf(' ');
-  return {
-    head: (sp > 24 ? cut.slice(0, sp) : cut).trim(),
-    tail: bullet.slice(sp > 24 ? sp : 68).trim(),
-  };
-}
-
-function inferPreviewLayout(slide: PresentationSlide, idx: number, total: number): PresentationSlideLayout {
-  if (slide.layout) return slide.layout;
-  if (idx === 0) return 'agenda';
-  if (slide.imageUrl && idx !== total - 1) return 'split';
-  if (/bosqich|qadam|jarayon|sxema|ketma|tartib/i.test(slide.title)) return 'process';
-  if (/ko'rsatma|qarshi|afzallik|mezon|checklist/i.test(slide.title)) return 'checklist';
-  const n = slide.bullets?.length ?? 0;
-  if (n >= 3 && n <= 6) return 'cards';
-  return 'bullets';
-}
-
-/** Ekran preview — PPTX dagi cards/process/split uslubiga yaqin. */
-function SlideInfographicPreview({
-  slide,
-  index,
-  total,
-}: {
-  slide: PresentationSlide;
-  index: number;
-  total: number;
-}) {
-  const layout = inferPreviewLayout(slide, index, total);
-  const bullets = slide.bullets ?? [];
-
-  return (
-    <div className="flex-1 min-h-0 rounded-3xl bg-[#F4F8FC] shadow-2xl p-6 sm:p-8 flex flex-col overflow-y-auto border border-[#D7E6F2]">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5B7A8C] mb-2">
-        {layout === 'agenda'
-          ? 'Reja'
-          : layout === 'process'
-            ? 'Jarayon'
-            : layout === 'checklist'
-              ? 'Checklist'
-              : layout === 'split'
-                ? 'Matn + vizual'
-                : layout === 'cards'
-                  ? 'Kartochkalar'
-                  : 'Mazmun'}
-      </p>
-      <h2 className="text-xl sm:text-2xl font-bold text-[#0B2A3D] mb-1 font-serif">{slide.title}</h2>
-      <div className="w-14 h-1 rounded-full bg-[#0284C7] mb-5" />
-
-      {layout === 'split' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-[1.4fr_1fr] gap-4 flex-1 min-h-0">
-          <ul className="space-y-2.5 overflow-y-auto">
-            {bullets.slice(0, 5).map((b, i) => {
-              const { head, tail } = splitPreviewHeadTail(b);
-              return (
-                <li
-                  key={i}
-                  className="rounded-xl bg-white border border-[#D7E6F2] p-3 flex gap-3 shadow-sm"
-                >
-                  <span className="shrink-0 w-7 h-7 rounded-full bg-[#0284C7] text-white text-[12px] font-bold flex items-center justify-center">
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-[#0B2A3D] leading-snug">{head}</p>
-                    {tail && <p className="text-[12px] text-[#1C2733]/90 mt-0.5 leading-snug">{tail}</p>}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="rounded-xl bg-[#E0F2FE] border border-[#0284C7]/40 p-3 flex flex-col items-center justify-center min-h-[160px]">
-            {slide.imageUrl ? (
-              <img src={slide.imageUrl} alt="" className="max-h-52 w-full object-contain rounded-lg" />
-            ) : (
-              <p className="text-[12px] font-semibold text-[#0284C7]">Klinik / anatomik vizual</p>
-            )}
-            {slide.imageCredit && (
-              <p className="text-[10px] text-[#5B6B7A] italic mt-2 text-center">{slide.imageCredit}</p>
-            )}
-          </div>
-        </div>
-      ) : layout === 'cards' || layout === 'agenda' ? (
-        <div
-          className={`grid gap-2.5 ${
-            layout === 'agenda' || bullets.length <= 3 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'
-          }`}
-        >
-          {bullets.slice(0, 6).map((b, i) => {
-            const { head, tail } = splitPreviewHeadTail(b);
-            return (
-              <div
-                key={i}
-                className="rounded-xl bg-white border border-[#D7E6F2] p-3.5 flex gap-3 shadow-sm relative overflow-hidden"
-              >
-                <span className="absolute left-0 top-0 bottom-0 w-1 bg-[#0284C7]" />
-                <span className="shrink-0 w-7 h-7 rounded-full bg-[#0284C7] text-white text-[12px] font-bold flex items-center justify-center ml-1">
-                  {i + 1}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-[#0B2A3D] leading-snug">{head}</p>
-                  {tail && <p className="text-[12px] text-[#1C2733]/90 mt-1 leading-snug">{tail}</p>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : layout === 'process' ? (
-        <ol className="space-y-2">
-          {bullets.slice(0, 5).map((b, i) => {
-            const { head, tail } = splitPreviewHeadTail(b);
-            return (
-              <li key={i} className="relative">
-                <div
-                  className={`rounded-xl border border-[#D7E6F2] p-3.5 flex gap-3 shadow-sm ${
-                    i % 2 === 0 ? 'bg-white' : 'bg-[#E0F2FE]'
-                  }`}
-                >
-                  <span className="shrink-0 w-8 h-8 rounded-full bg-[#0284C7] text-white text-[13px] font-bold flex items-center justify-center">
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-[#0B2A3D] leading-snug">{head}</p>
-                    {tail && <p className="text-[12px] text-[#1C2733]/90 mt-0.5 leading-snug">{tail}</p>}
-                  </div>
-                </div>
-                {i < Math.min(bullets.length, 5) - 1 && (
-                  <p className="text-center text-[#0284C7] font-bold text-sm py-0.5">↓</p>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      ) : layout === 'checklist' ? (
-        <ul className="space-y-2">
-          {bullets.slice(0, 7).map((b, i) => {
-            const { head, tail } = splitPreviewHeadTail(b);
-            return (
-              <li
-                key={i}
-                className={`rounded-xl border border-[#D7E6F2] p-3 flex gap-3 shadow-sm ${
-                  i % 2 ? 'bg-[#CCFBF1]' : 'bg-white'
-                }`}
-              >
-                <span className="shrink-0 w-7 h-7 rounded-full bg-[#0F766E] text-white text-[12px] font-bold flex items-center justify-center">
-                  ✓
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-[#0B2A3D] leading-snug">{head}</p>
-                  {tail && <p className="text-[12px] text-[#1C2733]/90 mt-0.5 leading-snug">{tail}</p>}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <ul className="space-y-2.5 rounded-xl bg-white border border-[#D7E6F2] p-4 shadow-sm">
-          {bullets.map((b, i) => (
-            <li key={i} className="flex gap-3 text-[13px] sm:text-[14px] text-[#1C2733] leading-snug">
-              <span className="text-[#0284C7] shrink-0 mt-0.5 font-bold">•</span>
-              <span>{b}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {slide.notes && (
-        <p className="mt-5 pt-3 border-t border-[#D7E6F2] text-[11px] text-[#5B6B7A] italic leading-relaxed">
-          {slide.notes}
-        </p>
-      )}
-    </div>
-  );
 }
 
 function formatSize(bytes: number): string {
@@ -401,13 +217,24 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
             )}
 
             <div className="w-full h-full max-w-5xl mx-auto flex flex-col gap-4">
-              {deck.slides[slideIdx] && (
-                <SlideInfographicPreview
-                  slide={deck.slides[slideIdx]}
-                  index={slideIdx}
-                  total={deck.slides.length}
-                />
-              )}
+              <div className="flex-1 min-h-0 rounded-3xl bg-white/95 backdrop-blur-xl shadow-2xl p-8 sm:p-12 flex flex-col overflow-y-auto">
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#083047] mb-6">
+                  {deck.slides[slideIdx]?.title}
+                </h2>
+                <ul className="space-y-2.5 text-[14px] sm:text-[15px] text-black/85">
+                  {(deck.slides[slideIdx]?.bullets ?? []).map((b, i) => (
+                    <li key={i} className="flex gap-3 leading-snug">
+                      <span className="text-orange-500 shrink-0 mt-0.5">•</span>
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+                {deck.slides[slideIdx]?.notes && (
+                  <p className="mt-6 pt-3 border-t border-black/10 text-[12px] text-black/45 italic leading-relaxed">
+                    {deck.slides[slideIdx]?.notes}
+                  </p>
+                )}
+              </div>
               <div className="flex items-center justify-center gap-1.5 shrink-0">
                 {deck.slides.map((_, i) => (
                   <button
@@ -718,13 +545,26 @@ export default function PresentationMaterials() {
                 </button>
               )}
               <div className="w-full h-full max-w-5xl mx-auto flex flex-col gap-4">
-                {historyDeck.slides[historySlideIdx] && (
-                  <SlideInfographicPreview
-                    slide={historyDeck.slides[historySlideIdx]}
-                    index={historySlideIdx}
-                    total={historyDeck.slides.length}
-                  />
-                )}
+                <div className="flex-1 min-h-0 rounded-3xl bg-white/95 backdrop-blur-xl shadow-2xl p-8 sm:p-12 flex flex-col overflow-y-auto">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-[#083047] mb-6">
+                    {historyDeck.slides[historySlideIdx]?.title}
+                  </h2>
+                  {historyDeck.slides[historySlideIdx]?.imageUrl && (
+                    <img
+                      src={historyDeck.slides[historySlideIdx]?.imageUrl}
+                      alt=""
+                      className="max-h-64 rounded-xl object-contain mb-4 mx-auto"
+                    />
+                  )}
+                  <ul className="space-y-2.5 text-[14px] sm:text-[15px] text-black/85">
+                    {(historyDeck.slides[historySlideIdx]?.bullets ?? []).map((b, i) => (
+                      <li key={i} className="flex gap-3 leading-snug">
+                        <span className="text-orange-500 shrink-0 mt-0.5">•</span>
+                        <span>{b}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
                 <div className="flex items-center justify-center gap-1.5 shrink-0">
                   {historyDeck.slides.map((_, i) => (
                     <button
