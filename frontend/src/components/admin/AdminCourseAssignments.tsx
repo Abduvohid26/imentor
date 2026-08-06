@@ -24,14 +24,28 @@ import { resolveSyllabusVariants } from '../../utils/syllabusVariant';
 import { useUiText } from '../../i18n/useUiText';
 import SearchableSelect from './SearchableSelect';
 
-type FanBucket = { fanId: number; fanName: string; rows: AdminStaffCourseSelectionRow[] };
+type FanBucket = {
+  fanId: number;
+  fanName: string;
+  departmentName: string;
+  pdfNames: string[];
+  rows: AdminStaffCourseSelectionRow[];
+};
 type TeacherGroup = {
   ownerKey: string;
   name: string;
   phone: string;
   fans: FanBucket[];
-  directionCount: number;
 };
+
+function syllabusPdfNames(row: CourseSyllabusRow | AdminStaffCourseSelectionRow['syllabus']): string[] {
+  const fromVariants = resolveSyllabusVariants(row)
+    .map((v) => (v.file_name || '').trim())
+    .filter(Boolean);
+  if (fromVariants.length) return [...new Set(fromVariants)];
+  const single = (row.file_name || '').trim();
+  return single ? [single] : [];
+}
 
 export default function AdminCourseAssignments() {
   const { t } = useUiText();
@@ -41,15 +55,15 @@ export default function AdminCourseAssignments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Biriktirish: o'qituvchi → fan → yo'nalish(lar)
+  // Biriktirish: o'qituvchi → kafedra → fan (syllabus)
   const [phone, setPhone] = useState('');
+  const [deptKey, setDeptKey] = useState('');
   const [fanId, setFanId] = useState('');
-  const [picked, setPicked] = useState<string[]>([]);
   const [assigning, setAssigning] = useState(false);
 
-  // Ro'yxat: qidiruv, filtrlar, detail
   const [search, setSearch] = useState('');
   const [teacherFilter, setTeacherFilter] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
   const [fanFilter, setFanFilter] = useState('');
   const [detailKey, setDetailKey] = useState<string | null>(null);
 
@@ -79,30 +93,58 @@ export default function AdminCourseAssignments() {
     void load();
   }, [load]);
 
+  const departmentKeyOf = useCallback((f: CourseSyllabusRow) => {
+    const name = (f.department_name || '').trim();
+    if (f.department != null) return `id:${f.department}`;
+    if (name) return `name:${name.toLowerCase()}`;
+    return 'none';
+  }, []);
+
+  const departments = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of fans) {
+      const key = departmentKeyOf(f);
+      const name = (f.department_name || '').trim() || t('admin.departmentUnassigned');
+      if (!map.has(key)) map.set(key, name);
+    }
+    return [...map.entries()]
+      .map(([key, name]) => ({ key, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'uz'));
+  }, [fans, departmentKeyOf, t]);
+
+  const fansInDept = useMemo(() => {
+    if (!deptKey) return [];
+    return fans
+      .filter((f) => departmentKeyOf(f) === deptKey)
+      .sort((a, b) => a.subject_name.localeCompare(b.subject_name, 'uz'));
+  }, [fans, deptKey, departmentKeyOf]);
+
   const selectedFan = useMemo(() => fans.find((f) => String(f.id) === fanId) || null, [fans, fanId]);
-  const variants = useMemo(
-    () => (selectedFan ? resolveSyllabusVariants(selectedFan) : []),
+  const selectedPdfs = useMemo(
+    () => (selectedFan ? syllabusPdfNames(selectedFan) : []),
     [selectedFan],
   );
 
   useEffect(() => {
-    setPicked([]);
-  }, [fanId]);
+    setFanId('');
+  }, [deptKey]);
+
+  useEffect(() => {
+    if (fanId && !fansInDept.some((f) => String(f.id) === fanId)) {
+      setFanId('');
+    }
+  }, [fansInDept, fanId]);
 
   const alreadyAssigned = useMemo(() => {
-    const set = new Set<string>();
-    if (!phone || !fanId) return set;
-    for (const sel of selections) {
-      if (sel.owner_key === phone && String(sel.syllabus.id) === fanId) {
-        set.add(sel.variant_label || '');
-      }
-    }
-    return set;
+    if (!phone || !fanId) return false;
+    return selections.some((sel) => sel.owner_key === phone && String(sel.syllabus.id) === fanId);
   }, [selections, phone, fanId]);
 
-  // O'qituvchi bo'yicha guruhlash (har o'qituvchi bir marta)
   const teacherGroups = useMemo<TeacherGroup[]>(() => {
-    const map = new Map<string, { ownerKey: string; name: string; phone: string; fans: Map<number, FanBucket> }>();
+    const map = new Map<
+      string,
+      { ownerKey: string; name: string; phone: string; fans: Map<number, FanBucket> }
+    >();
     for (const sel of selections) {
       const key = sel.owner_key;
       if (!map.has(key)) {
@@ -115,60 +157,60 @@ export default function AdminCourseAssignments() {
       }
       const g = map.get(key)!;
       if (!g.fans.has(sel.syllabus.id)) {
-        g.fans.set(sel.syllabus.id, { fanId: sel.syllabus.id, fanName: sel.syllabus.subject_name, rows: [] });
+        g.fans.set(sel.syllabus.id, {
+          fanId: sel.syllabus.id,
+          fanName: sel.syllabus.subject_name,
+          departmentName: (sel.syllabus.department_name || '').trim(),
+          pdfNames: syllabusPdfNames(sel.syllabus),
+          rows: [],
+        });
       }
       g.fans.get(sel.syllabus.id)!.rows.push(sel);
     }
     return [...map.values()]
-      .map((g) => {
-        const fanList = [...g.fans.values()].sort((a, b) => a.fanName.localeCompare(b.fanName));
-        return {
-          ownerKey: g.ownerKey,
-          name: g.name,
-          phone: g.phone,
-          fans: fanList,
-          directionCount: fanList.reduce((n, f) => n + f.rows.length, 0),
-        };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .map((g) => ({
+        ownerKey: g.ownerKey,
+        name: g.name,
+        phone: g.phone,
+        fans: [...g.fans.values()].sort((a, b) => a.fanName.localeCompare(b.fanName, 'uz')),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'uz'));
   }, [selections]);
 
   const visibleGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
     return teacherGroups.filter((g) => {
       if (teacherFilter && g.ownerKey !== teacherFilter) return false;
+      if (deptFilter && !g.fans.some((f) => f.departmentName === deptFilter)) return false;
       if (fanFilter && !g.fans.some((f) => String(f.fanId) === fanFilter)) return false;
       if (q) {
         const inTeacher = g.name.toLowerCase().includes(q) || g.phone.toLowerCase().includes(q);
-        const inFan = g.fans.some((f) => f.fanName.toLowerCase().includes(q));
+        const inFan = g.fans.some(
+          (f) =>
+            f.fanName.toLowerCase().includes(q) ||
+            f.departmentName.toLowerCase().includes(q) ||
+            f.pdfNames.some((p) => p.toLowerCase().includes(q)),
+        );
         if (!inTeacher && !inFan) return false;
       }
       return true;
     });
-  }, [teacherGroups, search, teacherFilter, fanFilter]);
+  }, [teacherGroups, search, teacherFilter, deptFilter, fanFilter]);
 
   const detailGroup = useMemo(
     () => (detailKey ? teacherGroups.find((g) => g.ownerKey === detailKey) ?? null : null),
     [detailKey, teacherGroups],
   );
 
-  const toggle = (label: string) => {
-    setPicked((prev) => (prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]));
-  };
-
   const assign = async () => {
     if (!phone || !fanId) return;
-    if (variants.length > 0 && picked.length === 0) {
-      setError(t('admin.error.pickSyllabus'));
-      return;
-    }
     setAssigning(true);
     setError(null);
     try {
-      await assignStaffToCourseSyllabus(phone, Number(fanId), picked);
-      // Formani to'liq tozalash — keyingi biriktirishga tayyor
-      setPicked([]);
+      // Yo'nalish tanlanmaydi — butun fan (syllabus) biriktiriladi.
+      await assignStaffToCourseSyllabus(phone, Number(fanId), []);
       setPhone('');
+      setDeptKey('');
       setFanId('');
       setSelections(await fetchAllStaffCourseSelections());
     } catch {
@@ -178,28 +220,36 @@ export default function AdminCourseAssignments() {
     }
   };
 
-  const unassign = async (id: number) => {
+  const unassignFan = async (rows: AdminStaffCourseSelectionRow[]) => {
     try {
-      await removeStaffCourseSelection(id);
-      setSelections((prev) => prev.filter((s) => s.id !== id));
+      await Promise.all(rows.map((r) => removeStaffCourseSelection(r.id)));
+      const ids = new Set(rows.map((r) => r.id));
+      setSelections((prev) => prev.filter((s) => !ids.has(s.id)));
     } catch {
       setError(t('admin.error.unassignFailed'));
     }
   };
 
-  const canAssign =
-    Boolean(phone) && Boolean(fanId) && !(variants.length > 0 && picked.length === 0) && !assigning;
+  const canAssign = Boolean(phone) && Boolean(fanId) && !alreadyAssigned && !assigning;
 
-  // Detail ochiq bo'lsa-yu o'qituvchida biriktirish qolmasa — ro'yxatga qaytamiz
   useEffect(() => {
     if (detailKey && !loading && !teacherGroups.some((g) => g.ownerKey === detailKey)) {
       setDetailKey(null);
     }
   }, [detailKey, teacherGroups, loading]);
 
+  const listDeptNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const g of teacherGroups) {
+      for (const f of g.fans) {
+        if (f.departmentName) names.add(f.departmentName);
+      }
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, 'uz'));
+  }, [teacherGroups]);
+
   return (
     <div className="p-3 sm:p-5 lg:p-6 h-full overflow-y-auto w-full space-y-6">
-      {/* Sarlavha */}
       <div className="ios-glass rounded-3xl border border-white/70 p-6 shadow-sm flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center">
@@ -219,11 +269,10 @@ export default function AdminCourseAssignments() {
         </button>
       </div>
 
-      {/* Biriktirish: o'qituvchi → fan → yo'nalish(lar) */}
       <div className="ios-glass rounded-2xl border border-white/70 p-5 space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <label className="space-y-1">
-            <span className="text-[12px] font-semibold text-slate-600">1 · {t('admin.assignedTeachers')}</span>
+            <span className="text-[12px] font-semibold text-slate-600">1 · {t('admin.teacher')}</span>
             <SearchableSelect
               value={phone}
               onChange={setPhone}
@@ -238,75 +287,54 @@ export default function AdminCourseAssignments() {
           </label>
 
           <label className="space-y-1">
-            <span className="text-[12px] font-semibold text-slate-600">2 · {t('admin.subjectName')}</span>
+            <span className="text-[12px] font-semibold text-slate-600">2 · {t('admin.department')}</span>
+            <SearchableSelect
+              value={deptKey}
+              onChange={setDeptKey}
+              disabled={assigning}
+              placeholder={t('admin.selectDepartmentPlaceholder')}
+              noMatchText={t('admin.noResults')}
+              options={departments.map((d) => ({ value: d.key, label: d.name }))}
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-[12px] font-semibold text-slate-600">3 · {t('admin.subjectName')}</span>
             <SearchableSelect
               value={fanId}
               onChange={setFanId}
-              disabled={assigning}
+              disabled={assigning || !deptKey}
               placeholder={t('admin.selectSubjectPlaceholder')}
               noMatchText={t('admin.noResults')}
-              options={[...fans]
-                .sort((a, b) => {
-                  const da = (a.department_name || '').localeCompare(b.department_name || '', 'uz');
-                  if (da !== 0) return da;
-                  return a.subject_name.localeCompare(b.subject_name, 'uz');
-                })
-                .map((f) => {
-                  const tracks = resolveSyllabusVariants(f).length;
-                  const dept = (f.department_name || '').trim();
-                  const base = dept ? `${f.subject_name} · ${dept}` : f.subject_name;
-                  const meta = tracks > 0 ? ` (${tracks})` : '';
-                  const inactive = f.is_active ? '' : ` · ${t('admin.toggleInactive')}`;
-                  return {
-                    value: String(f.id),
-                    label: `${base}${meta}${inactive}`,
-                    searchText: `${f.subject_name} ${dept} ${f.subject_code || ''} ${f.department_code || ''}`,
-                  };
-                })}
+              options={fansInDept.map((f) => {
+                const inactive = f.is_active ? '' : ` · ${t('admin.toggleInactive')}`;
+                return {
+                  value: String(f.id),
+                  label: `${f.subject_name}${inactive}`,
+                  searchText: `${f.subject_name} ${f.subject_code || ''} ${syllabusPdfNames(f).join(' ')}`,
+                };
+              })}
             />
           </label>
         </div>
 
         {fanId && (
-          <div className="space-y-2">
-            <span className="text-[12px] font-semibold text-slate-600">3 · {t('admin.syllabusesLabel')}</span>
-            {variants.length === 0 ? (
-              <p className="text-[12px] text-amber-700">{t('admin.noSyllabusInSubject')}</p>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5 space-y-1.5">
+            <span className="text-[12px] font-semibold text-slate-600">{t('admin.attachedPdfs')}</span>
+            {selectedPdfs.length === 0 ? (
+              <p className="text-[12px] text-amber-700">{t('admin.noDocumentUploaded')}</p>
             ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {variants.map((v) => {
-                  const assignedNow = alreadyAssigned.has(v.label);
-                  const checked = picked.includes(v.label);
-                  return (
-                    <label
-                      key={v.label}
-                      className={`flex items-center gap-2 rounded-xl border px-3 py-2 cursor-pointer transition ${
-                        checked ? 'border-indigo-400 bg-indigo-50/60' : 'border-slate-200 bg-white hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggle(v.label)}
-                        disabled={assigning}
-                        className="w-4 h-4 accent-indigo-600"
-                      />
-                      <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded shrink-0">
-                        {v.label}
-                      </span>
-                      <span className="text-[12px] text-slate-600 truncate flex-1 flex items-center gap-1">
-                        <FileText size={12} className="text-slate-400 shrink-0" />
-                        {v.file_name}
-                      </span>
-                      {assignedNow && (
-                        <span className="text-[10px] font-semibold text-emerald-600 shrink-0">
-                          {t('admin.alreadyAssigned')}
-                        </span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
+              <ul className="space-y-1">
+                {selectedPdfs.map((name) => (
+                  <li key={name} className="flex items-center gap-1.5 text-[12px] text-slate-700 min-w-0">
+                    <FileText size={13} className="text-slate-400 shrink-0" />
+                    <span className="truncate">{name}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {alreadyAssigned && (
+              <p className="text-[11px] font-semibold text-emerald-600">{t('admin.alreadyAssigned')}</p>
             )}
           </div>
         )}
@@ -325,18 +353,16 @@ export default function AdminCourseAssignments() {
         </div>
       </div>
 
-      {/* Ro'yxat / Detail */}
       {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="animate-spin text-indigo-600" size={40} />
         </div>
       ) : detailGroup ? (
-        <TeacherDetail group={detailGroup} onBack={() => setDetailKey(null)} onUnassign={unassign} t={t} />
+        <TeacherDetail group={detailGroup} onBack={() => setDetailKey(null)} onUnassignFan={unassignFan} t={t} />
       ) : (
         <div className="space-y-3">
-          {/* Qidiruv + filtrlar */}
-          <div className="ios-glass rounded-2xl border border-white/70 p-3 grid gap-2 sm:grid-cols-3">
-            <div className="relative">
+          <div className="ios-glass rounded-2xl border border-white/70 p-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="relative lg:col-span-1 sm:col-span-2">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
@@ -354,6 +380,18 @@ export default function AdminCourseAssignments() {
               {teachers.map((tch) => (
                 <option key={tch.phone_digits} value={tch.phone_digits}>
                   {tch.display_name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+              className="h-10 px-3 rounded-xl border border-slate-200 bg-white text-[13px]"
+            >
+              <option value="">{t('admin.filterAllDepartments')}</option>
+              {listDeptNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
                 </option>
               ))}
             </select>
@@ -394,8 +432,7 @@ export default function AdminCourseAssignments() {
                     <div className="min-w-0 flex-1">
                       <p className="font-bold text-slate-900 truncate">{g.name}</p>
                       <p className="text-[12px] text-slate-500">
-                        {g.phone} · {t('admin.subjectsCount', { count: g.fans.length })} ·{' '}
-                        {t('admin.directionsCount', { count: g.directionCount })}
+                        {g.phone} · {t('admin.subjectsCount', { count: g.fans.length })}
                       </p>
                     </div>
                     <ChevronRight size={18} className="text-slate-400 shrink-0" />
@@ -413,12 +450,12 @@ export default function AdminCourseAssignments() {
 function TeacherDetail({
   group,
   onBack,
-  onUnassign,
+  onUnassignFan,
   t,
 }: {
   group: TeacherGroup;
   onBack: () => void;
-  onUnassign: (id: number) => void;
+  onUnassignFan: (rows: AdminStaffCourseSelectionRow[]) => void;
   t: ReturnType<typeof useUiText>['t'];
 }) {
   return (
@@ -437,55 +474,45 @@ function TeacherDetail({
         <div className="min-w-0 flex-1">
           <p className="font-bold text-slate-900 truncate">{group.name}</p>
           <p className="text-[12px] text-slate-500">
-            {group.phone} · {t('admin.subjectsCount', { count: group.fans.length })} ·{' '}
-            {t('admin.directionsCount', { count: group.directionCount })}
+            {group.phone} · {t('admin.subjectsCount', { count: group.fans.length })}
           </p>
         </div>
       </div>
 
       <ul className="space-y-3">
-        {group.fans.map((fan) => {
-          const fileByLabel = new Map(
-            resolveSyllabusVariants(fan.rows[0].syllabus).map((v) => [v.label, v.file_name]),
-          );
-          return (
-            <li key={fan.fanId} className="ios-glass rounded-2xl border border-white/70 overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center gap-2">
-                <GraduationCap size={16} className="text-indigo-600 shrink-0" />
-                <span className="font-bold text-slate-900">{fan.fanName}</span>
-                <span className="text-[11px] text-slate-400">· {fan.rows.length}</span>
+        {group.fans.map((fan) => (
+          <li key={fan.fanId} className="ios-glass rounded-2xl border border-white/70 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 flex items-start gap-2">
+              <GraduationCap size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-slate-900">{fan.fanName}</p>
+                {fan.departmentName ? (
+                  <p className="text-[12px] text-slate-500">{fan.departmentName}</p>
+                ) : null}
               </div>
-              <ul className="divide-y divide-slate-50">
-                {fan.rows.map((sel) => {
-                  const fileName = sel.variant_label ? fileByLabel.get(sel.variant_label) : '';
-                  return (
-                    <li key={sel.id} className="flex items-center gap-2 px-4 py-2.5">
-                      <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 shrink-0">
-                        {sel.variant_label || t('admin.allDirections')}
-                      </span>
-                      <span className="text-[12px] text-slate-600 truncate flex-1 flex items-center gap-1 min-w-0">
-                        {fileName && (
-                          <>
-                            <FileText size={12} className="text-slate-400 shrink-0" />
-                            {fileName}
-                          </>
-                        )}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onUnassign(sel.id)}
-                        className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg shrink-0"
-                        title={t('admin.delete')}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </li>
-          );
-        })}
+              <button
+                type="button"
+                onClick={() => onUnassignFan(fan.rows)}
+                className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg shrink-0"
+                title={t('admin.delete')}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+            <ul className="divide-y divide-slate-50">
+              {fan.pdfNames.length === 0 ? (
+                <li className="px-4 py-2.5 text-[12px] text-slate-400">{t('admin.noDocumentUploaded')}</li>
+              ) : (
+                fan.pdfNames.map((name) => (
+                  <li key={name} className="flex items-center gap-2 px-4 py-2.5">
+                    <FileText size={13} className="text-slate-400 shrink-0" />
+                    <span className="text-[12px] text-slate-600 truncate">{name}</span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </li>
+        ))}
       </ul>
     </div>
   );

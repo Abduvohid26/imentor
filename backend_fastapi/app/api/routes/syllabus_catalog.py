@@ -200,12 +200,12 @@ def admin_assign_course_selection(
     labels = [lbl.strip() for lbl in payload.variant_labels if lbl.strip()]
     labels = list(dict.fromkeys(labels))
 
-    if available:
-        invalid = [lbl for lbl in labels if lbl not in available]
-        if invalid:
-            raise HTTPException(status_code=400, detail="Noto'g'ri syllabus/yo'nalish.")
-        if not labels:
-            raise HTTPException(status_code=400, detail="Kamida bitta syllabus (yo'nalish) tanlang.")
+    # Bo'sh labels = butun fan (yo'nalish ajratmasdan). Variantlar ixtiyoriy.
+    if labels:
+        if available:
+            invalid = [lbl for lbl in labels if lbl not in available]
+            if invalid:
+                raise HTTPException(status_code=400, detail="Noto'g'ri syllabus/yo'nalish.")
     else:
         labels = [""]
 
