@@ -20,7 +20,6 @@ import type { AppLanguage } from '../i18n/language';
 import { useUiText } from '../i18n/useUiText';
 import { getCurrentLocalUser, normalizeUserRole } from '../utils/localStaffAuth';
 import { getBackendAccessToken, loginStudentWithOnlineTest } from '../utils/backendAuth';
-import { appendTestToLibrary } from '../utils/staffContentLibrary';
 import {
   listPreparedForTopicSynced,
   loadLatestPreparedContent,
@@ -585,19 +584,7 @@ export default function TestQuestions() {
       setTestSession(data);
       setViewLang(data.primaryLanguage || contentLanguage);
       setActiveVersionId(list[0]?.id ?? null);
-      try {
-        const u = getCurrentLocalUser();
-        if (u && normalizeUserRole(u) === 'hodim') {
-          appendTestToLibrary({
-            authorUid: u.uid,
-            authorName: u.displayName,
-            liveSessionId: sid,
-            testSession: data,
-          });
-        }
-      } catch {
-        /* bazaga yozish ixtiyoriy */
-      }
+      if (!sid) throw new Error('live-session-missing');
     } catch (err) {
       console.error('Test generation error:', err);
       setError(messageFromAiError(err, t('test.errorGenerate'), language));
