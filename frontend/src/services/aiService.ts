@@ -20,7 +20,9 @@ import {
   assertOpenAiApiKey,
   type BookContext,
   openaiJson,
+  openaiJsonStream,
   openaiText,
+  openaiTextStream,
 } from './openaiClient';
 
 const SYS_MEDICAL =
@@ -1062,6 +1064,9 @@ async function requestPresentationDeckFromAi(params: {
   sourceFileName?: string;
   sourceText?: string;
   subjectCode?: string;
+  /** Generatsiya davom etayotganda xom matn bilan chaqiriladi (birinchi
+   * urinishda) — foydalanuvchi jarayonni jonli kuzatishi uchun. */
+  onProgress?: (rawTextSoFar: string) => void;
 }): Promise<PresentationDeck> {
   assertOpenAiApiKey();
   const outLang = languageName(params.language);
@@ -1091,7 +1096,8 @@ async function requestPresentationDeckFromAi(params: {
     '3) Kontentga majburiy: ta\'rif, mezonlar, bosqichlar/tartib, klinik tafsilot, ' +
     'kerak bo\'lsa doza/muddat/forma/qarshi ko\'rsatma, amaliy xulosa.\n' +
     '4) "notes" maydoniga YANA 4–6 to\'liq gap qo\'shing (bullet\'larni takrorlamang) — ' +
-    'ular ham slaydga chiqadi. Oxirida manba: (Manba: kitob, sahifa).\n' +
+    'ular ham slaydga chiqadi. Agar aniq kitob/sahifa bilinsa oxirida (Manba: <haqiqiy nom>, ' +
+    '<haqiqiy sahifa>) qo\'shing — aks holda manba qatorini butunlay yozmang.\n' +
     '5) Oxirgi slayd "Xulosa" — ham to\'liq matn + manbalar.\n' +
     'Maqsad: talaba slayddan darsni o\'qib tushunadigan darajada TO\'LIQ matn.';
 
@@ -1100,9 +1106,9 @@ async function requestPresentationDeckFromAi(params: {
     { maxTokens: 14000, temperature: 0.28 },
   ];
 
-  for (const attempt of attempts) {
+  for (const [attemptIdx, attempt] of attempts.entries()) {
     try {
-      const raw = await openaiJson<Partial<PresentationDeck>>({
+      const requestOpts = {
         model: OPENAI_CHAT,
         system:
           `${SYS_MEDICAL} Return ONLY valid JSON: ` +
@@ -1122,9 +1128,13 @@ async function requestPresentationDeckFromAi(params: {
         user: userPrompt,
         maxTokens: attempt.maxTokens,
         temperature: attempt.temperature,
-        parse: (t) => parseJSONSafe<Partial<PresentationDeck>>(t),
+        parse: (t: string) => parseJSONSafe<Partial<PresentationDeck>>(t),
         bookContext,
-      });
+      };
+      const raw =
+        attemptIdx === 0
+          ? await openaiJsonStream<Partial<PresentationDeck>>({ ...requestOpts, onProgress: params.onProgress })
+          : await openaiJson<Partial<PresentationDeck>>(requestOpts);
       const rawCount = Array.isArray(raw?.slides) ? raw.slides.length : 0;
       if (rawCount > 0 && rawCount < 6) {
         console.warn('Presentation AI returned too few slides, retrying…', rawCount);
@@ -1318,12 +1328,15 @@ export const aiService = {
     description: string = '',
     language: AppLanguage = 'uz',
     subjectCode?: string,
+    /** Matn generatsiya bo'lgan sari chaqiriladi — foydalanuvchi darhol
+     * ko'rishi uchun (kutish tuyg'usini yo'qotadi, umumiy vaqt bir xil). */
+    onProgress?: (textSoFar: string) => void,
   ): Promise<LectureNote> {
     try {
       assertOpenAiApiKey();
       const outLang = languageName(language);
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
-      const content = await openaiText({
+      const content = await openaiTextStream({
         model: OPENAI_CHAT,
         system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. HAJM: qisqa konspekt EMAS — real 60-90 daqiqalik ` +
           'universitet ma\'ruzasi (taxminan 3500-6000 so\'z yoki undan ko\'p). ' +
@@ -1350,6 +1363,7 @@ export const aiService = {
         maxTokens: 16000,
         temperature: 0.4,
         bookContext,
+        onDelta: onProgress ?? (() => {}),
       });
 
       return {
@@ -1404,6 +1418,7 @@ export const aiService = {
     sourceFileName?: string;
     sourceText?: string;
     subjectCode?: string;
+    onProgress?: (rawTextSoFar: string) => void;
   }): Promise<PresentationDeck> {
     return requestPresentationDeckFromAi(params);
   },

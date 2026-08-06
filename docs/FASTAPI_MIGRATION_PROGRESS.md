@@ -808,6 +808,35 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — Foydalanuvchi: "Ma'ruza matni va Taqdimot bo'limida
+  stream qilib ChatGPT'dek yozib ketish yo'q" deb shikoyat qildi.
+  Tekshiruv natijasi — **transport (SSE) hech qachon buzilmagan edi**:
+  `education-ai/completion/stream/` endpointi orqali backend chunk'larni
+  ~15-30ms oralig'ida real ravishda yuboradi (to'g'ridan-to'g'ri Python
+  `requests` bilan production nginx (port 88) orqali o'lchab tasdiqlandi).
+  `git log` orqali topilgan `d1e014a "Revert lecture SSE nginx stream
+  buffering changes"` commiti (nginx buffering sozlamalarini bekor qilgan)
+  bilan bir vaqtda, **shu sessiyada avval qo'shilgan frontend streaming UI
+  ulanishi ham (git tarixidan tashqarida, saqlanmagan holda) yo'qolgan**
+  edi: `LectureNotes.tsx`dagi `streamingContent` state, `PresentationMaterials.tsx`dagi
+  `aiProgress` state, `aiService.ts`dagi `onProgress` parametrlari va
+  `openaiTextStream`/`openaiJsonStream` chaqiruvlari — barchasi yo'q bo'lib,
+  oddiy (stream'siz) `openaiText`/`openaiJson`ga qaytib qolgan edi. Bularning
+  barchasi qayta tiklandi. Qo'shimcha topilma: streaming ishlagan taqdirda
+  ham oldingi urinish "ChatGPT'dek" ko'rinmagan bo'lishi mumkin edi, chunki
+  `react-markdown` har bir SSE delta kelganda **butun to'plangan matnni
+  qaytadan parse qiladi** — matn uzunlashgani sari bu tobora sekinlashib,
+  "muzlab qolganday" taassurot beradi. Yechim: streaming paytida matn
+  oddiy `<pre className="whitespace-pre-wrap">` (Markdown emas) sifatida
+  ko'rsatiladi, generatsiya tugagach (`loading=false`) to'liq Markdown
+  formatlashga o'tiladi. `frontend` konteyneri qayta build qilindi va
+  real production (port 88)da brauzer orqali tasdiqlandi: Ma'ruza matni
+  bo'limida `<pre>` elementi 1.5 soniyada 2432→2724 belgigacha o'sdi
+  (real vaqtda o'sish tasdiqlandi); Taqdimot bo'limida "AI bilan
+  yaxshilash" bosilganda progress panelidagi oldindan ko'rish matni
+  har soniyada boshqa-boshqa jumlaga almashib turdi (slayd-slayd
+  o'sish tasdiqlandi) va generatsiya muvaffaqiyatli yakunlandi.
+
 - **2026-08-06** — Foydalanuvchi ikkinchi (haqiqiy, iMentor'ning o'zi
   yaratgan) taqdimot faylini yubordi — tekshirilganda: rasm 8 slaydan
   atigi 2 tasida bor edi va topilgan rasmlardan biri "Dorothea Lange"

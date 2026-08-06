@@ -58,6 +58,7 @@ export default function LectureNotes() {
   );
 
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
   const [lectureSession, setLectureSession] = useState<LectureNote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -116,6 +117,7 @@ export default function LectureNotes() {
     if (!topic.trim()) return;
     setLoading(true);
     setError(null);
+    setStreamingContent('');
     try {
       const contentLanguage = language;
       const data = await aiService.generateLectureNotes(
@@ -123,6 +125,7 @@ export default function LectureNotes() {
         description,
         contentLanguage,
         globalTopic?.subjectCode,
+        (textSoFar) => setStreamingContent(textSoFar),
       );
       setLectureSession(data);
       setEditedContent(data.content);
@@ -134,6 +137,7 @@ export default function LectureNotes() {
       setError(t('lecture.errorGenerate'));
     } finally {
       setLoading(false);
+      setStreamingContent('');
     }
   };
 
@@ -265,8 +269,26 @@ export default function LectureNotes() {
       </StaffTopicHeader>
 
       {error && <StaffErrorAlert message={error} />}
-      {loading && (
+      {loading && !streamingContent && (
         <StaffLoading label={t('lecture.generating')} hint={t('lecture.generatingHint')} />
+      )}
+
+      {loading && streamingContent && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+          <StaffPanel className="p-4 sm:p-5 flex items-center gap-2 text-sky-700">
+            <Loader2 size={16} className="animate-spin shrink-0" />
+            <p className="text-[13px] font-semibold">{t('lecture.generating')}</p>
+          </StaffPanel>
+          <StaffPanel className="p-6 sm:p-8 lg:p-10" large>
+            {/* Streaming paytida oddiy matn (Markdown EMAS) — har harfda butun
+                matnni qayta parse qilish sekinlashtiradi va "muzlab qolganday"
+                ko'rinadi. To'liq formatlash faqat generatsiya tugagach. */}
+            <pre className="whitespace-pre-wrap font-sans text-[15px] leading-relaxed text-black/80">
+              {streamingContent}
+              <span className="inline-block w-2 h-4 bg-sky-500 ml-0.5 animate-pulse align-middle" />
+            </pre>
+          </StaffPanel>
+        </motion.div>
       )}
 
       {lectureSession && !loading && (
