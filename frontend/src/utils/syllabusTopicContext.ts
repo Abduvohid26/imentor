@@ -1,11 +1,12 @@
 import type { SyllabusTopic } from '../services/aiService';
 import type { AppLanguage } from '../i18n/language';
 
-/** Fan + yo'nalish + mavzu — barcha modullar uchun barqaror kalit */
+/** Fan + mavzu konteksti — barcha modullar uchun barqaror kalit (variant ichki, UI da yo'q) */
 export interface SyllabusTopicContext extends SyllabusTopic {
   syllabusId: number;
   subjectName: string;
   subjectCode: string;
+  /** Ichki storage segmenti (PDF label); UI da ko'rsatilmaydi */
   variantLabel: string;
   /** Fan o'qitilish tili — platforma va AI shu tilga o'tadi */
   instructionLanguage: AppLanguage;
@@ -40,7 +41,7 @@ function normTopicSegment(value: string, max: number): string {
 export function topicNormForStorage(
   ctx: Pick<SyllabusTopicContext, 'syllabusId' | 'variantLabel' | 'id'>,
 ): string {
-  const variant = normTopicSegment(ctx.variantLabel, 48);
+  const variant = normTopicSegment(ctx.variantLabel, 48) || 'asosiy';
   const topicCode = normTopicSegment(ctx.id.replace(/\s+/g, ''), 16);
   if (!topicCode) {
     throw new Error('Mavzu kodi (M1, L2, …) topilmadi.');
@@ -110,8 +111,7 @@ export function isTopicContextComplete(
       topic.id?.trim() &&
       'syllabusId' in topic &&
       topic.syllabusId != null &&
-      topic.subjectName &&
-      topic.variantLabel,
+      topic.subjectName,
   );
 }
 
@@ -158,7 +158,8 @@ export function loadPersistedSelectedTopic(): SyllabusTopicContext | null {
     const raw = localStorage.getItem(SELECTED_TOPIC_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SyllabusTopicContext;
-    if (!parsed?.id || !parsed?.title || parsed.syllabusId == null || !parsed.variantLabel) return null;
+    if (!parsed?.id || !parsed?.title || parsed.syllabusId == null) return null;
+    if (!parsed.variantLabel) parsed.variantLabel = '';
     if (!parsed.instructionLanguage) {
       parsed.instructionLanguage = 'uz';
     }

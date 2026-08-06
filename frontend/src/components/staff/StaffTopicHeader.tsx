@@ -38,9 +38,6 @@ export default function StaffTopicHeader({ moduleLabel, topic, hint, actions, ch
                     {topic.subjectName}
                   </span>
                 )}
-                {topic.variantLabel && (
-                  <span className={staffChip}>{topic.variantLabel}</span>
-                )}
                 <span className={staffChipAccent}>{topic.id}</span>
                 <span className={staffChip}>{typeLabel}</span>
               </div>

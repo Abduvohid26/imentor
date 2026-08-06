@@ -65,7 +65,8 @@ export default function AdminTopicHandouts() {
   const topics = selectedVariant?.topics ?? [];
 
   useEffect(() => {
-    setVariantLabel(variants.length === 1 ? variants[0].label : '');
+    // Yo'nalish UI yo'q — teacher flow bilan bir xil: birinchi (yoki yagona) variant.
+    setVariantLabel(variants[0]?.label ?? '');
     setTopicCode('');
   }, [variants]);
   useEffect(() => {
@@ -173,11 +174,11 @@ export default function AdminTopicHandouts() {
         </button>
       </div>
 
-      {/* Qo'shish: fan → yo'nalish → mavzu → fayl */}
+      {/* Qo'shish: fan → mavzu → fayl (yo'nalish avtomatik) */}
       <div className="ios-glass rounded-2xl border border-white/70 p-5 space-y-3">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1">
-            <span className="text-[12px] font-semibold text-slate-600">{t('admin.subjectName')}</span>
+            <span className="text-[12px] font-semibold text-slate-600">1 · {t('admin.subjectName')}</span>
             <SearchableSelect
               value={fanId}
               onChange={setFanId}
@@ -188,27 +189,11 @@ export default function AdminTopicHandouts() {
             />
           </label>
           <label className="space-y-1">
-            <span className="text-[12px] font-semibold text-slate-600">{t('admin.previewVariant')}</span>
-            <select
-              value={variantLabel}
-              onChange={(e) => setVariantLabel(e.target.value)}
-              disabled={adding || !fanId || variants.length <= 1}
-              className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-[13px] disabled:bg-slate-50"
-            >
-              {variants.length !== 1 && <option value="">{t('admin.selectVariantPlaceholder')}</option>}
-              {variants.map((v) => (
-                <option key={v.label} value={v.label}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-[12px] font-semibold text-slate-600">{t('admin.topicLabel')}</span>
+            <span className="text-[12px] font-semibold text-slate-600">2 · {t('admin.topicLabel')}</span>
             <select
               value={topicCode}
               onChange={(e) => setTopicCode(e.target.value)}
-              disabled={adding || !variantLabel}
+              disabled={adding || !fanId || topics.length === 0}
               className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-[13px] disabled:bg-slate-50"
             >
               <option value="">{t('admin.selectTopicPlaceholder')}</option>

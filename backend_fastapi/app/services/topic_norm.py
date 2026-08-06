@@ -14,9 +14,10 @@ def canonical_topic_norm(raw: str, topic: str = "") -> str:
 
 
 def build_topic_norm(syllabus_id: int, variant_label: str, topic_code: str) -> str:
-    variant = (variant_label or "").strip().lower()[:48]
+    # Bo'sh variant = "asosiy" (yo'nalish UI olib tashlangan; teacher/admin bir xil kalit).
+    variant = (variant_label or "").strip().lower()[:48] or "asosiy"
     code = (topic_code or "").strip().lower().replace(" ", "")[:16]
-    if not variant or not code:
+    if not code:
         return ""
     return canonical_topic_norm(f"{int(syllabus_id)}::{variant}::{code}")
 
