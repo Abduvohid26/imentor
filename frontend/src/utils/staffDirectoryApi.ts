@@ -3,7 +3,7 @@ import { unwrapPagedResults, type PagedResponse } from '../api/pagedResults';
 import { getBackendAccessToken } from './backendAuth';
 import type { UserRole } from './localStaffAuth';
 
-/** Admin panel: bazadan (server) kelgan xodim yozuvi — localStorage emas. */
+/** Admin panel: FastAPI `/api/v1/admin/staff/` — localStorage emas. */
 export type StaffDirectoryEntry = {
   phone_digits: string;
   phone_display: string;
@@ -58,6 +58,7 @@ export type StaffUpsertInput = {
   job_title?: string;
 };
 
+/** FastAPI: POST `/api/v1/auth/admin-provision-staff/` — yaratish yoki tahrirlash. */
 export async function upsertStaffMember(
   input: StaffUpsertInput,
 ): Promise<{ username: string; role: string; created: boolean }> {
@@ -66,11 +67,16 @@ export async function upsertStaffMember(
   return httpJson(`${apiBaseUrl()}/v1/auth/admin-provision-staff/`, {
     method: 'POST',
     headers: authHeaders(token),
-    body: input,
+    body: {
+      ...input,
+      // Bo'sh parol = tahrirda o'zgarmasin (FastAPI default "").
+      password: input.password ?? '',
+    },
     timeoutMs: 20000,
   });
 }
 
+/** FastAPI: POST `/api/v1/auth/admin-deprovision-staff/` — 204. */
 export async function removeStaffMember(phoneDigits: string): Promise<void> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-admin-token');

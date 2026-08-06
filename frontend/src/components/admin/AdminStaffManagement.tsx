@@ -33,16 +33,14 @@ const emptyForm = {
   password: '',
   firstName: '',
   lastName: '',
-  faculty: '',
   department: '',
-  direction: '',
   role: 'hodim' as UserRole,
   participantKind: 'student' as 'student' | 'employee',
   studyGroup: '',
   jobTitle: '',
 };
 
-type SortKey = 'displayName' | 'phoneDisplay' | 'role' | 'faculty' | 'lastActiveAt';
+type SortKey = 'displayName' | 'phoneDisplay' | 'role' | 'department' | 'lastActiveAt';
 type SortDirection = 'asc' | 'desc';
 
 function loadErrorMessage(err: unknown, t: ReturnType<typeof useUiText>['t']): string {
@@ -89,13 +87,21 @@ export default function AdminStaffManagement() {
       .catch(() => setCatalog(null)); // katalog ixtiyoriy — bo'lmasa oddiy matn kiritish davom etadi
   }, []);
 
-  // form.department/direction/studyGroup — mavjud CharField'lar (nom matni sifatida
-  // saqlanadi, ID emas). Dropdown'lar shu matnni katalog nomlaridan tanlab to'ldiradi;
-  // katalogda mavjud bo'lmagan eski qiymatlar ham (moslik topilmasa) saqlanib qoladi.
+  // Guruhlar kafedra ostidagi barcha yo'nalishlardan yig'iladi (fakultet/yo'nalish UI yo'q).
   const selectedKafedra = catalog?.kafedralar.find((k) => k.name === form.department) || null;
-  const directionOptions = selectedKafedra?.directions ?? catalog?.unassigned_directions ?? [];
-  const selectedDirection = directionOptions.find((d) => d.name === form.direction) || null;
-  const groupOptions = selectedDirection?.groups ?? [];
+  const groupOptions = (() => {
+    const dirs = selectedKafedra?.directions ?? catalog?.unassigned_directions ?? [];
+    const seen = new Set<string>();
+    const out: { id: string | number; name: string }[] = [];
+    for (const d of dirs) {
+      for (const g of d.groups ?? []) {
+        if (!g?.name || seen.has(g.name)) continue;
+        seen.add(g.name);
+        out.push(g);
+      }
+    }
+    return out;
+  })();
 
   const startEdit = (u: StaffDirectoryEntry) => {
     setEditing(u);
@@ -104,9 +110,7 @@ export default function AdminStaffManagement() {
       password: '',
       firstName: u.first_name,
       lastName: u.last_name,
-      faculty: u.faculty,
       department: u.department,
-      direction: u.direction,
       role: (u.role || 'hodim') as UserRole,
       participantKind: (u.participant_kind || 'student') as 'student' | 'employee',
       studyGroup: u.study_group,
@@ -124,29 +128,16 @@ export default function AdminStaffManagement() {
         setError(t('admin.error.passwordMin'));
         return;
       }
-      if (form.role === 'startuper') {
-        if (form.participantKind === 'student' && !form.studyGroup.trim()) {
-          setError(t('admin.error.startuperGroupRequired'));
-          return;
-        }
-        if (form.participantKind === 'employee' && !form.jobTitle.trim()) {
-          setError(t('admin.error.startuperJobRequired'));
-          return;
-        }
-      }
       const phoneDigits = normalizePhoneDigits(form.phoneDisplay.trim());
       await upsertStaffMember({
         phone_digits: phoneDigits,
         password: form.password,
-        role: form.role,
+        role: 'hodim',
         first_name: form.firstName.trim(),
         last_name: form.lastName.trim(),
-        faculty: form.faculty.trim(),
+        faculty: '',
         department: form.department.trim(),
-        direction: form.direction.trim(),
-        participant_kind: form.role === 'startuper' ? form.participantKind : undefined,
-        study_group: form.role === 'startuper' && form.participantKind === 'student' ? form.studyGroup.trim() : undefined,
-        job_title: form.role === 'startuper' && form.participantKind === 'employee' ? form.jobTitle.trim() : undefined,
+        direction: '',
       });
       setForm(emptyForm);
       setShowAdd(false);
@@ -183,14 +174,14 @@ export default function AdminStaffManagement() {
         }
       }
       await upsertStaffMember({
-        phone_digits: normalizePhoneDigits(form.phoneDisplay.trim()),
-        password: form.password.trim().length >= 6 ? form.password : undefined,
+        phone_digits: editing.phone_digits,
+        password: form.password.trim().length >= 6 ? form.password.trim() : '',
         role: form.role,
         first_name: form.firstName.trim(),
         last_name: form.lastName.trim(),
-        faculty: form.faculty.trim(),
+        faculty: editing.faculty || '',
         department: form.department.trim(),
-        direction: form.direction.trim(),
+        direction: editing.direction || '',
         participant_kind: form.role === 'startuper' ? form.participantKind : undefined,
         study_group: form.role === 'startuper' && form.participantKind === 'student' ? form.studyGroup.trim() : undefined,
         job_title: form.role === 'startuper' && form.participantKind === 'employee' ? form.jobTitle.trim() : undefined,
@@ -203,6 +194,12 @@ export default function AdminStaffManagement() {
         setError(t('admin.error.forbidden'));
       } else if (err instanceof Error && err.message === 'no-admin-token') {
         setError(t('admin.error.noAdminToken'));
+      } else if (err instanceof HttpError && err.status === 400) {
+        const detail =
+          err.body && typeof err.body === 'object' && 'detail' in err.body
+            ? String((err.body as { detail: unknown }).detail)
+            : '';
+        setError(detail || t('admin.error.updateFailed'));
       } else {
         setError(t('admin.error.updateFailed'));
       }
@@ -223,6 +220,12 @@ export default function AdminStaffManagement() {
         setError(t('admin.error.cannotDeleteSelf'));
       } else if (err instanceof HttpError && err.status === 403) {
         setError(t('admin.error.lastAdminDelete'));
+      } else if (err instanceof HttpError && err.status === 409) {
+        const detail =
+          err.body && typeof err.body === 'object' && 'detail' in err.body
+            ? String((err.body as { detail: unknown }).detail)
+            : '';
+        setError(detail || t('admin.error.deleteFailed'));
       } else if (err instanceof Error && err.message === 'no-admin-token') {
         setError(t('admin.error.noAdminToken'));
       } else {
@@ -252,9 +255,9 @@ export default function AdminStaffManagement() {
           left = a.role;
           right = b.role;
           break;
-        case 'faculty':
-          left = (a.faculty || '').toLocaleLowerCase();
-          right = (b.faculty || '').toLocaleLowerCase();
+        case 'department':
+          left = (a.department || '').toLocaleLowerCase();
+          right = (b.department || '').toLocaleLowerCase();
           break;
         case 'lastActiveAt':
           left = a.last_login ? new Date(a.last_login).getTime() : 0;
@@ -335,7 +338,7 @@ export default function AdminStaffManagement() {
                 <th className="px-4 py-3">{sortLabel('displayName', t('admin.fullName'))}</th>
                 <th className="px-4 py-3">{sortLabel('phoneDisplay', t('admin.phone'))}</th>
                 <th className="px-4 py-3">{sortLabel('role', t('admin.role'))}</th>
-                <th className="px-4 py-3">{sortLabel('faculty', t('admin.faculty'))}</th>
+                <th className="px-4 py-3">{sortLabel('department', t('admin.department'))}</th>
                 <th className="px-4 py-3 whitespace-nowrap min-w-[140px]">{sortLabel('lastActiveAt', t('admin.lastActivity'))}</th>
                 <th className="px-4 py-3 w-28"></th>
               </tr>
@@ -359,7 +362,7 @@ export default function AdminStaffManagement() {
                         {roleLabel(language, u.role || 'hodim')}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-black/65 max-w-[180px] truncate">{u.faculty}</td>
+                    <td className="px-4 py-2.5 text-black/65 max-w-[180px] truncate">{u.department}</td>
                     <td className="px-4 py-2.5 text-black/55 tabular-nums text-[12px] whitespace-nowrap">
                       {formatLastActive(u.last_login)}
                     </td>
@@ -404,10 +407,12 @@ export default function AdminStaffManagement() {
               <label className="space-y-1 sm:col-span-2">
                 <span className="text-[11px] font-semibold text-black/50">{t('admin.phone')}</span>
                 <input
-                  className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
+                  className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px] disabled:bg-black/[0.03] disabled:text-black/70"
                   value={form.phoneDisplay}
                   onChange={(e) => setForm((f) => ({ ...f, phoneDisplay: e.target.value }))}
                   required
+                  disabled={Boolean(editing)}
+                  readOnly={Boolean(editing)}
                 />
               </label>
               <label className="space-y-1 sm:col-span-2">
@@ -442,21 +447,13 @@ export default function AdminStaffManagement() {
                 />
               </label>
               <label className="space-y-1 sm:col-span-2">
-                <span className="text-[11px] font-semibold text-black/50">{t('admin.faculty')}</span>
-                <input
-                  className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                  value={form.faculty}
-                  onChange={(e) => setForm((f) => ({ ...f, faculty: e.target.value }))}
-                />
-              </label>
-              <label className="space-y-1">
                 <span className="text-[11px] font-semibold text-black/50">{t('admin.department')}</span>
                 {catalog ? (
                   <select
                     className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
                     value={form.department}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, department: e.target.value, direction: '', studyGroup: '' }))
+                      setForm((f) => ({ ...f, department: e.target.value, studyGroup: '' }))
                     }
                   >
                     <option value="">{t('admin.notSelected')}</option>
@@ -475,43 +472,28 @@ export default function AdminStaffManagement() {
                   />
                 )}
               </label>
-              <label className="space-y-1">
-                <span className="text-[11px] font-semibold text-black/50">{t('admin.direction')}</span>
-                {catalog ? (
+              <label className="space-y-1 sm:col-span-2">
+                <span className="text-[11px] font-semibold text-black/50">{t('admin.role')}</span>
+                {editing ? (
                   <select
                     className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                    value={form.direction}
-                    onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value, studyGroup: '' }))}
+                    value={form.role}
+                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
                   >
-                    <option value="">{t('admin.notSelected')}</option>
-                    {form.direction && !directionOptions.some((d) => d.name === form.direction) && (
-                      <option value={form.direction}>{form.direction}</option>
-                    )}
-                    {directionOptions.map((d) => (
-                      <option key={d.id} value={d.name}>{d.name}</option>
-                    ))}
+                    <option value="hodim">{roleLabel(language, 'hodim')}</option>
+                    <option value="admin">{roleLabel(language, 'admin')}</option>
+                    <option value="startuper">{roleLabel(language, 'startuper')}</option>
                   </select>
                 ) : (
                   <input
-                    className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                    value={form.direction}
-                    onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value }))}
+                    className="w-full rounded-xl border border-black/10 bg-black/[0.03] px-3 py-2 text-[14px] text-black/80"
+                    value={roleLabel(language, 'hodim')}
+                    readOnly
+                    tabIndex={-1}
                   />
                 )}
               </label>
-              <label className="space-y-1 sm:col-span-2">
-                <span className="text-[11px] font-semibold text-black/50">{t('admin.role')}</span>
-                <select
-                  className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                  value={form.role}
-                  onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
-                >
-                  <option value="hodim">{roleLabel(language, 'hodim')}</option>
-                  <option value="admin">{roleLabel(language, 'admin')}</option>
-                  <option value="startuper">{roleLabel(language, 'startuper')}</option>
-                </select>
-              </label>
-              {form.role === 'startuper' && (
+              {editing && form.role === 'startuper' && (
                 <>
                   <label className="space-y-1 sm:col-span-2">
                     <span className="text-[11px] font-semibold text-black/50">{t('admin.participantKind')}</span>

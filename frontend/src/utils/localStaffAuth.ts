@@ -73,7 +73,7 @@ export function getDemoRoleLogins(): DemoRoleLogin[] {
     },
     {
       role: 'hodim',
-      title: 'Assistant professor',
+      title: "O'qituvchi",
       subtitle: "Ta'lim modullari",
       phone: readDemoEnv('VITE_DEMO_STAFF_PHONE') || TEST_STAFF_PHONE,
       password: readDemoEnv('VITE_DEMO_STAFF_PASSWORD'),

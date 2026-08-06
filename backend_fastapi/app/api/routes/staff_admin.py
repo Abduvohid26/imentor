@@ -84,25 +84,22 @@ def admin_provision_staff(
         role = "hodim"
     auth_service.set_user_role_group(db, user, role)
 
+    # Profil maydonlari har doim yangilanadi (bo'sh = tozalash).
     profile_fields = {
-        k: v.strip()
-        for k, v in {
-            "faculty": payload.faculty,
-            "department": payload.department,
-            "direction": payload.direction,
-            "participant_kind": payload.participant_kind,
-            "study_group": payload.study_group,
-            "job_title": payload.job_title,
-        }.items()
-        if v.strip()
+        "faculty": (payload.faculty or "").strip(),
+        "department": (payload.department or "").strip(),
+        "direction": (payload.direction or "").strip(),
+        "participant_kind": (payload.participant_kind or "").strip(),
+        "study_group": (payload.study_group or "").strip(),
+        "job_title": (payload.job_title or "").strip(),
     }
-    if profile_fields:
-        profile = db.execute(
-            select(StaffProfile).where(StaffProfile.owner_key == username)
-        ).scalar_one_or_none()
-        if profile is None:
-            profile = StaffProfile(owner_key=username, updated_at=dt.datetime.now(dt.timezone.utc))
-            db.add(profile)
+    profile = db.execute(
+        select(StaffProfile).where(StaffProfile.owner_key == username)
+    ).scalar_one_or_none()
+    if profile is None and any(profile_fields.values()):
+        profile = StaffProfile(owner_key=username, updated_at=dt.datetime.now(dt.timezone.utc))
+        db.add(profile)
+    if profile is not None:
         for field, value in profile_fields.items():
             setattr(profile, field, value)
         profile.updated_at = dt.datetime.now(dt.timezone.utc)
@@ -131,8 +128,17 @@ def admin_deprovision_staff(
         if profile.photo:
             storage.delete_file(profile.photo)
         db.delete(profile)
-    db.delete(user)
-    db.commit()
+    # Guruh bog'lanishlarini avval tozalash (ba'zi DB'larda CASCADE yo'q bo'lishi mumkin)
+    user.groups.clear()
+    try:
+        db.delete(user)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — IntegrityError va boshqa FK xatolari
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Bu xodimni o'chirib bo'lmadi — bog'liq ma'lumotlar mavjud.",
+        ) from exc
 
 
 @router.post("/auth/me/avatar/", response_model=AvatarResponse)

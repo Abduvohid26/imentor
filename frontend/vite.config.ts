@@ -24,6 +24,17 @@ export default defineConfig(({mode}) => {
       host: '0.0.0.0',
       port: 3000,
       strictPort: true,
+      // Mahalliy: /api → FastAPI (docker 8100 yoki VITE_API_PROXY_TARGET).
+      proxy: {
+        '/api': {
+          target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8100',
+          changeOrigin: true,
+        },
+        '/media': {
+          target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8100',
+          changeOrigin: true,
+        },
+      },
       // With --host 0.0.0.0, pin HMR to localhost so the browser ws:// URL matches dev machine access.
       hmr:
         process.env.DISABLE_HMR === 'true'

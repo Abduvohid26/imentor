@@ -318,7 +318,7 @@ export async function registerStaffWithBackend(input: {
   }
 }
 
-/** Admin xodim yaratganda/yangilaganda server bazasiga yozadi (JWT saqlanmaydi). */
+/** Admin xodim yaratganda/yangilaganda FastAPI bazasiga yozadi. */
 export async function provisionBackendStaffAccount(input: {
   phone_digits: string;
   password: string;
@@ -326,30 +326,20 @@ export async function provisionBackendStaffAccount(input: {
   first_name?: string;
   last_name?: string;
 }): Promise<void> {
-  const token = await getBackendAccessToken();
-  if (!token) throw new Error('no-admin-token');
-  await httpJson(`${apiBaseUrl()}/v1/auth/admin-provision-staff/`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: {
-      phone_digits: input.phone_digits,
-      password: input.password,
-      role: input.role,
-      first_name: input.first_name ?? '',
-      last_name: input.last_name ?? '',
-    },
+  const { upsertStaffMember } = await import('./staffDirectoryApi');
+  await upsertStaffMember({
+    phone_digits: input.phone_digits,
+    password: input.password,
+    role: input.role,
+    first_name: input.first_name ?? '',
+    last_name: input.last_name ?? '',
   });
 }
 
-/** Admin xodimni serverdan o‘chiradi. */
+/** Admin xodimni FastAPI orqali o‘chiradi. */
 export async function deprovisionBackendStaffAccount(phone_digits: string): Promise<void> {
-  const token = await getBackendAccessToken();
-  if (!token) throw new Error('no-admin-token');
-  await httpJson(`${apiBaseUrl()}/v1/auth/admin-deprovision-staff/`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: { phone_digits },
-  });
+  const { removeStaffMember } = await import('./staffDirectoryApi');
+  await removeStaffMember(phone_digits);
 }
 
 /** Profil paroli o‘zgarganda serverni yangilash. */
