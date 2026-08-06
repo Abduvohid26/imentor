@@ -58,7 +58,6 @@ export default function LectureNotes() {
   );
 
   const [loading, setLoading] = useState(false);
-  const [streamingContent, setStreamingContent] = useState('');
   const [lectureSession, setLectureSession] = useState<LectureNote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -67,6 +66,7 @@ export default function LectureNotes() {
   const [showHistory, setShowHistory] = useState(false);
   const [copied, setCopied] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  const setLectureContent = globalLecture.setContent;
 
   const topicFromSyllabus = Boolean(globalTopic && isTopicContextComplete(globalTopic));
   const staffTopic = topicFromSyllabus && globalTopic ? globalTopic : null;
@@ -86,25 +86,26 @@ export default function LectureNotes() {
     if (!topic.trim()) {
       setLectureSession(null);
       setEditedContent('');
-      globalLecture.setContent('');
+      setLectureContent('');
       return;
     }
+    let mounted = true;
     setLectureSession(null);
     setEditedContent('');
-    globalLecture.setContent('');
-    let mounted = true;
+    setLectureContent('');
     (async () => {
       const prepared = await loadLatestPreparedContent<LectureNote>('lecture', topic);
       if (!mounted) return;
       if (!prepared) return;
       setLectureSession(prepared);
       setEditedContent(prepared.content || '');
-      globalLecture.setContent(prepared.content || '');
+      setLectureContent(prepared.content || '');
     })();
     return () => {
       mounted = false;
     };
-  }, [topic, globalLecture]);
+    // globalLecture obyekti har renderda yangi — faqat topic/setContent.
+  }, [topic, setLectureContent]);
 
   useEffect(() => {
     refreshHistory();
@@ -115,23 +116,17 @@ export default function LectureNotes() {
     if (!topic.trim()) return;
     setLoading(true);
     setError(null);
-    setStreamingContent('');
     try {
-      // Foydalanuvchi UI'da tanlagan til ustuvor — mavzuning o'z
-      // instructionLanguage'idan qat'iy nazar (masalan syllabus fayli "uz"
-      // bo'lsa ham, foydalanuvchi "Русский"ni tanlagan bo'lsa shu tilda
-      // yaratiladi).
       const contentLanguage = language;
       const data = await aiService.generateLectureNotes(
         topic,
         description,
         contentLanguage,
         globalTopic?.subjectCode,
-        (textSoFar) => setStreamingContent(textSoFar),
       );
       setLectureSession(data);
       setEditedContent(data.content);
-      globalLecture.setContent(data.content);
+      setLectureContent(data.content);
       await savePreparedContent('lecture', topic, data);
       refreshHistory();
     } catch (err) {
@@ -139,7 +134,6 @@ export default function LectureNotes() {
       setError(t('lecture.errorGenerate'));
     } finally {
       setLoading(false);
-      setStreamingContent('');
     }
   };
 
@@ -271,22 +265,8 @@ export default function LectureNotes() {
       </StaffTopicHeader>
 
       {error && <StaffErrorAlert message={error} />}
-      {loading && !streamingContent && (
+      {loading && (
         <StaffLoading label={t('lecture.generating')} hint={t('lecture.generatingHint')} />
-      )}
-
-      {loading && streamingContent && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-          <StaffPanel className="p-4 sm:p-5 flex items-center gap-2 text-sky-700">
-            <Loader2 size={16} className="animate-spin shrink-0" />
-            <p className="text-[13px] font-semibold">{t('lecture.generating')}</p>
-          </StaffPanel>
-          <StaffPanel className="p-6 sm:p-8 lg:p-10" large>
-            <article className={staffProse}>
-              <Markdown>{streamingContent}</Markdown>
-            </article>
-          </StaffPanel>
-        </motion.div>
       )}
 
       {lectureSession && !loading && (

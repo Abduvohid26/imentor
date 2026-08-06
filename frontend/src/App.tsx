@@ -292,6 +292,11 @@ export default function App() {
     if (topicNorm) writeLectureForTopic(topicNorm, c);
   }, [selectedTopic]);
 
+  const lectureContextValue = useMemo(
+    () => ({ content: latestLectureContent, setContent: setLectureContent }),
+    [latestLectureContent, setLectureContent],
+  );
+
   useEffect(() => {
     const topicNorm = resolveTopicNorm(selectedTopic);
     setLatestLectureContent(topicNorm ? readLectureForTopic(topicNorm) : '');
@@ -604,7 +609,7 @@ export default function App() {
       ) : (
       <GlobalTopicContext.Provider value={selectedTopic}>
       <AppNavigationContext.Provider value={{ openSyllabus }}>
-      <GlobalLectureContext.Provider value={{ content: latestLectureContent, setContent: setLectureContent }}>
+      <GlobalLectureContext.Provider value={lectureContextValue}>
       {!user || wantsPublicLibrary ? (
         <PublicLandingPage
           language={language}

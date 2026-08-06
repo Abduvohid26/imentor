@@ -46,23 +46,6 @@ import StaffErrorAlert from './staff/StaffErrorAlert';
 import StaffPanel from './staff/StaffPanel';
 import { staffBtnGhost, staffBtnPrimary, staffBtnSecondary } from './staff/staffUi';
 
-/** Streaming paytida kelayotgan xom JSON matnini foydalanuvchiga chiroyli
- * ko'rsatish uchun — necha slayd tayyor bo'lganini va oxirgi o'qilishi
- * mumkin bo'lgan matn parchasini taxminiy ajratib oladi (JSON to'liq
- * bo'lmagani uchun qat'iy parse qilinmaydi, faqat vizual maqsadda). */
-function parsePresentationProgress(raw: string): { slideCount: number; preview: string } {
-  const titleMatches = raw.match(/"title"\s*:\s*"/g) || [];
-  const slideCount = Math.max(0, titleMatches.length - 1);
-  const textMatches = raw.match(/"([^"\\]|\\.){24,300}"/g) || [];
-  const last = textMatches[textMatches.length - 1] || '';
-  const preview = last
-    .replace(/^"|"$/g, '')
-    .replace(/\\n/g, ' ')
-    .replace(/\\"/g, '"')
-    .trim();
-  return { slideCount, preview };
-}
-
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -325,7 +308,6 @@ export default function PresentationMaterials() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiProgress, setAiProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -404,7 +386,6 @@ export default function PresentationMaterials() {
     if (!topicReady || !globalTopic) return;
     setAiLoading(true);
     setError(null);
-    setAiProgress('');
     try {
       let sourceText = '';
       const pdfItem = items.find((i) => i.kind === 'pdf');
@@ -429,7 +410,6 @@ export default function PresentationMaterials() {
         sourceFileName: items[0]?.file_name,
         sourceText,
         subjectCode: globalTopic.subjectCode,
-        onProgress: (textSoFar) => setAiProgress(textSoFar),
       });
       const file = await buildPresentationPptxFile(deck);
       if (!file.size) {
@@ -460,7 +440,6 @@ export default function PresentationMaterials() {
       setError(`${t('presentation.errorAi')} ${detail}`);
     } finally {
       setAiLoading(false);
-      setAiProgress('');
     }
   };
 
@@ -685,23 +664,6 @@ export default function PresentationMaterials() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-bold text-[#083047]">{t('presentation.aiGenerating')}</p>
-                {(() => {
-                  const { slideCount, preview } = parsePresentationProgress(aiProgress);
-                  return (
-                    <>
-                      {slideCount > 0 && (
-                        <p className="text-[12px] text-sky-700 font-semibold mt-0.5">
-                          {t('presentation.aiSlideCount', { count: String(slideCount) })}
-                        </p>
-                      )}
-                      {preview && (
-                        <p className="text-[12px] text-black/45 leading-relaxed mt-1 line-clamp-2 italic">
-                          "{preview}"
-                        </p>
-                      )}
-                    </>
-                  );
-                })()}
               </div>
               <Loader2 size={18} className="animate-spin text-sky-600 shrink-0" />
             </div>
