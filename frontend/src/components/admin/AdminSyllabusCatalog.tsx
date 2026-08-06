@@ -21,6 +21,7 @@ import {
   createAdminCourseSyllabus,
   deleteAdminCourseSyllabus,
   fetchAdminCourseSyllabuses,
+  fetchAdminSyllabusCatalogStats,
   updateAdminCourseSyllabus,
   type CourseSyllabusRow,
 } from '../../utils/syllabusApi';
@@ -106,17 +107,30 @@ export default function AdminSyllabusCatalog() {
   // Qaysi fan qatorida hujjat yuklash oynasi ochiq
   const [uploadTargetId, setUploadTargetId] = useState<number | null>(null);
 
-  // Kafedra bo'yicha guruhlash + qidiruv
+  // Kafedra bo'yicha guruhlash + qidiruv.
+  // expandedDepts bo'sh = barcha kafedralar yopiq (default).
   const [search, setSearch] = useState('');
-  const [collapsedDepts, setCollapsedDepts] = useState<Set<string>>(new Set());
+  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
+  const [departments, setDepartments] = useState<{ name: string; code: string }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setListError(null);
     try {
-      setList(await fetchAdminCourseSyllabuses());
+      const [syllabi, stats] = await Promise.all([
+        fetchAdminCourseSyllabuses(),
+        fetchAdminSyllabusCatalogStats().catch(() => null),
+      ]);
+      setList(syllabi);
+      setDepartments(
+        (stats?.by_department || []).map((d) => ({
+          name: d.name,
+          code: d.code || d.name,
+        })),
+      );
     } catch (err) {
       setList([]);
+      setDepartments([]);
       setListError(listLoadErrorMessage(err, t));
     } finally {
       setLoading(false);
@@ -375,7 +389,7 @@ export default function AdminSyllabusCatalog() {
   };
 
   const toggleDept = (key: string) => {
-    setCollapsedDepts((prev) => {
+    setExpandedDepts((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -393,16 +407,35 @@ export default function AdminSyllabusCatalog() {
 
   const groupedByDepartment = useMemo(() => {
     const map = new Map<string, { departmentName: string; rows: CourseSyllabusRow[] }>();
+
+    // Avval barcha kafedralar (sillabus yo'q bo'lsa ham).
+    for (const d of departments) {
+      const code = d.code || d.name;
+      if (!map.has(code)) map.set(code, { departmentName: d.name, rows: [] });
+    }
+
     for (const row of filteredList) {
       const key = row.department_code || '__none__';
       const name = row.department_name || t('admin.noDepartment');
       if (!map.has(key)) map.set(key, { departmentName: name, rows: [] });
       map.get(key)!.rows.push(row);
     }
-    return [...map.entries()]
+
+    let groups = [...map.entries()]
       .map(([code, v]) => ({ code, ...v }))
       .sort((a, b) => a.departmentName.localeCompare(b.departmentName));
-  }, [filteredList, t]);
+
+    const q = search.trim().toLowerCase();
+    if (q) {
+      groups = groups.filter(
+        (g) =>
+          g.departmentName.toLowerCase().includes(q) ||
+          g.code.toLowerCase().includes(q) ||
+          g.rows.length > 0,
+      );
+    }
+    return groups;
+  }, [departments, filteredList, search, t]);
 
   const busy = uploading;
 
@@ -585,7 +618,7 @@ export default function AdminSyllabusCatalog() {
         <div className="flex justify-center py-16">
           <Loader2 className="animate-spin text-indigo-600" size={40} />
         </div>
-      ) : list.length === 0 ? (
+      ) : departments.length === 0 && list.length === 0 ? (
         <div className="text-center py-12 space-y-3">
           <p className="text-slate-500">{t('admin.noSubjectsYet')}</p>
           <p className="text-[13px] text-slate-400">{t('admin.uploadSyllabus')}</p>
@@ -597,7 +630,7 @@ export default function AdminSyllabusCatalog() {
       ) : (
         <div className="space-y-4">
           {groupedByDepartment.map((dept) => {
-            const deptCollapsed = collapsedDepts.has(dept.code);
+            const deptExpanded = expandedDepts.has(dept.code);
             const deptTopicTotal = dept.rows.reduce(
               (sum, r) => sum + totalTopicCount(resolveSyllabusVariants(r)),
               0,
@@ -610,7 +643,7 @@ export default function AdminSyllabusCatalog() {
                   className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-100/80 border border-slate-200 text-left"
                 >
                   <span className="flex items-center gap-2 font-bold text-slate-800">
-                    {deptCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                    {deptExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     <Building2 size={16} className="text-slate-500" />
                     {dept.departmentName}
                   </span>
@@ -619,9 +652,14 @@ export default function AdminSyllabusCatalog() {
                   </span>
                 </button>
 
-                {!deptCollapsed && (
+                {deptExpanded && (
                   <ul className="space-y-3">
-                    {dept.rows.map((row) => {
+                    {dept.rows.length === 0 ? (
+                      <li className="px-4 py-3 text-[13px] text-slate-400 rounded-2xl border border-dashed border-slate-200 bg-white/60">
+                        {t('admin.noSubjectsYet')}
+                      </li>
+                    ) : (
+                      dept.rows.map((row) => {
                       const variants = resolveSyllabusVariants(row);
                       const open = expandedId === row.id;
                       const topicTotal = totalTopicCount(variants);
@@ -769,7 +807,8 @@ export default function AdminSyllabusCatalog() {
                 )}
                         </li>
                       );
-                    })}
+                    })
+                    )}
                   </ul>
                 )}
               </div>

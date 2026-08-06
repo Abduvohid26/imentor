@@ -111,7 +111,7 @@ def syllabus_catalog(
             topic_count = len(obj.topics)
         if topic_count > 0:
             out.append(_full_out(obj).model_dump())
-    return paginate(out, request, default_page_size=50, max_page_size=200)
+    return paginate(out, request, default_page_size=200, max_page_size=1000)
 
 
 @router.get("/course-syllabuses/my/", response_model=list[StaffCourseSelectionOut])
@@ -297,7 +297,7 @@ def admin_list_syllabuses(
         select(CourseSyllabus).order_by(CourseSyllabus.sort_order, CourseSyllabus.subject_name)
     ).scalars().all()
     out = [_full_out(r).model_dump() for r in rows]
-    return paginate(out, request, default_page_size=50, max_page_size=200)
+    return paginate(out, request, default_page_size=200, max_page_size=1000)
 
 
 @router.post(

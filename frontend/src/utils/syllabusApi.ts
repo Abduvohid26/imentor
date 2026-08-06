@@ -87,11 +87,12 @@ export async function fetchAdminSyllabusCatalogStats(): Promise<SyllabusCatalogS
 export async function fetchAdminCourseSyllabuses(): Promise<CourseSyllabusRow[]> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
+  // Fan katalogi to'liq kelishi kerak — default page_size=50 yetarli emas.
   const data = await httpJson<CourseSyllabusRow[] | PagedResponse<CourseSyllabusRow>>(
-    `${apiBaseUrl()}/v1/admin/course-syllabuses/`,
+    `${apiBaseUrl()}/v1/admin/course-syllabuses/?page_size=1000`,
     {
       headers: authHeaders(token),
-      timeoutMs: 30000,
+      timeoutMs: 60000,
     },
   );
   return unwrapPagedResults(data);
@@ -211,10 +212,10 @@ export async function fetchCourseSyllabusCatalog(): Promise<CourseSyllabusRow[]>
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
   const data = await httpJson<CourseSyllabusRow[] | PagedResponse<CourseSyllabusRow>>(
-    `${apiBaseUrl()}/v1/course-syllabuses/catalog/`,
+    `${apiBaseUrl()}/v1/course-syllabuses/catalog/?page_size=1000`,
     {
       headers: authHeaders(token),
-      timeoutMs: 30000,
+      timeoutMs: 60000,
     },
   );
   return unwrapPagedResults(data);
