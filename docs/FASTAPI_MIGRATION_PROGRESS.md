@@ -808,6 +808,43 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — Foydalanuvchi ikkinchi (haqiqiy, iMentor'ning o'zi
+  yaratgan) taqdimot faylini yubordi — tekshirilganda: rasm 8 slaydan
+  atigi 2 tasida bor edi va topilgan rasmlardan biri "Dorothea Lange"
+  (mashhur fotograf, tibbiyotga aloqasi yo'q) edi; barcha slaydlarda
+  "Manba: kitob nomi, sahifa-bet" degan **haqiqiy bo'lmagan, to'ldirilmagan
+  shablon matni** aynan shu holicha ko'rinardi. Uchta aniq sabab topildi
+  va tuzatildi:
+  1. **Soxta manba (eng jiddiy)** — sabab: `NO_EXTERNAL_REFS_TEXT_RULE_BOOK`
+     va taqdimot/ma'ruza promptlaridagi ko'rsatma "(Manba: kitob nomi,
+     sahifa-bet)" formatini **aynan shu matn bilan** namuna sifatida
+     ko'rsatardi — AI esa haqiqiy kitob nomi/sahifa nomalum bo'lgan
+     holatlarda buni SO'ZMA-SO'Z qaytarib yuborardi. Qiziqarli topilma:
+     JSON-asosidagi generatorlarda (`NO_EXTERNAL_REFS_JSON_RULE_BOOK`)
+     "TO'LDIRILMAGAN shablonni hech qachon qoldirmang" ogohlantirishi
+     ALLAQACHON bor edi, lekin matn-asosidagi (lecture/taqdimot)
+     variantida yo'q edi — shu nomutanosiblik aynan shu bugni keltirib
+     chiqargan. Barcha 3 joyda (`NO_EXTERNAL_REFS_TEXT_RULE_BOOK`,
+     taqdimot va ma'ruza promptlari) `<HAQIQIY kitob nomi>` kabi aniq
+     placeholder-emas ko'rsatmaga o'zgartirildi + "aniq bilmasangiz
+     qatorni butunlay tashlab keting" qoidasi qo'shildi. Xavfsizlik
+     to'ri sifatida ikki joyga qo'shimcha filtr qo'shildi: PPTX
+     generatorida `isPlaceholderManba()` (bunday matnni umuman
+     ko'rsatmaydi) va ma'ruza matnida `stripPlaceholderManba()` (bunday
+     qatorni yakuniy matndan olib tashlaydi).
+  2. **Rasm mavzuga mos emasligi** — `searchOpenImage()`ga
+     `IRRELEVANT_IMAGE_HINTS` filtri qo'shildi (portret/fotograf/rasm
+     asari/logotip kabi so'zlarni o'z ichiga olgan natijalarni chetlab
+     o'tadi), `gsrlimit` 3'dan 8'ga oshirildi (ko'proq nomzod), va
+     `translateTitlesForImageSearch()` prompti "har doim aniq tibbiy
+     atama, shaxs ismi yoki umumiy so'z EMAS" deb kuchaytirildi.
+  3. **Rasm topilish darajasi past** (8'dan 2 tasi) — yuqoridagi
+     `gsrlimit` oshirilishi va yaxshilangan inglizcha so'rovlar orqali
+     bilvosita yaxshilanishi kutilmoqda (avvalgi kunlik tuzatishda
+     tarjima умuman yo'q edi — bu safar tarjima SIFATI oshirildi).
+
+  Rebuild qilinib prod holatiga tekshirildi (health-check, bind-mount
+  holati toza), `tsc --noEmit` toza.
 - **2026-08-06** — Foydalanuvchi haqiqiy PPTX namuna yubordi (boshqa
   loyihadan — "AiShifokor" taqdimoti) va "rasmlar umuman chiqmayapti"
   dedi, dizaynni shunga o'xshash qilishni so'radi. Ikkita alohida ish

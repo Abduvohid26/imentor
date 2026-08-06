@@ -62,13 +62,30 @@ const NO_EXTERNAL_REFS_JSON_RULE_NOBOOK =
   'mazmunning o\'ziga tayanib yozing.';
 const NO_EXTERNAL_REFS_TEXT_RULE_BOOK =
   'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Tashqi (DOI/PubMed/veb) ' +
-  'havolalar QO\'SHMANG. Har bir asosiy bo\'limda kamida 1 marta "(Manba: kitob nomi, sahifa-bet)" ' +
-  'ko\'rsating. Oxirida qisqa "## Manbalar" bo\'limida FAQAT berilgan darsliklardan foydalanilgan ' +
-  'kitoblar ro\'yxatini yozing (tashqi adabiyot qo\'shmang).';
+  'havolalar QO\'SHMANG. Har bir asosiy bo\'limda kamida 1 marta "(Manba: <HAQIQIY kitob nomi>, ' +
+  '<HAQIQIY sahifa raqami>)" ko\'rsating — bu FORMAT namunasi, matndagi "<...>" belgilarini berilgan ' +
+  'darslik parchasidagi HAQIQIY kitob nomi va sahifa raqami bilan almashtiring. "kitob nomi", ' +
+  '"sahifa-bet" kabi TO\'LDIRILMAGAN/umumiy so\'zlarni hech qachon o\'zgarishsiz qoldirmang — agar ' +
+  'aniq kitob nomi/sahifa nomalum bo\'lsa, manba qatorini butunlay tashlab keting. Oxirida qisqa ' +
+  '"## Manbalar" bo\'limida FAQAT berilgan darsliklardan foydalanilgan kitoblar ro\'yxatini yozing ' +
+  '(tashqi adabiyot qo\'shmang).';
 const NO_EXTERNAL_REFS_TEXT_RULE_NOBOOK =
   'MAJBURIY: oxirida "## Foydalanilgan adabiyotlar" / "## Manbalar" bo\'limini YOZMANG, tashqi ' +
   '(DOI/PubMed/veb) havolalar yoki o\'ylab topilgan manbalar qo\'shmang — hech qanday link/manba ' +
   'ko\'rsatmasdan, faqat mazmunning o\'ziga tayanib yozing.';
+
+/** Xavfsizlik to'ri: AI ba'zan ko'rsatma ichidagi TO'LDIRILMAGAN namuna
+ * matnini ("kitob nomi, sahifa-bet") o'zgarishsiz qaytarib yuboradi — bu
+ * haqiqiy manba emas. Promptga qo'shilgan ogohlantirish asosiy himoya,
+ * lekin shu funksiya oxirgi chiziq sifatida shunday qatorlarni matndan
+ * butunlay olib tashlaydi. */
+function stripPlaceholderManba(text: string): string {
+  if (!text) return text;
+  return text
+    .split('\n')
+    .filter((line) => !/\(?Manba:\s*kitob\s*nomi/i.test(line))
+    .join('\n');
+}
 
 function jsonReferencesRule(hasBookContext: boolean): string {
   return hasBookContext ? NO_EXTERNAL_REFS_JSON_RULE_BOOK : NO_EXTERNAL_REFS_JSON_RULE_NOBOOK;
@@ -380,13 +397,20 @@ async function fetchImageAsDataUrl(url: string, timeoutMs: number = 14000): Prom
  * kerak emas, CORS `origin=*` bilan ochiq. Taqdimot slaydlariga real
  * rasm biriktirish uchun ishlatiladi (AI o'ylab topgan emas — haqiqiy
  * ochiq manbadan). */
+/** Sarlavha/tavsifda tibbiyotga aloqasi yo'qligini ko'rsatuvchi so'zlar —
+ * fotograf/rassom portretlari, san'at asarlari va h.k. tasodifan mos
+ * kelib qolishining oldini olish uchun (masalan mavzu bilan bog'liq
+ * bo'lmagan mashhur fotograf nomlari). */
+const IRRELEVANT_IMAGE_HINTS =
+  /portrait|photographer|painting|artwork|album cover|logo|flag of|coat of arms|stamp|banknote|coin\b/i;
+
 async function searchOpenImage(query: string): Promise<{ url: string; credit: string } | null> {
   const q = query.replace(/\s+/g, ' ').trim().slice(0, 120);
   if (!q) return null;
   try {
     const searchUrl =
       'https://commons.wikimedia.org/w/api.php?action=query&generator=search' +
-      `&gsrsearch=${encodeURIComponent(q)}&gsrnamespace=6&gsrlimit=3` +
+      `&gsrsearch=${encodeURIComponent(q)}&gsrnamespace=6&gsrlimit=8` +
       '&prop=imageinfo&iiprop=url|extmetadata|mime&iiurlwidth=900&format=json&origin=*';
     const res = await fetch(searchUrl, { signal: AbortSignal.timeout(9000) });
     if (!res.ok) return null;
@@ -395,11 +419,17 @@ async function searchOpenImage(query: string): Promise<{ url: string; credit: st
         pages?: Record<
           string,
           {
+            title?: string;
             imageinfo?: {
               thumburl?: string;
               url?: string;
               mime?: string;
-              extmetadata?: { Artist?: { value?: string }; LicenseShortName?: { value?: string } };
+              extmetadata?: {
+                Artist?: { value?: string };
+                LicenseShortName?: { value?: string };
+                Categories?: { value?: string };
+                ObjectName?: { value?: string };
+              };
             }[];
           }
         >;
@@ -413,6 +443,10 @@ async function searchOpenImage(query: string): Promise<{ url: string; credit: st
       if (!mime.startsWith('image/') || mime.includes('svg')) continue;
       const imgUrl = info.thumburl || info.url;
       if (!imgUrl) continue;
+      const haystack = `${page.title || ''} ${info.extmetadata?.ObjectName?.value || ''} ${
+        info.extmetadata?.Categories?.value || ''
+      }`;
+      if (IRRELEVANT_IMAGE_HINTS.test(haystack)) continue;
       const license = info.extmetadata?.LicenseShortName?.value || 'Wikimedia Commons';
       const artist = (info.extmetadata?.Artist?.value || '').replace(/<[^>]+>/g, '').trim();
       const credit = artist ? `${artist} · ${license} (Wikimedia Commons)` : `${license} (Wikimedia Commons)`;
@@ -441,9 +475,11 @@ async function translateTitlesForImageSearch(
       model: OPENAI_FAST,
       system:
         'For each numbered medical topic title, output a short (2-5 word) ENGLISH search ' +
-        'query suitable for finding a real photo/diagram on Wikimedia Commons (e.g. anatomy, ' +
-        'disease, procedure name in English medical terminology). Return ONLY JSON: ' +
-        '{"queries":["...", ...]} — SAME COUNT and SAME ORDER as input, no commentary.',
+        'query for Wikimedia Commons that will find a RELEVANT clinical/anatomical image — ' +
+        'a specific medical term (organ, disease, pathology, procedure, anatomy diagram) using ' +
+        'standard English medical terminology. NEVER output a generic word alone, a person\'s ' +
+        'name, or a non-medical term — always ground it in the medical subject. Return ONLY ' +
+        'JSON: {"queries":["...", ...]} — SAME COUNT and SAME ORDER as input, no commentary.',
       user: `Subject: ${subjectName}\nTitles:\n${titles.map((t, i) => `${i + 1}. ${t}`).join('\n')}`,
       maxTokens: 800,
       temperature: 0.2,
@@ -1041,7 +1077,10 @@ async function requestPresentationDeckFromAi(params: {
           outLang + '. ' +
           (bookContext
             ? 'Faqat berilgan darslik parchalariga tayaning; har kontent-slayd notes oxirida ' +
-              '"(Manba: kitob nomi, sahifa-bet)". Tashqi DOI/PubMed qo\'shmang.'
+              '"(Manba: <HAQIQIY kitob nomi>, <HAQIQIY sahifa raqami>)" ko\'rsating — "<...>" ' +
+              'belgilarini haqiqiy nom/raqam bilan almashtiring, "kitob nomi"/"sahifa-bet" so\'zlarini ' +
+              'o\'zgarishsiz qoldirmang; aniq bilmasangiz manba qatorini butunlay tashlab keting. ' +
+              'Tashqi DOI/PubMed qo\'shmang.'
             : 'Tashqi havola / o\'ylab topilgan manba qo\'shmang.'),
         user: userPrompt,
         maxTokens: attempt.maxTokens,
@@ -1252,7 +1291,9 @@ export const aiService = {
           (bookContext
             ? 'Berilgan darslik parchalaridagi BARCHA tegishli tafsilotlardan to\'liq foydalaning — ' +
               'qisqartirmasdan, kengaytirib tushuntiring. HAR BIR ## bo\'limda kamida bitta ' +
-              '"(Manba: kitob nomi, sahifa-bet)" ko\'rsating.'
+              '"(Manba: <HAQIQIY kitob nomi>, <HAQIQIY sahifa raqami>)" ko\'rsating — "<...>" ' +
+              'belgilarini haqiqiy nom/raqam bilan almashtiring, "kitob nomi"/"sahifa-bet" so\'zlarini ' +
+              'o\'zgarishsiz qoldirmang; aniq bilmasangiz manba qatorini butunlay tashlab keting.'
             : 'Tashqi havola yoki o\'ylab topilgan manba qo\'shmang.'
           ) + ` ${textReferencesRule(Boolean(bookContext))} Til: ${outLang}.`,
         user:
@@ -1270,7 +1311,7 @@ export const aiService = {
 
       return {
         topic: topic,
-        content: content || ''
+        content: stripPlaceholderManba(content || '')
       };
     } catch (error) {
       console.error("Lecture Note generation failed:", error);
