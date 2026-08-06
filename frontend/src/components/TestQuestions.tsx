@@ -22,9 +22,9 @@ import { getCurrentLocalUser, normalizeUserRole } from '../utils/localStaffAuth'
 import { getBackendAccessToken, loginStudentWithOnlineTest } from '../utils/backendAuth';
 import { appendTestToLibrary } from '../utils/staffContentLibrary';
 import {
-  listPreparedForTopic,
+  listPreparedForTopicSynced,
   loadLatestPreparedContent,
-  loadPreparedById,
+  loadPreparedByIdSynced,
   savePreparedContent,
   normTopicKey,
   type PreparedContentSummary,
@@ -196,7 +196,7 @@ export default function TestQuestions() {
       setVersions([]);
       return;
     }
-    setVersions(listPreparedForTopic('test', lookup));
+    void listPreparedForTopicSynced('test', lookup).then(setVersions);
   }, [topic, globalTopic]);
 
   useEffect(() => {
@@ -428,7 +428,9 @@ export default function TestQuestions() {
     (async () => {
       const prepared = await loadLatestPreparedContent<TestSession>('test', lookup);
       if (!mounted) return;
-      refreshVersions();
+      const list = await listPreparedForTopicSynced('test', lookup);
+      if (!mounted) return;
+      setVersions(list);
       if (!prepared) {
         setTestSession(null);
         setTeacherSessionId('');
@@ -436,7 +438,6 @@ export default function TestQuestions() {
         setActiveVersionId(null);
         return;
       }
-      const list = listPreparedForTopic('test', lookup);
       setTestSession(prepared);
       const reused = tryReuseTeacherSessionId(prepared);
       void setupTeacherLiveSession(prepared, reused ?? undefined);
@@ -542,14 +543,16 @@ export default function TestQuestions() {
   }, [teacherSessionId]);
 
   const handleSelectVersion = (id: string) => {
-    const data = loadPreparedById<TestSession>('test', id);
-    if (!data) return;
-    setTestSession(data);
-    const reused = tryReuseTeacherSessionId(data);
-    void setupTeacherLiveSession(data, reused ?? undefined);
-    setActiveVersionId(id);
-    setShowAnalysis(false);
-    setError(null);
+    void (async () => {
+      const data = await loadPreparedByIdSynced<TestSession>('test', id);
+      if (!data) return;
+      setTestSession(data);
+      const reused = tryReuseTeacherSessionId(data);
+      void setupTeacherLiveSession(data, reused ?? undefined);
+      setActiveVersionId(id);
+      setShowAnalysis(false);
+      setError(null);
+    })();
   };
 
   const handleGenerate = async (e?: React.FormEvent) => {
@@ -574,8 +577,8 @@ export default function TestQuestions() {
       const contentLanguage = globalTopic.instructionLanguage ?? language;
       const data = await aiService.generateTests(topic, count, contentLanguage, globalTopic.subjectCode);
       await savePreparedContent('test', topic, data, buildPreparedContentMeta(globalTopic));
-      refreshVersions();
-      const list = listPreparedForTopic('test', globalTopic ?? topic);
+      const list = await listPreparedForTopicSynced('test', globalTopic ?? topic);
+      setVersions(list);
       const sid = await setupTeacherLiveSession(data);
       setTestSession(data);
       setActiveVersionId(list[0]?.id ?? null);

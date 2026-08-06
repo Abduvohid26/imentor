@@ -7,19 +7,24 @@ import type { SyllabusTopicContext } from './syllabusTopicContext';
 
 export type PreparedContentKind = 'lecture' | 'presentation' | 'case' | 'test';
 
-interface PreparedContentRecord {
+export type PreparedContentMeta = {
+  authorDisplayName?: string;
+  subjectName?: string;
+  subjectCode?: string;
+  variantLabel?: string;
+  topicCode?: string;
+  topicNorm?: string;
+};
+
+export type PreparedContentSummary = {
   id: string;
-  ownerKey: string;
-  kind: PreparedContentKind;
   topic: string;
-  topicNorm: string;
-  payload: unknown;
+  topicNorm?: string;
   createdAt: number;
   source: 'local' | 'cloud';
-}
+};
 
-const LOCAL_KEY_PREFIX = 'salomatlik-prepared-content-v1';
-const MAX_LOCAL_PER_KIND = 80;
+const CLOUD_ID_PREFIX = 'cloud_';
 
 function ownerKey(): string | null {
   const u = getCurrentLocalUser();
@@ -35,231 +40,187 @@ function normTopic(topic: string): string {
   return normTopicKey(topic);
 }
 
-function localKey(owner: string, kind: PreparedContentKind): string {
-  return `${LOCAL_KEY_PREFIX}:${owner}:${kind}`;
-}
-
 function apiBaseUrl(): string {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
   return env?.VITE_API_BASE_URL?.trim() || '/api';
 }
 
-function readLocal(owner: string, kind: PreparedContentKind): PreparedContentRecord[] {
+async function requireAuthToken(): Promise<string> {
+  const token = await getBackendAccessToken();
+  if (!token) {
+    throw new Error('Tizimga kiring — kontent FastAPI bazasiga saqlanadi.');
+  }
+  return token;
+}
+
+/** data:URL rasmlar JSON ni shishiradi — PPTXda allaqachon bor, bazaga yozilmaydi. */
+function stripHeavyMediaFromPayload(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  const deck = payload as { slides?: unknown };
+  if (!Array.isArray(deck.slides)) return payload;
+  return {
+    ...deck,
+    slides: deck.slides.map((slide) => {
+      if (!slide || typeof slide !== 'object') return slide;
+      const s = slide as Record<string, unknown>;
+      const imageUrl = typeof s.imageUrl === 'string' ? s.imageUrl : '';
+      if (!imageUrl.startsWith('data:')) return slide;
+      const { imageUrl: _drop, ...rest } = s;
+      return rest;
+    }),
+  };
+}
+
+function cloudId(numericId: number | string): string {
+  return `${CLOUD_ID_PREFIX}${numericId}`;
+}
+
+function parseCloudNumericId(id: string): string | null {
+  if (id.startsWith(CLOUD_ID_PREFIX)) return id.slice(CLOUD_ID_PREFIX.length);
+  if (/^\d+$/.test(id)) return id;
+  return null;
+}
+
+type CloudRow = {
+  id: number;
+  topic: string;
+  topic_norm?: string;
+  payload?: unknown;
+  created_at: string;
+};
+
+/** Asosiy saqlash — FastAPI `/v1/prepared-content/` (Postgres). localStorage ishlatilmaydi. */
+export async function savePreparedContent(
+  kind: PreparedContentKind,
+  topic: string,
+  payload: unknown,
+  meta?: PreparedContentMeta,
+): Promise<void> {
+  const owner = ownerKey();
+  if (!owner) {
+    throw new Error('Tizimga kiring — kontent FastAPI bazasiga saqlanadi.');
+  }
+  const token = await requireAuthToken();
+  const topicNorm = meta?.topicNorm?.trim() || normTopic(topic);
+  const lightPayload = stripHeavyMediaFromPayload(payload);
+
+  await httpJson(`${apiBaseUrl()}/v1/prepared-content/`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: {
+      owner_key: owner,
+      kind,
+      topic: topic.trim() || 'Nomsiz',
+      topic_norm: topicNorm,
+      author_display_name: meta?.authorDisplayName?.trim() || '',
+      subject_name: meta?.subjectName?.trim() || '',
+      subject_code: meta?.subjectCode?.trim() || '',
+      variant_label: meta?.variantLabel?.trim() || '',
+      topic_code: meta?.topicCode?.trim() || '',
+      payload: lightPayload,
+    },
+  });
+}
+
+/** @deprecated Faqat sync ro'yxatdan foydalaning — localStorage o'chirilgan. */
+export function listPreparedForTopic(
+  _kind: PreparedContentKind,
+  _topic: SyllabusTopic | SyllabusTopicContext | string,
+): PreparedContentSummary[] {
+  return [];
+}
+
+/** @deprecated localStorage o'rniga `listAllPreparedForKindSynced` ishlating. */
+export function listAllPreparedForKind(_kind: PreparedContentKind): PreparedContentSummary[] {
+  return [];
+}
+
+/** FastAPI `/v1/prepared-content/mine/` — foydalanuvchi tarixi bazadan. */
+export async function listAllPreparedForKindSynced(
+  kind: PreparedContentKind,
+): Promise<PreparedContentSummary[]> {
   try {
-    const raw = localStorage.getItem(localKey(owner, kind));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as PreparedContentRecord[];
-    return Array.isArray(parsed) ? parsed : [];
+    const token = await getBackendAccessToken();
+    if (!token) return [];
+    const data = await httpJson<{
+      results?: { id: number; topic: string; topic_norm?: string; created_at: string }[];
+    }>(`${apiBaseUrl()}/v1/prepared-content/mine/?kind=${encodeURIComponent(kind)}&page_size=200`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return (data.results || [])
+      .map((r) => ({
+        id: cloudId(r.id),
+        topic: r.topic,
+        topicNorm: r.topic_norm || normTopic(r.topic),
+        createdAt: new Date(r.created_at).getTime(),
+        source: 'cloud' as const,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);
   } catch {
     return [];
   }
 }
 
-function writeLocal(owner: string, kind: PreparedContentKind, rows: PreparedContentRecord[]): void {
-  localStorage.setItem(localKey(owner, kind), JSON.stringify(rows.slice(0, MAX_LOCAL_PER_KIND)));
-}
-
-export type PreparedContentMeta = {
-  authorDisplayName?: string;
-  subjectName?: string;
-  subjectCode?: string;
-  variantLabel?: string;
-  topicCode?: string;
-  topicNorm?: string;
-};
-
-export async function savePreparedContent(
-  kind: PreparedContentKind,
-  topic: string,
-  payload: unknown,
-  meta?: PreparedContentMeta
-): Promise<void> {
-  const owner = ownerKey();
-  if (!owner) return;
-  const now = Date.now();
-  const topicNorm = meta?.topicNorm?.trim() || normTopic(topic);
-  const rec: PreparedContentRecord = {
-    id: `prep_${now}_${Math.random().toString(36).slice(2, 8)}`,
-    ownerKey: owner,
-    kind,
-    topic: topic.trim() || 'Nomsiz',
-    topicNorm,
-    payload,
-    createdAt: now,
-    source: 'local',
-  };
-  const localRows = [rec, ...readLocal(owner, kind)];
-  writeLocal(owner, kind, localRows);
-
-  try {
-    const token = await getBackendAccessToken();
-    if (!token) return;
-    await httpJson(`${apiBaseUrl()}/v1/prepared-content/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: {
-        owner_key: rec.ownerKey,
-        kind: rec.kind,
-        topic: rec.topic,
-        topic_norm: rec.topicNorm,
-        author_display_name: meta?.authorDisplayName?.trim() || '',
-        subject_name: meta?.subjectName?.trim() || '',
-        subject_code: meta?.subjectCode?.trim() || '',
-        variant_label: meta?.variantLabel?.trim() || '',
-        topic_code: meta?.topicCode?.trim() || '',
-        payload: rec.payload,
-      },
-    });
-  } catch {
-    /* cloud is best-effort; local already saved */
-  }
-}
-
-export type PreparedContentSummary = {
-  id: string;
-  topic: string;
-  createdAt: number;
-  source: 'local' | 'cloud';
-};
-
-export function listPreparedForTopic(
+/** Mavzu bo'yicha FastAPI tarix (mine + filter). */
+export async function listPreparedForTopicSynced(
   kind: PreparedContentKind,
   topic: SyllabusTopic | SyllabusTopicContext | string,
-): PreparedContentSummary[] {
-  const owner = ownerKey();
-  if (!owner) return [];
+): Promise<PreparedContentSummary[]> {
   const wanted = new Set(
     (typeof topic === 'string' ? [normTopic(topic)] : topicNormLookupKeys(topic)).map((k) =>
       k.toLowerCase(),
     ),
   );
   if (!wanted.size) return [];
-  return readLocal(owner, kind)
-    .filter((r) => wanted.has(r.topicNorm.toLowerCase()))
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .map((r) => ({
-      id: r.id,
-      topic: r.topic,
-      createdAt: r.createdAt,
-      source: r.source,
-    }));
+  const all = await listAllPreparedForKindSynced(kind);
+  return all.filter((r) => {
+    const keys = [r.topicNorm || '', normTopic(r.topic)].map((k) => k.toLowerCase()).filter(Boolean);
+    return keys.some((k) => wanted.has(k) || [...wanted].some((w) => k.includes(w) || w.includes(k)));
+  });
 }
 
-/** Barcha mavzular bo‘yicha saqlangan versiyalar (ma'ruza tarixi va h.k.) —
- * faqat shu brauzer/qurilmadagi lokal nusxa (server bilan bog'lanmasdan). */
-export function listAllPreparedForKind(kind: PreparedContentKind): PreparedContentSummary[] {
-  const owner = ownerKey();
-  if (!owner) return [];
-  return readLocal(owner, kind)
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .map((r) => ({
-      id: r.id,
-      topic: r.topic,
-      createdAt: r.createdAt,
-      source: r.source,
-    }));
+/** @deprecated local id endi yo'q — `loadPreparedByIdSynced` ishlating. */
+export function loadPreparedById<T>(_kind: PreparedContentKind, _id: string): T | null {
+  return null;
 }
 
-const CLOUD_ID_PREFIX = 'cloud_';
-
-/** Server'dagi ("Baza") barcha yozuvlar + shu qurilmadagi lokal nusxalardan
- * server'da yo'qlari — brauzer/qurilma almashtirilsa yoki localStorage
- * tozalansa ham eski ma'ruzalar (va h.k.) yo'qolmasligi uchun. */
-export async function listAllPreparedForKindSynced(
-  kind: PreparedContentKind,
-): Promise<PreparedContentSummary[]> {
-  const owner = ownerKey();
-  if (!owner) return [];
-  const local = readLocal(owner, kind);
-
-  let cloud: PreparedContentSummary[] = [];
-  try {
-    const token = await getBackendAccessToken();
-    if (token) {
-      const data = await httpJson<{
-        results?: { id: number; topic: string; created_at: string }[];
-      }>(`${apiBaseUrl()}/v1/prepared-content/mine/?kind=${encodeURIComponent(kind)}&page_size=200`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      cloud = (data.results || []).map((r) => ({
-        id: `${CLOUD_ID_PREFIX}${r.id}`,
-        topic: r.topic,
-        createdAt: new Date(r.created_at).getTime(),
-        source: 'cloud' as const,
-      }));
-    }
-  } catch {
-    /* server ro'yxati ochilmasa ham lokal nusxa ko'rsatiladi */
-  }
-
-  const cloudDedupeKeys = new Set(
-    cloud.map((c) => `${normTopic(c.topic)}|${Math.floor(c.createdAt / 60000)}`),
-  );
-  const localOnly = local
-    .filter((r) => !cloudDedupeKeys.has(`${normTopic(r.topic)}|${Math.floor(r.createdAt / 60000)}`))
-    .map((r) => ({ id: r.id, topic: r.topic, createdAt: r.createdAt, source: r.source }));
-
-  return [...cloud, ...localOnly].sort((a, b) => b.createdAt - a.createdAt);
-}
-
-export function loadPreparedById<T>(kind: PreparedContentKind, id: string): T | null {
-  const owner = ownerKey();
-  if (!owner) return null;
-  const row = readLocal(owner, kind).find((r) => r.id === id);
-  return row ? (row.payload as T) : null;
-}
-
-/** `loadPreparedById`ning server-fikrli varianti — `cloud_`-prefiksli id'ni
- * server'dan to'liq payload bilan yuklaydi, aks holda lokal nusxadan oladi. */
+/** FastAPI `/v1/prepared-content/{id}/` — to'liq payload. */
 export async function loadPreparedByIdSynced<T>(
   kind: PreparedContentKind,
   id: string,
 ): Promise<T | null> {
-  if (id.startsWith(CLOUD_ID_PREFIX)) {
-    const numericId = id.slice(CLOUD_ID_PREFIX.length);
-    try {
-      const token = await getBackendAccessToken();
-      if (!token) return null;
-      const data = await httpJson<{ payload?: T }>(`${apiBaseUrl()}/v1/prepared-content/${numericId}/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return data.payload ?? null;
-    } catch {
-      return null;
-    }
+  const numericId = parseCloudNumericId(id);
+  if (!numericId) return null;
+  try {
+    const token = await getBackendAccessToken();
+    if (!token) return null;
+    const data = await httpJson<{ payload?: T; kind?: string }>(
+      `${apiBaseUrl()}/v1/prepared-content/${numericId}/`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (data.kind && data.kind !== kind) return null;
+    return data.payload ?? null;
+  } catch {
+    return null;
   }
-  return loadPreparedById<T>(kind, id);
 }
 
 export async function deletePreparedContent(kind: PreparedContentKind, id: string): Promise<void> {
-  const owner = ownerKey();
-  if (!owner) return;
-  const rows = readLocal(owner, kind).filter((r) => r.id !== id);
-  writeLocal(owner, kind, rows);
-
-  const cloudId = /^\d+$/.test(id) ? id : null;
-  if (cloudId) {
-    try {
-      const token = await getBackendAccessToken();
-      if (!token) return;
-      await httpJson(`${apiBaseUrl()}/v1/prepared-content/${cloudId}/`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    } catch {
-      /* local already removed */
-    }
-  }
+  const numericId = parseCloudNumericId(id);
+  if (!numericId) return;
+  const token = await requireAuthToken();
+  await httpJson(`${apiBaseUrl()}/v1/prepared-content/${numericId}/`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  void kind;
 }
 
+/** FastAPI latest by topic_norm — birinchi mos kelgan kalit. */
 export async function loadLatestPreparedContent<T>(
   kind: PreparedContentKind,
   topic: SyllabusTopic | SyllabusTopicContext | string,
 ): Promise<T | null> {
-  const owner = ownerKey();
-  if (!owner) return null;
   const lookupKeys = (
     typeof topic === 'string' ? [normTopic(topic)] : topicNormLookupKeys(topic)
   )
@@ -267,42 +228,21 @@ export async function loadLatestPreparedContent<T>(
     .filter(Boolean);
   if (!lookupKeys.length) return null;
 
-  const localMatch = readLocal(owner, kind)
-    .filter((r) => lookupKeys.includes(r.topicNorm.toLowerCase()))
-    .sort((a, b) => b.createdAt - a.createdAt)[0];
-  if (localMatch) return localMatch.payload as T;
-
   try {
     const token = await getBackendAccessToken();
     if (!token) return null;
     for (const wantedTopic of lookupKeys) {
       const data = await httpJson<{
-        id?: string | number;
-        topic?: string;
-        topic_norm?: string;
+        id?: number;
         payload?: unknown;
         created_at?: string;
-      }>(
+      } & CloudRow>(
         `${apiBaseUrl()}/v1/prepared-content/?kind=${encodeURIComponent(kind)}&topic_norm=${encodeURIComponent(wantedTopic)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
+        { headers: { Authorization: `Bearer ${token}` } },
       );
+      // FastAPI LatestOut: { payload } | Django full row — ikkalasi ham
       if (data.payload == null) continue;
-      const cloudRow: PreparedContentRecord = {
-        id: String(data.id || `cloud_${Date.now()}`),
-        ownerKey: owner,
-        kind,
-        topic: String(data.topic || (typeof topic === 'string' ? topic : topic.title)),
-        topicNorm: String(data.topic_norm || wantedTopic),
-        payload: data.payload,
-        createdAt: data.created_at ? Date.parse(data.created_at) : Date.now(),
-        source: 'cloud',
-      };
-      writeLocal(owner, kind, [cloudRow, ...readLocal(owner, kind)]);
-      return cloudRow.payload as T;
+      return data.payload as T;
     }
     return null;
   } catch {

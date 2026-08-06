@@ -39,7 +39,7 @@ import {
   summarizeTestForAvoid,
   type CaseStudyFocus,
 } from '../utils/generationVariety';
-import { listPreparedForTopic, loadPreparedById } from '../utils/preparedContentStore';
+import { listPreparedForTopicSynced, loadPreparedByIdSynced } from '../utils/preparedContentStore';
 import { normalizeCaseFocus } from '../utils/caseFocusLabels';
 import { type MedicalReference } from '../utils/medicalReferences';
 import { stripUnfilledSourceTemplate } from '../utils/sourceTemplate';
@@ -95,22 +95,28 @@ function textReferencesRule(hasBookContext: boolean): string {
   return hasBookContext ? NO_EXTERNAL_REFS_TEXT_RULE_BOOK : NO_EXTERNAL_REFS_TEXT_RULE_NOBOOK;
 }
 
-function previousCaseAvoidBlock(topic: string): string {
-  const summaries = listPreparedForTopic('case', topic)
-    .slice(0, 6)
-    .map((v) => loadPreparedById<CaseStudySession>('case', v.id))
-    .filter((s): s is CaseStudySession => Boolean(s?.questions?.length))
-    .map(summarizeCaseForAvoid);
-  return buildAvoidRepeatsBlock(summaries);
+async function previousCaseAvoidBlock(topic: string): Promise<string> {
+  try {
+    const summaries = (await listPreparedForTopicSynced('case', topic)).slice(0, 6);
+    const sessions = (
+      await Promise.all(summaries.map((v) => loadPreparedByIdSynced<CaseStudySession>('case', v.id)))
+    ).filter((s): s is CaseStudySession => Boolean(s?.questions?.length));
+    return buildAvoidRepeatsBlock(sessions.map(summarizeCaseForAvoid));
+  } catch {
+    return '';
+  }
 }
 
-function previousTestAvoidBlock(topic: string): string {
-  const summaries = listPreparedForTopic('test', topic)
-    .slice(0, 6)
-    .map((v) => loadPreparedById<TestSession>('test', v.id))
-    .filter((s): s is TestSession => Boolean(s?.questions?.length))
-    .map(summarizeTestForAvoid);
-  return buildAvoidRepeatsBlock(summaries);
+async function previousTestAvoidBlock(topic: string): Promise<string> {
+  try {
+    const summaries = (await listPreparedForTopicSynced('test', topic)).slice(0, 6);
+    const sessions = (
+      await Promise.all(summaries.map((v) => loadPreparedByIdSynced<TestSession>('test', v.id)))
+    ).filter((s): s is TestSession => Boolean(s?.questions?.length));
+    return buildAvoidRepeatsBlock(sessions.map(summarizeTestForAvoid));
+  } catch {
+    return '';
+  }
 }
 
 export type { MedicalReference };
@@ -494,28 +500,35 @@ async function translateTitlesForImageSearch(
   return titles;
 }
 
+/** Bir nechta slayd uchun ochiq manba rasm biriktiradi.
+ * Parallel so'rovlar Commons/AI ni bosmasin — ketma-ket, eng ko'pi 6 rasm
+ * (B uslub: chap/o'ng/tepada/pastda aylanishi uchun yetarli). */
 async function attachOpenImagesToDeck(
   deck: PresentationDeck,
   subjectName: string,
 ): Promise<PresentationDeck> {
   const contentIdx = deck.slides
     .map((_, idx) => idx)
-    .filter((idx) => idx !== 0 && idx !== deck.slides.length - 1);
+    .filter((idx) => idx !== 0 && idx !== deck.slides.length - 1)
+    .slice(0, 6);
   const rawTitles = contentIdx.map((idx) => deck.slides[idx].title);
   const searchQueries = await translateTitlesForImageSearch(rawTitles, subjectName).catch(() => rawTitles);
   const queryByIdx = new Map(contentIdx.map((idx, i) => [idx, searchQueries[i] || rawTitles[i]]));
 
-  const slides = await Promise.all(
-    deck.slides.map(async (slide, idx) => {
-      const query = queryByIdx.get(idx);
-      if (!query) return slide; // 1-slayd (Kirish) va oxirgi (Xulosa) — rasm shart emas.
-      const found = await searchOpenImage(query).catch(() => null);
-      if (!found) return slide;
-      const dataUrl = await fetchImageAsDataUrl(found.url).catch(() => null);
-      if (!dataUrl) return slide;
-      return { ...slide, imageUrl: dataUrl, imageCredit: found.credit };
-    }),
-  );
+  const slides = [...deck.slides];
+  for (const idx of contentIdx) {
+    const query = queryByIdx.get(idx);
+    if (!query) continue;
+    try {
+      const found = await searchOpenImage(query);
+      if (!found) continue;
+      const dataUrl = await fetchImageAsDataUrl(found.url);
+      if (!dataUrl) continue;
+      slides[idx] = { ...slides[idx], imageUrl: dataUrl, imageCredit: found.credit };
+    } catch {
+      /* bitta rasm xatosi butun taqdimotni to'xtatmasin */
+    }
+  }
   return { ...deck, slides };
 }
 
@@ -1142,7 +1155,7 @@ export const aiService = {
     try {
       assertOpenAiApiKey();
       const outLang = languageName(language);
-      const avoid = previousCaseAvoidBlock(topic);
+      const avoid = await previousCaseAvoidBlock(topic);
       const keywordFocus = buildCaseKeywordsFocusPrompt(keywords);
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
 
@@ -1202,7 +1215,7 @@ export const aiService = {
     assertOpenAiApiKey();
     const safeCount = Math.min(30, Math.max(10, Math.round(count) || 10));
     const outLang = languageName(language);
-    const avoid = previousTestAvoidBlock(topic);
+    const avoid = await previousTestAvoidBlock(topic);
     const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
     const generate = async (requestedCount: number, shortMode: boolean, strict: boolean): Promise<TestSession> => {
       const variety = buildTestVarietyPrompt(topic, requestedCount);

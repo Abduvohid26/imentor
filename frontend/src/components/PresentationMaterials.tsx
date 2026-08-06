@@ -435,13 +435,17 @@ export default function PresentationMaterials() {
       if (!file.size) {
         throw new Error('empty-pptx');
       }
-      await savePreparedContent('presentation', deck.title, deck, {
-        subjectName: globalTopic.subjectName,
-        subjectCode: globalTopic.subjectCode,
-        variantLabel: globalTopic.variantLabel,
-        topicCode: globalTopic.id,
-      });
-      refreshDeckHistory();
+      try {
+        await savePreparedContent('presentation', deck.title, deck, {
+          subjectName: globalTopic.subjectName,
+          subjectCode: globalTopic.subjectCode,
+          variantLabel: globalTopic.variantLabel,
+          topicCode: globalTopic.id,
+        });
+        refreshDeckHistory();
+      } catch (histErr) {
+        console.warn('Presentation history save skipped:', histErr);
+      }
       const shortTopic =
         [globalTopic.id, globalTopic.title].filter(Boolean).join(' — ').slice(0, 240) || topicTitle;
       await uploadPresentation({

@@ -19,9 +19,9 @@ import { useUiText } from '../i18n/useUiText';
 import { getCurrentLocalUser, normalizeUserRole } from '../utils/localStaffAuth';
 import { appendCaseStudyToLibrary } from '../utils/staffContentLibrary';
 import {
-  listPreparedForTopic,
+  listPreparedForTopicSynced,
   loadLatestPreparedContent,
-  loadPreparedById,
+  loadPreparedByIdSynced,
   savePreparedContent,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
@@ -70,7 +70,7 @@ export default function CaseStudies() {
       setVersions([]);
       return;
     }
-    setVersions(listPreparedForTopic('case', globalTopic ?? topic));
+    void listPreparedForTopicSynced('case', globalTopic ?? topic).then(setVersions);
   }, [topic, globalTopic]);
 
   const applySession = useCallback((data: CaseStudySession, versionId: string | null) => {
@@ -103,23 +103,23 @@ export default function CaseStudies() {
     (async () => {
       const prepared = await loadLatestPreparedContent<CaseStudySession>('case', lookup);
       if (!mounted) return;
-      refreshVersions();
+      const list = await listPreparedForTopicSynced('case', lookup);
+      if (!mounted) return;
+      setVersions(list);
       if (!prepared) {
         setCaseSession(null);
         setActiveVersionId(null);
         return;
       }
-      const list = listPreparedForTopic('case', lookup);
-      const latestId = list[0]?.id ?? null;
-      applySession(prepared, latestId);
+      applySession(prepared, list[0]?.id ?? null);
     })();
     return () => {
       mounted = false;
     };
-  }, [topic, globalTopic, applySession, refreshVersions]);
+  }, [topic, globalTopic, applySession]);
 
   const handleSelectVersion = async (id: string) => {
-    const data = loadPreparedById<CaseStudySession>('case', id);
+    const data = await loadPreparedByIdSynced<CaseStudySession>('case', id);
     if (data) applySession(data, id);
   };
 
@@ -134,8 +134,8 @@ export default function CaseStudies() {
     try {
       const data = await aiService.generateCaseStudy(currentTopic, contentLanguage, parsedKeywords, globalTopic?.subjectCode);
       await savePreparedContent('case', currentTopic, data, buildPreparedContentMeta(globalTopic));
-      refreshVersions();
-      const list = listPreparedForTopic('case', globalTopic ?? currentTopic);
+      const list = await listPreparedForTopicSynced('case', globalTopic ?? currentTopic);
+      setVersions(list);
       applySession(data, list[0]?.id ?? null);
       try {
         const u = getCurrentLocalUser();
