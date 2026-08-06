@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
 import time
-from typing import Any
+from typing import Any, Iterator
 
 import requests
 
@@ -82,6 +83,63 @@ def generate_openai_chat(
     }
     resp = _http_post(api_key, body, url=OPENAI_CHAT_URL, timeout_sec=timeout_sec)
     return _extract_text(resp)
+
+
+def stream_openai_chat(
+    api_key: str,
+    *,
+    messages: list[dict],
+    model: str = "gpt-4o",
+    max_tokens: int = 4096,
+    temperature: float = 0.35,
+    timeout_sec: int = 280,
+) -> Iterator[str]:
+    """OpenAI chat completion'ni SSE orqali oqim (stream) sifatida o'qib,
+    har bir matn bo'lagini (`delta.content`) navbat bilan qaytaradi.
+    Foydalanuvchi generatsiya jarayonida darhol matnni ko'rib turishi uchun —
+    umumiy vaqt bir xil, lekin sezilgan tezlik ancha yaxshilanadi."""
+    body = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": True,
+    }
+    try:
+        resp = requests.post(
+            OPENAI_CHAT_URL,
+            json=body,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout_sec,
+            stream=True,
+        )
+    except requests.RequestException as e:
+        raise OpenAiClientError(str(e)) from e
+
+    if resp.status_code >= 400:
+        try:
+            msg = str((resp.json().get("error") or {}).get("message") or resp.text)
+        except ValueError:
+            msg = resp.text
+        raise OpenAiClientError(f"HTTP {resp.status_code}: {msg}")
+
+    for raw_line in resp.iter_lines(decode_unicode=True):
+        if not raw_line or not raw_line.startswith("data:"):
+            continue
+        data = raw_line[len("data:") :].strip()
+        if data == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data)
+        except ValueError:
+            continue
+        choices = chunk.get("choices")
+        if not isinstance(choices, list) or not choices:
+            continue
+        delta = choices[0].get("delta") if isinstance(choices[0], dict) else None
+        text = delta.get("content") if isinstance(delta, dict) else None
+        if text:
+            yield text
 
 
 def generate_openai_text(

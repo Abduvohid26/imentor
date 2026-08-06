@@ -136,6 +136,104 @@ async function chatViaBackend(params: {
   }
 }
 
+/** SSE oqim orqali javob qabul qilib, har bir bo'lakni `onDelta`ga
+ * yuboradi (matn generatsiya bo'lgan sari darhol ko'rsatish uchun).
+ * Umumiy generatsiya vaqti bir xil, lekin foydalanuvchi kutish tuyg'usi yo'q. */
+async function chatViaBackendStream(params: {
+  model: string;
+  messages: ChatMessage[];
+  maxTokens: number;
+  temperature?: number;
+  bookContext?: BookContext;
+  onDelta: (text: string) => void;
+  onBookReferences?: (refs: MedicalReference[]) => void;
+}): Promise<string> {
+  let token = await ensureBackendAccessToken().catch(async () => {
+    const fallback = await getBackendAccessToken();
+    if (!fallback) throw new Error('no-backend-token');
+    return fallback;
+  });
+
+  const doStream = async (authToken: string): Promise<string> => {
+    const res = await fetch(`${apiBaseUrl()}/v1/education-ai/completion/stream/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        model: params.model,
+        messages: params.messages,
+        max_tokens: params.maxTokens,
+        temperature: params.temperature ?? 0.35,
+        ...(params.bookContext?.subjectCode
+          ? { subject_code: params.bookContext.subjectCode, topic_query: params.bookContext.topicQuery }
+          : {}),
+      }),
+    });
+
+    if (res.status === 401) {
+      const err = new Error('unauthorized') as Error & { status?: number };
+      err.status = 401;
+      throw err;
+    }
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let full = '';
+    let streamError: string | null = null;
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trim();
+        if (!raw) continue;
+        let evt: { delta?: string; done?: boolean; book_references?: MedicalReference[]; error?: string };
+        try {
+          evt = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        if (evt.error) {
+          streamError = evt.error;
+        } else if (evt.delta) {
+          full += evt.delta;
+          params.onDelta(full);
+        } else if (evt.done) {
+          if (Array.isArray(evt.book_references) && evt.book_references.length) {
+            params.onBookReferences?.(evt.book_references);
+          }
+        }
+      }
+    }
+
+    if (streamError) throw new Error(streamError);
+    if (!full.trim()) throw new Error('OpenAI: bo‘sh javob (server proxy, stream)');
+    return full.trim();
+  };
+
+  try {
+    return await doStream(token);
+  } catch (e: unknown) {
+    const status = e && typeof e === 'object' && 'status' in e ? (e as { status: number }).status : 0;
+    if (status !== 401) throw e;
+    const retryToken = await getBackendAccessToken();
+    if (!retryToken || retryToken === token) throw new Error('no-backend-token');
+    return doStream(retryToken);
+  }
+}
+
 async function chatViaDirectApi(params: {
   model: string;
   messages: ChatMessage[];
@@ -230,6 +328,48 @@ export async function openaiText(opts: {
     temperature: opts.temperature,
     bookContext: opts.bookContext,
   });
+}
+
+/** `openaiText` bilan bir xil, lekin matn generatsiya bo'lgan sari
+ * `onDelta(hozirgacha to'plangan matn)` chaqiriladi — foydalanuvchi
+ * kutmasdan darhol natijani ko'radi. Faqat backend-proxy rejimida
+ * (production) haqiqiy stream; to'g'ridan-to'g'ri API kalit bilan ishlashda
+ * (dev) natija bir martada keladi. */
+export async function openaiTextStream(opts: {
+  model?: string;
+  system: string;
+  user: string;
+  maxTokens?: number;
+  temperature?: number;
+  bookContext?: BookContext;
+  onDelta: (textSoFar: string) => void;
+  onBookReferences?: (refs: MedicalReference[]) => void;
+}): Promise<string> {
+  const msgs: ChatMessage[] = [];
+  const sys = opts.system.trim();
+  if (sys) msgs.push({ role: 'system', content: sys });
+  msgs.push({ role: 'user', content: opts.user });
+
+  const useProxy = preferBackendProxy() || !localApiKey();
+  if (useProxy) {
+    return chatViaBackendStream({
+      model: opts.model ?? OPENAI_CHAT,
+      messages: msgs,
+      maxTokens: opts.maxTokens ?? 4096,
+      temperature: opts.temperature,
+      bookContext: opts.bookContext,
+      onDelta: opts.onDelta,
+      onBookReferences: opts.onBookReferences,
+    });
+  }
+  const text = await chatViaDirectApi({
+    model: opts.model ?? OPENAI_CHAT,
+    messages: msgs,
+    maxTokens: opts.maxTokens ?? 4096,
+    temperature: opts.temperature,
+  });
+  opts.onDelta(text);
+  return text;
 }
 
 export async function openaiJson<T>(opts: {

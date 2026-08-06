@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,12 +10,65 @@ from app.api.deps import AuthContext, require_roles
 from app.core.db import get_db
 from app.models.content import CourseSyllabus
 from app.models.prepared_content import PreparedContent
-from app.schemas.prepared_content import PreparedContentIn, PreparedContentLatestOut, PreparedContentOut
+from app.schemas.prepared_content import (
+    PreparedContentIn,
+    PreparedContentLatestOut,
+    PreparedContentOut,
+    PreparedContentSummaryOut,
+)
 from app.services import content_catalog as cc
+from app.services.pagination import paginate
 
 router = APIRouter()
 
 STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+
+
+@router.get("/prepared-content/mine/")
+def list_my_prepared_content(
+    request: Request,
+    kind: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
+) -> dict:
+    """Joriy foydalanuvchining shu turdagi (masalan `lecture`) barcha
+    saqlangan yozuvlari — "Baza" (tarix) sahifasi uchun. Server'da saqlanadi,
+    shuning uchun brauzer/qurilma almashtirilsa ham yo'qolmaydi."""
+    if not kind.strip():
+        raise HTTPException(status_code=400, detail="kind majburiy.")
+    rows = db.execute(
+        select(PreparedContent)
+        .where(PreparedContent.owner_key == auth.user.username, PreparedContent.kind == kind.strip())
+        .order_by(PreparedContent.created_at.desc())
+    ).scalars().all()
+    out = [
+        PreparedContentSummaryOut(
+            id=r.id,
+            kind=r.kind,
+            topic=r.topic,
+            topic_norm=r.topic_norm,
+            subject_name=r.subject_name,
+            created_at=r.created_at,
+        ).model_dump()
+        for r in rows
+    ]
+    return paginate(out, request, default_page_size=100, max_page_size=300)
+
+
+@router.get("/prepared-content/{pk}/")
+def get_prepared_content_by_id(
+    pk: int,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
+) -> PreparedContentOut:
+    """Bitta yozuvni to'liq payload bilan olish — "Baza"dan tanlangan
+    eski ma'ruzani ochish uchun."""
+    item = db.execute(
+        select(PreparedContent).where(PreparedContent.id == pk, PreparedContent.owner_key == auth.user.username)
+    ).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Topilmadi.")
+    return _out(item)
 
 
 def _out(item: PreparedContent) -> PreparedContentOut:

@@ -554,7 +554,6 @@ export default function PublicLandingPage({
                 ) : authScreen === 'login' ? (
                   <LoginPage
                     onSwitchToRegister={() => setAuthScreen('register')}
-                    onBackToQr={isDesktopBrowser() ? () => setDesktopAuthView('qr') : undefined}
                     onWantsHodimQr={isDesktopBrowser() ? () => setDesktopAuthView('qr') : undefined}
                   />
                 ) : (

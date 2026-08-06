@@ -808,6 +808,58 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — Ma'ruza matni (AI) generatsiyasi bo'yicha 3 ta so'rov
+  bajarildi (foydalanuvchi: "sekin yaratishni tezlashtirish kerak",
+  "baza"dagi eski yozuvlar chiqmayapti, til mos kelmayapti):
+
+  1. **Streaming (real-time ko'rsatish)** — foydalanuvchi "Streaming"
+     variantini tanladi. Backend'ga yangi `POST
+     /education-ai/completion/stream/` endpoint qo'shildi
+     (`openai_client.py`da `stream_openai_chat()` generator — OpenAI'dan
+     SSE orqali `delta.content` bo'laklarini o'qib, `data: {"delta": "..."}`
+     shaklida frontend'ga uzatadi, oxirida `{"done": true,
+     "book_references": [...]}`). Frontend'da `openaiClient.ts`ga
+     `chatViaBackendStream()`/`openaiTextStream()` qo'shildi (fetch +
+     ReadableStream, SSE parsing). `aiService.ts`dagi
+     `generateLectureNotes()` endi ixtiyoriy `onProgress` callback qabul
+     qiladi. `LectureNotes.tsx` generatsiya paytida matnni **jonli**
+     (token-token) ko'rsatadi — umumiy generatsiya vaqti bir xil qoladi,
+     lekin kutish tuyg'usi yo'qoladi. Real curl bilan tekshirildi: SSE
+     oqimi to'g'ri `data: {"delta": "..."}` ketma-ketligini va yakuniy
+     `done` eventini qaytardi.
+  2. **"Baza" (tarix) endi server'dan ham o'qiydi** — muammo topildi:
+     `listAllPreparedForKind()` FAQAT localStorage'dan o'qir edi (Django'da
+     ham asl dizayn shunday bo'lgan — bu migratsiya xatosi emas, balki
+     asl cheklov edi). Agar localStorage tozalansa yoki boshqa
+     qurilma/brauzerdan kirilsa, eski ma'ruzalar umuman ko'rinmas edi —
+     garchi ular serverda saqlangan bo'lsa ham (`POST
+     /prepared-content/` allaqachon "best-effort" tarzda server'ga ham
+     yozar edi, lekin ro'yxatni server'dan O'QIYDIGAN endpoint yo'q edi).
+     Backend'ga yangi `GET /prepared-content/mine/?kind=...` (pagination
+     bilan, joriy foydalanuvchining shu turdagi barcha yozuvlari) va
+     `GET /prepared-content/{pk}/` (bitta yozuvni to'liq payload bilan)
+     qo'shildi. Frontend'da `listAllPreparedForKindSynced()`/
+     `loadPreparedByIdSynced()` — server ro'yxatini asosiy manba sifatida
+     oladi, faqat serverda hali yo'q lokal yozuvlarni qo'shib beradi
+     (dedupe: mavzu+daqiqa bo'yicha). Real curl bilan tasdiqlandi: 3 ta
+     eski (server'da saqlangan, lekin localStorage'da yo'q) ma'ruza to'g'ri
+     ro'yxatda chiqdi, bittasi to'liq matni bilan ochildi (4600 belgi).
+  3. **Til mosligi tuzatildi** — `LectureNotes.tsx`da avval
+     `contentLanguage = globalTopic?.instructionLanguage ?? language`
+     edi — ya'ni agar syllabus mavzusi tanlangan bo'lsa, uning O'ZINING
+     tili (masalan har doim "uz") ustuvor bo'lar, foydalanuvchi UI'da
+     boshqa til (Русский/English) tanlagan bo'lsa ham e'tiborga
+     olinmasdi. Endi har doim joriy UI tili (`language`) ishlatiladi.
+
+  Barchasi rebuild qilinib, real production'da (curl + kod tekshiruvi)
+  tasdiqlandi, `tsc --noEmit` toza.
+- **2026-08-06** — Talaba login sahifasidagi eskirgan "← Hodim: kompyuter
+  QR orqali kirish" havolasi olib tashlandi (`LoginPage.tsx`) — endi
+  ortiqcha, chunki "Xodim" tab bosilganda allaqachon QR'ga o'tkazadi.
+  `onBackToQr` prop LoginPage'dan butunlay olib tashlandi (`PublicLandingPage.tsx`
+  ham mos ravishda yangilandi; RegisterPage'dagi analogik prop tegilmadi).
+  Real production'da `textContent` orqali tasdiqlandi: havola endi yo'q,
+  Talaba forma standart holatda to'g'ri ko'rsatilmoqda, konsolda xatolik yo'q.
 - **2026-08-06** — Login modal UX yana takomillashtirildi (foydalanuvchi
   qo'shimcha so'rovi bo'yicha), state modeli soddalashtirildi:
   `App.tsx`/`PublicLandingPage.tsx`dagi ikkita boolean (`desktopStaffLogin`,

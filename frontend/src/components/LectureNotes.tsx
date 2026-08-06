@@ -22,9 +22,9 @@ import {
 import { useUiText } from '../i18n/useUiText';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
 import {
-  listAllPreparedForKind,
+  listAllPreparedForKindSynced,
   loadLatestPreparedContent,
-  loadPreparedById,
+  loadPreparedByIdSynced,
   savePreparedContent,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
@@ -58,6 +58,7 @@ export default function LectureNotes() {
   );
 
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
   const [lectureSession, setLectureSession] = useState<LectureNote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -71,7 +72,7 @@ export default function LectureNotes() {
   const staffTopic = topicFromSyllabus && globalTopic ? globalTopic : null;
 
   const refreshHistory = useCallback(() => {
-    setSavedLectures(listAllPreparedForKind('lecture'));
+    void listAllPreparedForKindSynced('lecture').then(setSavedLectures);
   }, []);
 
   useEffect(() => {
@@ -114,9 +115,20 @@ export default function LectureNotes() {
     if (!topic.trim()) return;
     setLoading(true);
     setError(null);
+    setStreamingContent('');
     try {
-      const contentLanguage = globalTopic?.instructionLanguage ?? language;
-      const data = await aiService.generateLectureNotes(topic, description, contentLanguage, globalTopic?.subjectCode);
+      // Foydalanuvchi UI'da tanlagan til ustuvor — mavzuning o'z
+      // instructionLanguage'idan qat'iy nazar (masalan syllabus fayli "uz"
+      // bo'lsa ham, foydalanuvchi "Русский"ni tanlagan bo'lsa shu tilda
+      // yaratiladi).
+      const contentLanguage = language;
+      const data = await aiService.generateLectureNotes(
+        topic,
+        description,
+        contentLanguage,
+        globalTopic?.subjectCode,
+        (textSoFar) => setStreamingContent(textSoFar),
+      );
       setLectureSession(data);
       setEditedContent(data.content);
       globalLecture.setContent(data.content);
@@ -127,11 +139,12 @@ export default function LectureNotes() {
       setError(t('lecture.errorGenerate'));
     } finally {
       setLoading(false);
+      setStreamingContent('');
     }
   };
 
-  const loadPastSession = (summary: PreparedContentSummary) => {
-    const session = loadPreparedById<LectureNote>('lecture', summary.id);
+  const loadPastSession = async (summary: PreparedContentSummary) => {
+    const session = await loadPreparedByIdSynced<LectureNote>('lecture', summary.id);
     if (!session) return;
     setLectureSession(session);
     setTopic(session.topic);
@@ -258,8 +271,22 @@ export default function LectureNotes() {
       </StaffTopicHeader>
 
       {error && <StaffErrorAlert message={error} />}
-      {loading && (
+      {loading && !streamingContent && (
         <StaffLoading label={t('lecture.generating')} hint={t('lecture.generatingHint')} />
+      )}
+
+      {loading && streamingContent && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+          <StaffPanel className="p-4 sm:p-5 flex items-center gap-2 text-sky-700">
+            <Loader2 size={16} className="animate-spin shrink-0" />
+            <p className="text-[13px] font-semibold">{t('lecture.generating')}</p>
+          </StaffPanel>
+          <StaffPanel className="p-6 sm:p-8 lg:p-10" large>
+            <article className={staffProse}>
+              <Markdown>{streamingContent}</Markdown>
+            </article>
+          </StaffPanel>
+        </motion.div>
       )}
 
       {lectureSession && !loading && (

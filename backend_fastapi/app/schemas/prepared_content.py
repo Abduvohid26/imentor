@@ -42,3 +42,14 @@ class PreparedContentOut(BaseModel):
 
 class PreparedContentLatestOut(BaseModel):
     payload: dict | None = None
+
+
+class PreparedContentSummaryOut(BaseModel):
+    """`Baza` (tarix) ro'yxati uchun — to'liq payload'siz, yengil."""
+
+    id: int
+    kind: str
+    topic: str
+    topic_norm: str
+    subject_name: str
+    created_at: dt.datetime

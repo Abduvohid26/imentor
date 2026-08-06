@@ -147,7 +147,8 @@ export function listPreparedForTopic(
     }));
 }
 
-/** Barcha mavzular bo‘yicha saqlangan versiyalar (ma'ruza tarixi va h.k.) */
+/** Barcha mavzular bo‘yicha saqlangan versiyalar (ma'ruza tarixi va h.k.) —
+ * faqat shu brauzer/qurilmadagi lokal nusxa (server bilan bog'lanmasdan). */
 export function listAllPreparedForKind(kind: PreparedContentKind): PreparedContentSummary[] {
   const owner = ownerKey();
   if (!owner) return [];
@@ -161,11 +162,75 @@ export function listAllPreparedForKind(kind: PreparedContentKind): PreparedConte
     }));
 }
 
+const CLOUD_ID_PREFIX = 'cloud_';
+
+/** Server'dagi ("Baza") barcha yozuvlar + shu qurilmadagi lokal nusxalardan
+ * server'da yo'qlari — brauzer/qurilma almashtirilsa yoki localStorage
+ * tozalansa ham eski ma'ruzalar (va h.k.) yo'qolmasligi uchun. */
+export async function listAllPreparedForKindSynced(
+  kind: PreparedContentKind,
+): Promise<PreparedContentSummary[]> {
+  const owner = ownerKey();
+  if (!owner) return [];
+  const local = readLocal(owner, kind);
+
+  let cloud: PreparedContentSummary[] = [];
+  try {
+    const token = await getBackendAccessToken();
+    if (token) {
+      const data = await httpJson<{
+        results?: { id: number; topic: string; created_at: string }[];
+      }>(`${apiBaseUrl()}/v1/prepared-content/mine/?kind=${encodeURIComponent(kind)}&page_size=200`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      cloud = (data.results || []).map((r) => ({
+        id: `${CLOUD_ID_PREFIX}${r.id}`,
+        topic: r.topic,
+        createdAt: new Date(r.created_at).getTime(),
+        source: 'cloud' as const,
+      }));
+    }
+  } catch {
+    /* server ro'yxati ochilmasa ham lokal nusxa ko'rsatiladi */
+  }
+
+  const cloudDedupeKeys = new Set(
+    cloud.map((c) => `${normTopic(c.topic)}|${Math.floor(c.createdAt / 60000)}`),
+  );
+  const localOnly = local
+    .filter((r) => !cloudDedupeKeys.has(`${normTopic(r.topic)}|${Math.floor(r.createdAt / 60000)}`))
+    .map((r) => ({ id: r.id, topic: r.topic, createdAt: r.createdAt, source: r.source }));
+
+  return [...cloud, ...localOnly].sort((a, b) => b.createdAt - a.createdAt);
+}
+
 export function loadPreparedById<T>(kind: PreparedContentKind, id: string): T | null {
   const owner = ownerKey();
   if (!owner) return null;
   const row = readLocal(owner, kind).find((r) => r.id === id);
   return row ? (row.payload as T) : null;
+}
+
+/** `loadPreparedById`ning server-fikrli varianti — `cloud_`-prefiksli id'ni
+ * server'dan to'liq payload bilan yuklaydi, aks holda lokal nusxadan oladi. */
+export async function loadPreparedByIdSynced<T>(
+  kind: PreparedContentKind,
+  id: string,
+): Promise<T | null> {
+  if (id.startsWith(CLOUD_ID_PREFIX)) {
+    const numericId = id.slice(CLOUD_ID_PREFIX.length);
+    try {
+      const token = await getBackendAccessToken();
+      if (!token) return null;
+      const data = await httpJson<{ payload?: T }>(`${apiBaseUrl()}/v1/prepared-content/${numericId}/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return data.payload ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return loadPreparedById<T>(kind, id);
 }
 
 export async function deletePreparedContent(kind: PreparedContentKind, id: string): Promise<void> {

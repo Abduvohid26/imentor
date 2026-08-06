@@ -19,13 +19,12 @@ import { useUiText } from '../../i18n/useUiText';
 
 interface LoginPageProps {
   onSwitchToRegister: () => void;
-  onBackToQr?: () => void;
   /** Desktop'da "Xodim" tab tanlanganda chaqiriladi — hodim faqat QR orqali
    * kira olgani uchun shu yerda QR ekraniga o'tkaziladi. */
   onWantsHodimQr?: () => void;
 }
 
-export default function LoginPage({ onSwitchToRegister, onBackToQr, onWantsHodimQr }: LoginPageProps) {
+export default function LoginPage({ onSwitchToRegister, onWantsHodimQr }: LoginPageProps) {
   const { t } = useUiText();
   const [loginMode, setLoginMode] = useState<'staff' | 'student'>('student');
   const [phone, setPhone] = useState('');
@@ -113,15 +112,6 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr, onWantsHodim
           />
           <h1 className="text-2xl font-bold text-black/90 tracking-tight">{t('auth.loginTitle')}</h1>
           <p className="text-[13px] text-black/50 mt-2 font-medium">{t('auth.loginSubtitle')}</p>
-          {onBackToQr && (
-            <button
-              type="button"
-              onClick={onBackToQr}
-              className="mt-3 text-[12px] font-semibold text-sky-700 underline underline-offset-2"
-            >
-              {t('auth.backToQr')}
-            </button>
-          )}
         </div>
 
         <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-black/[0.04] p-1">

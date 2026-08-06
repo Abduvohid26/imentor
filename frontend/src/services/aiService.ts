@@ -21,6 +21,7 @@ import {
   type BookContext,
   openaiJson,
   openaiText,
+  openaiTextStream,
 } from './openaiClient';
 
 const SYS_MEDICAL =
@@ -1118,12 +1119,15 @@ export const aiService = {
     description: string = '',
     language: AppLanguage = 'uz',
     subjectCode?: string,
+    /** Matn generatsiya bo'lgan sari chaqiriladi — foydalanuvchi darhol
+     * ko'rishi uchun (kutish tuyg'usini yo'qotadi, umumiy vaqt bir xil). */
+    onProgress?: (textSoFar: string) => void,
   ): Promise<LectureNote> {
     try {
       assertOpenAiApiKey();
       const outLang = languageName(language);
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
-      const content = await openaiText({
+      const content = await openaiTextStream({
         model: OPENAI_CHAT,
         system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. HAJM: qisqa konspekt EMAS — real 60-90 daqiqalik ` +
           'universitet ma\'ruzasi (taxminan 3500-6000 so\'z yoki undan ko\'p). ' +
@@ -1148,6 +1152,7 @@ export const aiService = {
         maxTokens: 16000,
         temperature: 0.4,
         bookContext,
+        onDelta: onProgress ?? (() => {}),
       });
 
       return {
