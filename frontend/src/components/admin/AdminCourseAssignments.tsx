@@ -25,7 +25,6 @@ import { fetchStaffDirectory, type StaffDirectoryEntry } from '../../utils/staff
 import { resolveSyllabusVariants } from '../../utils/syllabusVariant';
 import { useUiText } from '../../i18n/useUiText';
 import SearchableSelect from './SearchableSelect';
-import SearchableMultiSelect from './SearchableMultiSelect';
 
 type FanBucket = {
   fanId: number;
@@ -86,6 +85,7 @@ export default function AdminCourseAssignments() {
   const [phone, setPhone] = useState('');
   const [deptKey, setDeptKey] = useState('');
   const [fanIds, setFanIds] = useState<string[]>([]);
+  const [fanSearch, setFanSearch] = useState('');
   const [assigning, setAssigning] = useState(false);
 
   const [search, setSearch] = useState('');
@@ -201,6 +201,7 @@ export default function AdminCourseAssignments() {
 
   useEffect(() => {
     setFanIds([]);
+    setFanSearch('');
   }, [deptKey]);
 
   useEffect(() => {
@@ -210,6 +211,20 @@ export default function AdminCourseAssignments() {
       return next.length === prev.length ? prev : next;
     });
   }, [fansInDept]);
+
+  const fanOptionsVisible = useMemo(() => {
+    const q = fanSearch.trim().toLowerCase();
+    const parts = q ? q.split(/\s+/).filter(Boolean) : [];
+    return fansInDept.filter((f) => {
+      if (!parts.length) return true;
+      const hay = `${f.subject_name} ${f.subject_code || ''} ${syllabusPdfNames(f).join(' ')}`.toLowerCase();
+      return parts.every((p) => hay.includes(p));
+    });
+  }, [fansInDept, fanSearch]);
+
+  const toggleFan = (id: string) => {
+    setFanIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
 
   const assignedFanIds = useMemo(() => {
     if (!phone) return new Set<string>();
@@ -355,7 +370,7 @@ export default function AdminCourseAssignments() {
       </div>
 
       <div className="ios-glass rounded-2xl border border-white/70 p-5 space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1">
             <span className="text-[12px] font-semibold text-slate-600">1 · {t('admin.teacher')}</span>
             <SearchableSelect
@@ -382,28 +397,76 @@ export default function AdminCourseAssignments() {
               options={departments.map((d) => ({ value: d.key, label: d.name }))}
             />
           </label>
+        </div>
 
-          <label className="space-y-1">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="text-[12px] font-semibold text-slate-600">3 · {t('admin.subjectName')}</span>
-            <SearchableMultiSelect
-              value={fanIds}
-              onChange={setFanIds}
-              disabled={assigning || !deptKey}
-              placeholder={t('admin.selectSubjectsPlaceholder')}
-              noMatchText={t('admin.noResults')}
-              selectedCountLabel={(count) => t('admin.subjectsSelectedCount', { count })}
-              options={fansInDept.map((f) => {
-                const inactive = f.is_active ? '' : ` · ${t('admin.toggleInactive')}`;
-                const assigned = assignedFanIds.has(String(f.id));
-                const mark = assigned ? ` · ${t('admin.alreadyAssigned')}` : '';
-                return {
-                  value: String(f.id),
-                  label: `${f.subject_name}${inactive}${mark}`,
-                  searchText: `${f.subject_name} ${f.subject_code || ''} ${syllabusPdfNames(f).join(' ')}`,
-                };
-              })}
-            />
-          </label>
+            {fanIds.length > 0 && (
+              <span className="text-[11px] font-medium text-indigo-700">
+                {t('admin.subjectsSelectedCount', { count: fanIds.length })}
+              </span>
+            )}
+          </div>
+
+          {!deptKey ? (
+            <p className="text-[12px] text-slate-400 rounded-xl border border-dashed border-slate-200 px-3 py-4">
+              {t('admin.selectDepartmentFirst')}
+            </p>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="relative border-b border-slate-100">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={fanSearch}
+                  onChange={(e) => setFanSearch(e.target.value)}
+                  disabled={assigning}
+                  placeholder={t('admin.selectSubjectsPlaceholder')}
+                  className="w-full h-11 pl-9 pr-3 text-[13px] outline-none disabled:bg-slate-50"
+                />
+              </div>
+              <ul className="max-h-64 overflow-auto divide-y divide-slate-50">
+                {fanOptionsVisible.length === 0 ? (
+                  <li className="px-3 py-3 text-[12px] text-slate-400">{t('admin.noResults')}</li>
+                ) : (
+                  fanOptionsVisible.map((f) => {
+                    const id = String(f.id);
+                    const checked = fanIds.includes(id);
+                    const assigned = assignedFanIds.has(id);
+                    const inactive = !f.is_active;
+                    return (
+                      <li key={id}>
+                        <label
+                          className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-indigo-50/60 ${
+                            checked ? 'bg-indigo-50/40' : ''
+                          } ${assigning ? 'opacity-60 pointer-events-none' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleFan(id)}
+                            disabled={assigning}
+                            className="w-4 h-4 accent-indigo-600 shrink-0"
+                          />
+                          <span className="min-w-0 flex-1 text-[13px] text-slate-800 truncate">
+                            {f.subject_name}
+                            {inactive ? (
+                              <span className="text-slate-400"> · {t('admin.toggleInactive')}</span>
+                            ) : null}
+                          </span>
+                          {assigned && (
+                            <span className="text-[10px] font-semibold text-emerald-600 shrink-0">
+                              {t('admin.alreadyAssigned')}
+                            </span>
+                          )}
+                        </label>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </div>
+          )}
         </div>
 
         {fanIds.length > 0 && (
@@ -421,7 +484,7 @@ export default function AdminCourseAssignments() {
                 ))}
               </ul>
             )}
-            {fanIds.length > 0 && fanIdsToAssign.length === 0 && (
+            {fanIdsToAssign.length === 0 && (
               <p className="text-[11px] font-semibold text-emerald-600">{t('admin.alreadyAssigned')}</p>
             )}
           </div>
