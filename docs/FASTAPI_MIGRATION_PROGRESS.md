@@ -808,6 +808,37 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — Foydalanuvchi haqiqiy PPTX namuna yubordi (boshqa
+  loyihadan — "AiShifokor" taqdimoti) va "rasmlar umuman chiqmayapti"
+  dedi, dizaynni shunga o'xshash qilishni so'radi. Ikkita alohida ish
+  qilindi:
+
+  1. **PPTX dizayni to'liq qayta qurildi** (`buildPresentationPptx.ts`) —
+     namunadan olingan uslub asosida: 16:9 widescreen (`LAYOUT_WIDE`,
+     avval 4:3 edi), har slaydda kicker sarlavha ("Fan nomi | iMentor"),
+     Georgia shrift bilan katta sarlavha, birinchi (reja) slaydda oddiy
+     bullet o'rniga **raqamli doira belgilar** (agenda-uslub kartochkalar:
+     doira ichida raqam + qalin sarlavha + tavsif), kontent slaydlarda
+     sarlavha ostida aksent chiziq, va har bir slaydda **footer**
+     ("© iMentor · FJSTI · yil" + "sahifa / jami"). Ranglar: TITLE
+     `#083047`, ACCENT `#0284C7`, MUTED `#5B6B7A` — ilgari ishlatilgan
+     iMentor brend ranglariga mos.
+  2. **Rasm chiqmasligi bugi — haqiqiy sabab topildi**: rasm qidirish
+     mantiqi to'g'ri edi, lekin slayd sarlavhasi (masalan o'zbek tilida)
+     TO'G'RIDAN-TO'G'RI Wikimedia Commons'ga yuborilardi — Commons esa
+     asosan **inglizcha** tavsif/nomlarga ega. Real curl bilan tasdiqlandi:
+     "Sut bezi raki Etiologiya va Patogenez" so'rovi **0 natija**, xuddi
+     shu mavzuning inglizchasi "breast cancer pathology" esa **3 natija**
+     berdi — bu "rasm umuman chiqmasligi"ning aniq sababi edi. Tuzatish:
+     yangi `translateTitlesForImageSearch()` — barcha kontent-slayd
+     sarlavhalarini BITTA (har slayd uchun alohida emas — tez/arzon)
+     AI so'rov bilan qisqa inglizcha qidiruv so'zlariga o'giradi
+     (`OPENAI_FAST`), keyin shu inglizcha so'zlar bilan Wikimedia'dan
+     qidiriladi. Muvaffaqiyatsiz bo'lsa xom sarlavha bilan davom etadi
+     (funksiya butunlay to'xtab qolmaydi).
+
+  Ikkalasi ham rebuild qilinib prod holatiga tekshirildi (health-check,
+  bind-mount holati toza), `tsc --noEmit` toza.
 - **2026-08-06** — 🐛 **Real production'da topilgan yana bir jiddiy bug**:
   yangi taqdimot yaratish/yuklash "AI taqdimot yaratilmadi. [object Object]
   [object Object] [object Object]" xatosi bilan muvaffaqiyatsiz tugardi.

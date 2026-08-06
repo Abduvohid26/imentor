@@ -426,15 +426,53 @@ async function searchOpenImage(query: string): Promise<{ url: string; credit: st
 
 /** Bir nechta slayd uchun parallel ravishda ochiq manba rasm topib
  * biriktiradi. Topilmasa slayd matnli holicha qoladi (xato bermaydi). */
+/** Wikimedia Commons asosan INGLIZCHA tavsif/nomlarga ega — o'zbek/rus
+ * tilidagi sarlavha bilan qidirilsa deyarli hech narsa topilmaydi. Shu
+ * sabab slayd sarlavhalarini bitta AI so'rov bilan qisqa inglizcha qidiruv
+ * so'zlariga o'tkazamiz (har slayd uchun alohida so'rov emas — tez va
+ * arzon). Muvaffaqiyatsiz bo'lsa, xom sarlavhalar bilan davom etiladi. */
+async function translateTitlesForImageSearch(
+  titles: string[],
+  subjectName: string,
+): Promise<string[]> {
+  if (!titles.length) return titles;
+  try {
+    const result = await openaiJson<{ queries?: string[] }>({
+      model: OPENAI_FAST,
+      system:
+        'For each numbered medical topic title, output a short (2-5 word) ENGLISH search ' +
+        'query suitable for finding a real photo/diagram on Wikimedia Commons (e.g. anatomy, ' +
+        'disease, procedure name in English medical terminology). Return ONLY JSON: ' +
+        '{"queries":["...", ...]} — SAME COUNT and SAME ORDER as input, no commentary.',
+      user: `Subject: ${subjectName}\nTitles:\n${titles.map((t, i) => `${i + 1}. ${t}`).join('\n')}`,
+      maxTokens: 800,
+      temperature: 0.2,
+      parse: (t) => parseJSONSafe<{ queries?: string[] }>(t),
+    });
+    if (Array.isArray(result.queries) && result.queries.length === titles.length) {
+      return result.queries.map((q, i) => (q?.trim() ? q.trim() : titles[i]));
+    }
+  } catch {
+    /* xom sarlavhalar bilan davom etamiz */
+  }
+  return titles;
+}
+
 async function attachOpenImagesToDeck(
   deck: PresentationDeck,
   subjectName: string,
 ): Promise<PresentationDeck> {
+  const contentIdx = deck.slides
+    .map((_, idx) => idx)
+    .filter((idx) => idx !== 0 && idx !== deck.slides.length - 1);
+  const rawTitles = contentIdx.map((idx) => deck.slides[idx].title);
+  const searchQueries = await translateTitlesForImageSearch(rawTitles, subjectName).catch(() => rawTitles);
+  const queryByIdx = new Map(contentIdx.map((idx, i) => [idx, searchQueries[i] || rawTitles[i]]));
+
   const slides = await Promise.all(
     deck.slides.map(async (slide, idx) => {
-      // 1-slayd (Kirish/reja) va oxirgi (Xulosa) uchun rasm shart emas.
-      if (idx === 0 || idx === deck.slides.length - 1) return slide;
-      const query = `${subjectName} ${slide.title}`.trim();
+      const query = queryByIdx.get(idx);
+      if (!query) return slide; // 1-slayd (Kirish) va oxirgi (Xulosa) — rasm shart emas.
       const found = await searchOpenImage(query).catch(() => null);
       if (!found) return slide;
       const dataUrl = await fetchImageAsDataUrl(found.url).catch(() => null);
