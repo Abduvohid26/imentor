@@ -83,7 +83,6 @@ vi.mock('./components/PresentationBuilder', () => ({ default: () => null }));
 vi.mock('./components/CaseStudies', () => ({ default: () => null }));
 vi.mock('./components/UserProfile', () => ({ default: () => null }));
 vi.mock('./components/LectureNotes', () => ({ default: () => null }));
-vi.mock('./components/HandoutMaterials', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminDashboardHome', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminStaffManagement', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminCasesLibrary', () => ({ default: () => null }));
@@ -92,7 +91,6 @@ vi.mock('./components/admin/AdminStaffLocationConsole', () => ({ default: () => 
 vi.mock('./components/admin/AdminCampusBuildingsPage', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminSyllabusCatalog', () => ({ default: () => null }));
 vi.mock('./components/staff/HodimGpsPromptBar', () => ({ default: () => null }));
-vi.mock('./components/staff/HandoutTopicBanner', () => ({ default: () => null }));
 
 import App from './App';
 

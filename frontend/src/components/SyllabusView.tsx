@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import SyllabusHandoutPanel from './staff/SyllabusHandoutPanel';
 import TopicVideoPanel from './staff/TopicVideoPanel';
 import type { SyllabusTopic } from '../services/aiService';
 import { AppLanguageContext } from '../App';
@@ -41,7 +40,6 @@ interface SyllabusViewProps {
   onSelectTopic: (topic: SyllabusTopicContext) => void;
   onClearTopic: () => void;
   onOpenLectures: (topic: SyllabusTopicContext) => void;
-  onOpenHandouts: () => void;
 }
 
 export default function SyllabusView({
@@ -50,7 +48,6 @@ export default function SyllabusView({
   onSelectTopic,
   onClearTopic,
   onOpenLectures,
-  onOpenHandouts,
 }: SyllabusViewProps) {
   const { language } = React.useContext(AppLanguageContext);
   const { t } = useUiText();
@@ -291,7 +288,6 @@ export default function SyllabusView({
                       <ArrowRight size={14} />
                     </button>
                   </div>
-                  <SyllabusHandoutPanel topic={selectedTopic} onOpenHandouts={onOpenHandouts} />
                   <TopicVideoPanel topic={selectedTopic} />
                 </div>
               )}

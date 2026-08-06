@@ -85,8 +85,6 @@ import AdminTopicVideos from './components/admin/AdminTopicVideos';
 import AdminTopicHandouts from './components/admin/AdminTopicHandouts';
 import AdminBooksLibrary from './components/admin/AdminBooksLibrary';
 import HodimGpsPromptBar from './components/staff/HodimGpsPromptBar';
-import HandoutTopicBanner from './components/staff/HandoutTopicBanner';
-import HandoutMaterials from './components/HandoutMaterials';
 import PublicLandingPage from './components/public/PublicLandingPage';
 import { useStaffLocationTracking } from './hooks/useStaffLocationTracking';
 import type { SyllabusTopic } from './services/aiService';
@@ -118,7 +116,6 @@ type View =
   | 'cases'
   | 'tests'
   | 'lectures'
-  | 'handouts'
   | 'content-catalog'
   | 'my-tests';
 
@@ -140,7 +137,6 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   syllabus: BookOpen,
   lectures: FileText,
   presentation: Presentation,
-  handouts: Files,
   'content-catalog': Library,
   cases: BriefcaseMedical,
   tests: ClipboardList,
@@ -148,7 +144,7 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   'my-tests': ClipboardList,
 };
 
-const HODIM_NAV_IDS: View[] = ['syllabus', 'lectures', 'presentation', 'handouts', 'cases', 'tests', 'profile'];
+const HODIM_NAV_IDS: View[] = ['syllabus', 'lectures', 'presentation', 'cases', 'tests', 'profile'];
 const ADMIN_NAV_IDS: View[] = [
   'admin-dashboard',
   'admin-staff',
@@ -200,10 +196,8 @@ function writeLectureForTopic(topicNorm: string, content: string): void {
 export const GlobalTopicContext = createContext<SyllabusTopicContext | null>(null);
 
 export const AppNavigationContext = createContext<{
-  openHandouts: () => void;
   openSyllabus: () => void;
 }>({
-  openHandouts: () => {},
   openSyllabus: () => {},
 });
 export const GlobalLectureContext = createContext<{content: string, setContent: (c: string) => void}>({content: '', setContent: () => {}});
@@ -456,10 +450,6 @@ export default function App() {
     });
   }, [activeView, user?.uid, userRole, language]);
 
-  const openHandouts = useCallback(() => {
-    setActiveView('handouts');
-  }, []);
-
   const openSyllabus = useCallback(() => {
     setActiveView('syllabus');
   }, []);
@@ -522,11 +512,8 @@ export default function App() {
             onSelectTopic={handleSelectTopic}
             onClearTopic={handleClearTopic}
             onOpenLectures={handleOpenLectures}
-            onOpenHandouts={openHandouts}
           />
         );
-      case 'handouts':
-        return <HandoutMaterials />;
       case 'lectures':
         return <LectureNotes />;
       case 'profile':
@@ -547,7 +534,6 @@ export default function App() {
             onSelectTopic={handleSelectTopic}
             onClearTopic={handleClearTopic}
             onOpenLectures={handleOpenLectures}
-            onOpenHandouts={openHandouts}
           />
         );
     }
@@ -617,7 +603,7 @@ export default function App() {
         </GlobalTopicContext.Provider>
       ) : (
       <GlobalTopicContext.Provider value={selectedTopic}>
-      <AppNavigationContext.Provider value={{ openHandouts, openSyllabus }}>
+      <AppNavigationContext.Provider value={{ openSyllabus }}>
       <GlobalLectureContext.Provider value={{ content: latestLectureContent, setContent: setLectureContent }}>
       {!user || wantsPublicLibrary ? (
         <PublicLandingPage
@@ -775,12 +761,6 @@ export default function App() {
           </header>
 
           {userRole === 'hodim' && <HodimGpsPromptBar />}
-
-          {userRole === 'hodim' &&
-            selectedTopic &&
-            activeView !== 'handouts' &&
-            activeView !== 'syllabus' &&
-            activeView !== 'lectures' && <HandoutTopicBanner />}
 
           {isNotificationsOpen && (
             <div

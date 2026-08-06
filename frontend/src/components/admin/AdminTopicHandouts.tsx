@@ -35,7 +35,6 @@ export default function AdminTopicHandouts() {
 
   const [search, setSearch] = useState('');
   const [fanFilter, setFanFilter] = useState('');
-  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -145,17 +144,12 @@ export default function AdminTopicHandouts() {
 
   const removeHandout = async (id: number) => {
     const pk = Number(id);
-    if (pendingDeleteId !== pk) {
-      setPendingDeleteId(pk);
-      setError(null);
-      return;
-    }
+    if (!pk || deletingId === pk) return;
     setDeletingId(pk);
     setError(null);
     try {
       await deleteAdminHandout(pk);
       setHandouts((prev) => prev.filter((h) => Number(h.id) !== pk));
-      setPendingDeleteId(null);
     } catch (err) {
       setError(backendErrorMessage(err) || t('admin.error.deleteFailedGeneric'));
     } finally {
@@ -322,7 +316,6 @@ export default function AdminTopicHandouts() {
               <ul className="divide-y divide-slate-50">
                 {g.rows.map((h) => {
                   const hid = Number(h.id);
-                  const isPending = pendingDeleteId === hid;
                   const isDeleting = deletingId === hid;
                   return (
                   <li key={hid} className="flex items-center gap-3 px-4 py-2.5">
@@ -339,37 +332,16 @@ export default function AdminTopicHandouts() {
                         {h.file_name} · {formatSize(h.file_size)}
                       </p>
                     </div>
-                    {isPending ? (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          disabled={isDeleting}
-                          onClick={() => void removeHandout(hid)}
-                          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 disabled:opacity-50"
-                        >
-                          {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                          {t('admin.confirmDelete')}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isDeleting}
-                          onClick={() => setPendingDeleteId(null)}
-                          className="h-8 px-2.5 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50"
-                        >
-                          {t('common.cancel')}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void removeHandout(hid)}
-                        className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 shrink-0"
-                        title={t('admin.delete')}
-                      >
-                        <Trash2 size={14} />
-                        {t('admin.delete')}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => void removeHandout(hid)}
+                      className="p-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 shrink-0 disabled:opacity-50"
+                      title={t('admin.delete')}
+                      aria-label={t('admin.delete')}
+                    >
+                      {isDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                    </button>
                   </li>
                   );
                 })}
