@@ -9,7 +9,6 @@ import {
   ListChecks,
   ChevronLeft,
   ChevronRight,
-  Lock,
 } from 'lucide-react';
 import SyllabusHandoutPanel from './staff/SyllabusHandoutPanel';
 import TopicVideoPanel from './staff/TopicVideoPanel';
@@ -26,8 +25,6 @@ import {
 import { resolveSyllabusVariants, totalTopicCount } from '../utils/syllabusVariant';
 import {
   buildTopicContext,
-  loadPersistedVariantBySubject,
-  persistVariantBySubject,
   topicsMatch,
   type SyllabusTopicContext,
 } from '../utils/syllabusTopicContext';
@@ -57,19 +54,14 @@ export default function SyllabusView({
 }: SyllabusViewProps) {
   const { language } = React.useContext(AppLanguageContext);
   const { t } = useUiText();
-  const steps = [t('syllabus.step1'), t('syllabus.step2'), t('syllabus.step3')];
+  const steps = [t('syllabus.step1'), t('syllabus.stepTopic')];
 
   const [loading, setLoading] = useState(true);
   const [mySelections, setMySelections] = useState<StaffCourseSelectionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activeSyllabusId, setActiveSyllabusId] = useState<number | null>(null);
-  const [variantBySubject, setVariantBySubject] = useState<Record<number, string>>(
-    () => loadPersistedVariantBySubject(),
-  );
 
-
-  // Bitta fan bir nechta yo'nalishga biriktirilgan bo'lishi mumkin —
-  // chiplar uchun har fandan bitta (noyob) qator.
+  // Bitta fan bir nechta qatorga biriktirilgan bo'lishi mumkin — chiplar uchun noyob.
   const mySubjects = (() => {
     const seen = new Set<number>();
     const out: StaffCourseSelectionRow[] = [];
@@ -81,23 +73,6 @@ export default function SyllabusView({
     }
     return out;
   })();
-
-  const setVariant = useCallback(
-    (syllabusId: number, label: string) => {
-      setVariantBySubject((prev) => {
-        const next = { ...prev, [syllabusId]: label };
-        persistVariantBySubject(next);
-        return next;
-      });
-      if (
-        selectedTopic?.syllabusId === syllabusId &&
-        selectedTopic.variantLabel !== label
-      ) {
-        onClearTopic();
-      }
-    },
-    [selectedTopic, onClearTopic],
-  );
 
   const load = useCallback(async () => {
     if (userRole !== 'hodim') {
@@ -155,7 +130,7 @@ export default function SyllabusView({
     );
   };
 
-  // Faol fanning barcha biriktirish qatorlari (har bir yo'nalish alohida qator)
+  // Faol fanning biriktirish qatorlari
   const activeRows = mySelections.filter((s) => s.syllabus.id === activeSyllabusId);
   const activeSyllabus = activeRows[0]?.syllabus ?? mySelections[0]?.syllabus ?? null;
   const allActiveVariants = activeSyllabus ? resolveSyllabusVariants(activeSyllabus) : [];
@@ -169,19 +144,16 @@ export default function SyllabusView({
       ? allActiveVariants
       : allActiveVariants.filter((v) => assignedLabels.has(v.label));
   const activeVariants = allowedVariants.length > 0 ? allowedVariants : allActiveVariants;
-  const restrictedByAdmin = !adminAssignedAllDirections && assignedLabels.size > 0;
-  const preferredLabel = activeSyllabus ? variantBySubject[activeSyllabus.id] : undefined;
-  const activeVariant =
-    activeVariants.find((v) => v.label === preferredLabel) ?? activeVariants[0] ?? null;
+  // Yo'nalish UI yo'q — birinchi (yoki yagona) PDF/variant mavzulari.
+  const activeVariant = activeVariants[0] ?? null;
   const activeLabel = activeVariant?.label ?? '';
   const activeTopics = activeVariant?.topics ?? [];
   const activeLectures = activeTopics.filter((topic) => topic.type === 'lecture');
   const activePracticals = activeTopics.filter((topic) => topic.type === 'practical');
   const showSplitTopics = activeLectures.length > 0 && activePracticals.length > 0;
 
-  const step1Done = mySelections.length > 0;
-  const step2Done = step1Done && activeSyllabus != null;
-  const step3Done = selectedTopic != null;
+  const step1Done = mySelections.length > 0 && activeSyllabus != null;
+  const step2Done = selectedTopic != null;
 
   if (loading) {
     return (
@@ -206,11 +178,9 @@ export default function SyllabusView({
             </div>
             <div className="flex flex-wrap gap-1.5 shrink-0">
               {steps.map((label, i) => {
-                const done = i === 0 ? step1Done : i === 1 ? step2Done : step3Done;
+                const done = i === 0 ? step1Done : step2Done;
                 const active =
-                  (i === 0 && !step1Done) ||
-                  (i === 1 && step1Done && !step2Done) ||
-                  (i === 2 && step2Done && !step3Done);
+                  (i === 0 && !step1Done) || (i === 1 && step1Done && !step2Done);
                 return (
                   <span
                     key={label}
@@ -238,14 +208,13 @@ export default function SyllabusView({
           </div>
         )}
 
-        <div className="border-b border-slate-100 grid grid-cols-1 lg:grid-cols-2 lg:divide-x divide-slate-100">
+        <div className="border-b border-slate-100">
         {/* 1-bosqich: Fan tanlash */}
         <SyllabusStepSection
           step={1}
           title={t('syllabus.step1')}
           done={step1Done}
           active={!step1Done}
-          className="border-b lg:border-b-0 border-slate-100"
         >
           {mySelections.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -258,7 +227,10 @@ export default function SyllabusView({
                   <button
                     key={sel.id}
                     type="button"
-                    onClick={() => setActiveSyllabusId(syllabus.id)}
+                    onClick={() => {
+                      setActiveSyllabusId(syllabus.id);
+                      if (selectedTopic?.syllabusId !== syllabus.id) onClearTopic();
+                    }}
                     className={`inline-flex items-center gap-1.5 pl-2.5 pr-2.5 py-1.5 rounded-lg border text-[12px] transition ${
                       isActive
                         ? 'border-blue-400 bg-blue-50'
@@ -272,7 +244,7 @@ export default function SyllabusView({
                       {instructionLanguageBadge(resolveSyllabusInstructionLanguage(syllabus))}
                     </span>
                     <span className="text-[9px] text-slate-400 shrink-0">
-                      {variants.length} {t('syllabus.tracks')} · {topics} {t('syllabus.topics')}
+                      {topics} {t('syllabus.topics')}
                     </span>
                   </button>
                 );
@@ -285,66 +257,18 @@ export default function SyllabusView({
             </div>
           )}
         </SyllabusStepSection>
+        </div>
 
-        {/* 2-bosqich: Yo'nalish */}
+        {/* 2-bosqich: Mavzu tanlash */}
         <SyllabusStepSection
           step={2}
-          title={t('syllabus.step2')}
+          title={t('syllabus.stepTopic')}
           done={step2Done}
           active={step1Done && !step2Done}
           muted={!step1Done}
         >
           {!step1Done ? (
-            <p className="text-sm text-slate-400 italic">{t('syllabus.step2Locked')}</p>
-          ) : activeSyllabus ? (
-            <div className="space-y-1.5">
-              <p className="text-[12px] font-semibold text-slate-800 truncate">{activeSyllabus.subject_name}</p>
-              {activeVariants.length > 1 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {activeVariants.map((v) => (
-                    <button
-                      key={v.label}
-                      type="button"
-                      onClick={() => setVariant(activeSyllabus.id, v.label)}
-                      className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition ${
-                        activeLabel === v.label
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
-                      }`}
-                    >
-                      {v.label}
-                      <span className="opacity-70 ml-0.5">({v.topics.length})</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[11px] text-slate-600 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100">
-                  {restrictedByAdmin && <Lock size={11} className="text-slate-500" />}
-                  {activeVariants[0]?.label ?? t('syllabus.singleTrack')}
-                  {restrictedByAdmin && (
-                    <span className="text-slate-400">· {t('syllabus.assignedByAdmin')}</span>
-                  )}
-                </p>
-              )}
-              <p className="text-[10px] text-slate-500 leading-snug">{t('syllabus.step2Hint')}</p>
-              {activeVariant && (
-                <p className="text-[10px] text-gray-400 truncate">PDF: {activeVariant.file_name}</p>
-              )}
-            </div>
-          ) : null}
-        </SyllabusStepSection>
-        </div>
-
-        {/* 3-bosqich: Mavzu tanlash */}
-        <SyllabusStepSection
-          step={3}
-          title={t('syllabus.step3')}
-          done={step3Done}
-          active={step2Done && !step3Done}
-          muted={!step2Done}
-        >
-          {!step2Done ? (
-            <p className="text-sm text-slate-400 italic">{t('syllabus.step3Locked')}</p>
+            <p className="text-sm text-slate-400 italic">{t('syllabus.stepTopicLocked')}</p>
           ) : activeSyllabus ? (
             <div className="space-y-3">
               {selectedTopic && (
@@ -358,22 +282,14 @@ export default function SyllabusView({
                         <span className="text-blue-700">{selectedTopic.id}</span> — {selectedTopic.title}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => onOpenLectures(selectedTopic)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-semibold"
-                      >
-                        {t('syllabus.lectureNotes')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={onOpenHandouts}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-400 bg-white text-amber-900 text-[11px] font-semibold"
-                      >
-                        {t('syllabus.handouts')}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenLectures(selectedTopic)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[12px] font-semibold shrink-0"
+                    >
+                      {t('syllabus.next')}
+                      <ArrowRight size={14} />
+                    </button>
                   </div>
                   <SyllabusHandoutPanel topic={selectedTopic} onOpenHandouts={onOpenHandouts} />
                   <TopicVideoPanel topic={selectedTopic} />

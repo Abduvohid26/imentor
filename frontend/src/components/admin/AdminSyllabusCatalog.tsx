@@ -817,19 +817,14 @@ export default function AdminSyllabusCatalog() {
                     {fans.length === 0 ? (
                       <p className="text-center text-slate-500 text-[13px] py-6">{t('admin.emptyDepartmentFans')}</p>
                     ) : (
-                      <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                      <ul className="space-y-3">
           {fans.map((row) => {
             const variants = draftTopicsByFan[row.id] || resolveSyllabusVariants(row);
             const open = expandedId === row.id;
             const topicTotal = totalTopicCount(variants);
             const editing = editingNameId === row.id;
             return (
-              <li
-                key={row.id}
-                className={`ios-glass rounded-2xl border border-white/70 overflow-hidden min-w-0 ${
-                  open ? 'sm:col-span-2 xl:col-span-4' : ''
-                }`}
-              >
+              <li key={row.id} className="ios-glass rounded-2xl border border-white/70 overflow-hidden">
                 <div className="p-4 flex flex-wrap items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
                     <FileText size={20} className="text-slate-600" />
@@ -875,7 +870,7 @@ export default function AdminSyllabusCatalog() {
                       {t('admin.subjectStats', { topics: topicTotal })}
                       {row.description ? ` · ${row.description}` : ''}
                     </p>
-                    <p className="text-[11px] text-slate-400 font-mono truncate">{row.subject_code}</p>
+                    <p className="text-[11px] text-slate-400 font-mono">{row.subject_code}</p>
                   </div>
                   <button
                     type="button"
@@ -1068,28 +1063,26 @@ function TopicEditGroup({
   return (
     <div className="space-y-1.5">
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{title}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-        {topics.map((topic) => {
-          const key = `${topic.type}-${topic.id}`;
-          const isLecture = topic.type === 'lecture';
-          return (
-            <div key={key} className="flex items-center gap-1.5 min-w-0">
-              <span
-                className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                  isLecture ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'
-                }`}
-              >
-                {topic.id}
-              </span>
-              <input
-                value={topic.title}
-                onChange={(e) => onChange(key, e.target.value)}
-                className="flex-1 min-w-0 h-8 px-2 rounded-lg border border-slate-200 text-[12px]"
-              />
-            </div>
-          );
-        })}
-      </div>
+      {topics.map((topic) => {
+        const key = `${topic.type}-${topic.id}`;
+        const isLecture = topic.type === 'lecture';
+        return (
+          <div key={key} className="flex items-center gap-2">
+            <span
+              className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                isLecture ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'
+              }`}
+            >
+              {topic.id}
+            </span>
+            <input
+              value={topic.title}
+              onChange={(e) => onChange(key, e.target.value)}
+              className="flex-1 min-w-0 h-8 px-2 rounded-lg border border-slate-200 text-[12px]"
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
