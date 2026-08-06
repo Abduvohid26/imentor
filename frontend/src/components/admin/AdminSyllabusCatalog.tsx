@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft,
   BookOpen,
   Building2,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   FileText,
   Loader2,
@@ -19,6 +17,7 @@ import {
 import { HttpError } from '../../api/httpClient';
 import { aiService, syllabusExtractionErrorMessage, type SyllabusTopic } from '../../services/aiService';
 import { clearBackendAuthTokens } from '../../utils/backendAuth';
+import { fetchAcademicCatalog } from '../../utils/academicCatalogApi';
 import {
   createAdminCourseSyllabus,
   deleteAdminCourseSyllabus,
@@ -85,6 +84,34 @@ function listLoadErrorMessage(err: unknown, t: ReturnType<typeof useUiText>['t']
   return t('admin.error.subjectsLoadFailed');
 }
 
+function softDeptKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchAcademicDepartment(
+  catalogName: string,
+  catalogCode: string | null | undefined,
+  academic: DepartmentRow[],
+): DepartmentRow | null {
+  const kn = softDeptKey(catalogName);
+  const kc = softDeptKey(catalogCode || '');
+  return (
+    academic.find((d) => softDeptKey(d.name) === kn || (kc && softDeptKey(d.code) === kc)) ||
+    academic.find(
+      (d) =>
+        softDeptKey(d.name).includes(kn) ||
+        kn.includes(softDeptKey(d.name)) ||
+        (kc && (softDeptKey(d.code).includes(kc) || kc.includes(softDeptKey(d.code)))),
+    ) ||
+    null
+  );
+}
+
 export default function AdminSyllabusCatalog() {
   const { t, language } = useUiText();
   const [list, setList] = useState<CourseSyllabusRow[]>([]);
@@ -96,7 +123,10 @@ export default function AdminSyllabusCatalog() {
   const [listError, setListError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  const [selectedDept, setSelectedDept] = useState<DepartmentRow | null>(null);
+  /** Shu page ichida ochilgan kafedra (alohida sahifa emas). */
+  const [openDeptId, setOpenDeptId] = useState<number | null>(null);
+  /** OnlineTest academic-catalog tartibi (28) — asosiy ro'yxat. */
+  const [catalogOrder, setCatalogOrder] = useState<{ name: string; code: string }[] | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingNameId, setEditingNameId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -120,9 +150,10 @@ export default function AdminSyllabusCatalog() {
     setLoading(true);
     setListError(null);
     try {
-      const [syllabi, stats] = await Promise.all([
+      const [syllabi, stats, catalog] = await Promise.all([
         fetchAdminCourseSyllabuses(),
         fetchAdminSyllabusCatalogStats().catch(() => null),
+        fetchAcademicCatalog().catch(() => null),
       ]);
       setList(syllabi);
       setDepartments(
@@ -134,9 +165,16 @@ export default function AdminSyllabusCatalog() {
           sort_order: d.sort_order ?? 0,
         })),
       );
+      const kafedralar = catalog?.kafedralar || [];
+      setCatalogOrder(
+        kafedralar.length > 0
+          ? kafedralar.map((k) => ({ name: k.name, code: (k.code || '').trim() }))
+          : null,
+      );
     } catch (err) {
       setList([]);
       setDepartments([]);
+      setCatalogOrder(null);
       setListError(listLoadErrorMessage(err, t));
     } finally {
       setLoading(false);
@@ -219,39 +257,78 @@ export default function AdminSyllabusCatalog() {
     setShowNewFanForm(false);
   };
 
-  const deptFans = useMemo(() => {
-    if (!selectedDept) return [];
-    return list.filter(
-      (row) =>
-        row.department === selectedDept.id ||
-        row.department_code === selectedDept.code ||
-        (!row.department && !row.department_code && selectedDept.code === '__none__'),
-    );
-  }, [list, selectedDept]);
+  const fansForDept = useCallback(
+    (dept: DepartmentRow) => {
+      if (dept.id <= 0) return [];
+      return list.filter(
+        (row) =>
+          row.department === dept.id ||
+          row.department_code === dept.code ||
+          (!row.department && !row.department_code && dept.code === '__none__'),
+      );
+    },
+    [list],
+  );
 
   const filteredDepartments = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const withCounts = departments.map((d) => {
-      const rows = list.filter((r) => r.department === d.id || r.department_code === d.code);
+    // API (academic-catalog) 28 kafedra — asosiy manba; DB id uchun AcademicDepartment ga moslashtiramiz.
+    let base: DepartmentRow[];
+    if (catalogOrder && catalogOrder.length > 0) {
+      const used = new Set<number>();
+      base = [];
+      for (const [idx, k] of catalogOrder.entries()) {
+        const hit = matchAcademicDepartment(k.name, k.code, departments);
+        if (hit && !used.has(hit.id)) {
+          used.add(hit.id);
+          base.push({
+            ...hit,
+            name: k.name || hit.name,
+            code: k.code || hit.code,
+            sort_order: idx,
+          });
+        } else if (!hit) {
+          // Katalogda bor, lekin DB da hali yo'q — ko'rsatamiz (id=0 upload uchun yopiq).
+          base.push({
+            id: -idx - 1,
+            name: k.name,
+            code: k.code || k.name,
+            subjects_count: 0,
+            sort_order: idx,
+          });
+        }
+      }
+    } else {
+      base = [...departments].sort(
+        (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'uz'),
+      );
+    }
+    const withCounts = base.map((d) => {
+      const rows = d.id > 0 ? fansForDept(d) : [];
       const topics = rows.reduce((sum, r) => sum + totalTopicCount(resolveSyllabusVariants(r)), 0);
-      return { ...d, fanCount: rows.length || d.subjects_count, topicCount: topics };
+      return { ...d, fanCount: rows.length || (d.id > 0 ? d.subjects_count : 0), topicCount: topics };
     });
-    // Avval fanlari bor kafedralar, keyin sort_order / nom.
-    const rank = (a: (typeof withCounts)[number], b: (typeof withCounts)[number]) => {
-      const byFans = (b.fanCount > 0 ? 1 : 0) - (a.fanCount > 0 ? 1 : 0);
-      if (byFans !== 0) return byFans;
-      const byOrder = (a.sort_order ?? 0) - (b.sort_order ?? 0);
-      if (byOrder !== 0) return byOrder;
-      return a.name.localeCompare(b.name, 'uz');
-    };
-    if (!q) return withCounts.sort(rank);
-    return withCounts
-      .filter((d) => d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q))
-      .sort(rank);
-  }, [departments, list, search]);
+    if (!q) return withCounts;
+    return withCounts.filter(
+      (d) => d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q),
+    );
+  }, [departments, fansForDept, search, catalogOrder]);
+
+  const selectedDept = useMemo(() => {
+    if (openDeptId == null) return null;
+    return filteredDepartments.find((d) => d.id === openDeptId) || null;
+  }, [filteredDepartments, openDeptId]);
+
+  const deptFans = useMemo(
+    () => (selectedDept ? fansForDept(selectedDept) : []),
+    [fansForDept, selectedDept],
+  );
 
   const createFan = async () => {
-    if (!selectedDept) return;
+    if (!selectedDept || selectedDept.id <= 0) {
+      setError(t('admin.error.catalogSaveFailed'));
+      return;
+    }
     const name = newFanName.trim();
     if (!name) {
       setError(t('admin.error.enterSubjectName'));
@@ -280,7 +357,10 @@ export default function AdminSyllabusCatalog() {
   };
 
   const startUploadForDepartment = async (files: FileList | File[], mode: 'single' | 'bulk') => {
-    if (!selectedDept) return;
+    if (!selectedDept || selectedDept.id <= 0) {
+      setError(t('admin.error.catalogSaveFailed'));
+      return;
+    }
     const uploadFiles = filterSyllabusUploadFiles(files);
     if (!uploadFiles.length) {
       setError(t('admin.error.filesRequired'));
@@ -536,88 +616,39 @@ export default function AdminSyllabusCatalog() {
       )}
 
       <div className="ios-glass rounded-3xl border border-white/70 p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            {selectedDept ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedDept(null);
-                  setExpandedId(null);
-                  setShowNewFanForm(false);
-                  setError(null);
-                }}
-                className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 hover:bg-slate-200"
-                title={t('admin.backToDepartments')}
-              >
-                <ArrowLeft size={22} />
-              </button>
-            ) : (
-              <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
-                <BookOpen size={24} />
-              </div>
-            )}
-            <div className="min-w-0">
-              <h2 className="text-xl font-bold text-slate-900 truncate">
-                {selectedDept ? selectedDept.name : t('admin.syllabusTitle')}
-              </h2>
-              <p className="text-[13px] text-slate-500 leading-relaxed">
-                {selectedDept ? t('admin.departmentsListHint') : t('admin.syllabusDescription')}
-              </p>
-            </div>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+            <BookOpen size={24} />
           </div>
-
-          {selectedDept && (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setShowNewFanForm((v) => !v)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold"
-              >
-                <Plus size={16} /> {t('admin.newSubject')}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => singleInputRef.current?.click()}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-[13px] font-semibold text-slate-700"
-              >
-                <Upload size={16} /> {t('admin.uploadSyllabusSingle')}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => bulkInputRef.current?.click()}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-[13px] font-semibold text-indigo-800"
-              >
-                <Upload size={16} /> {t('admin.uploadSyllabusBulk')}
-              </button>
-              <input
-                ref={singleInputRef}
-                type="file"
-                accept={SYLLABUS_UPLOAD_ACCEPT}
-                className="hidden"
-                onChange={(e) => {
-                  const files = e.target.files;
-                  if (files?.length) void startUploadForDepartment(files, 'single');
-                  e.target.value = '';
-                }}
-              />
-              <input
-                ref={bulkInputRef}
-                type="file"
-                accept={SYLLABUS_UPLOAD_ACCEPT}
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  const files = e.target.files;
-                  if (files?.length) void startUploadForDepartment(files, 'bulk');
-                  e.target.value = '';
-                }}
-              />
-            </div>
-          )}
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold text-slate-900 truncate">{t('admin.syllabusTitle')}</h2>
+            <p className="text-[13px] text-slate-500 leading-relaxed">{t('admin.syllabusDescription')}</p>
+          </div>
         </div>
+
+        <input
+          ref={singleInputRef}
+          type="file"
+          accept={SYLLABUS_UPLOAD_ACCEPT}
+          className="hidden"
+          onChange={(e) => {
+            const files = e.target.files;
+            if (files?.length) void startUploadForDepartment(files, 'single');
+            e.target.value = '';
+          }}
+        />
+        <input
+          ref={bulkInputRef}
+          type="file"
+          accept={SYLLABUS_UPLOAD_ACCEPT}
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = e.target.files;
+            if (files?.length) void startUploadForDepartment(files, 'bulk');
+            e.target.value = '';
+          }}
+        />
 
         {listError && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 space-y-2">
@@ -652,107 +683,142 @@ export default function AdminSyllabusCatalog() {
           </div>
         )}
 
-        {!selectedDept && (
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('admin.syllabusSearchPlaceholder')}
-              className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 bg-white text-[14px]"
-            />
-          </div>
-        )}
-
-        {selectedDept && showNewFanForm && (
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
-            <div className="grid sm:grid-cols-2 gap-3">
-              <label className="space-y-1">
-                <span className="text-[12px] font-semibold text-slate-600">{t('admin.subjectName')}</span>
-                <input
-                  value={newFanName}
-                  onChange={(e) => setNewFanName(e.target.value)}
-                  placeholder={t('admin.subjectNamePlaceholder')}
-                  disabled={creatingFan}
-                  className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white"
-                  autoFocus
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-[12px] font-semibold text-slate-600">{t('admin.descriptionLabel')}</span>
-                <input
-                  value={newFanDescription}
-                  onChange={(e) => setNewFanDescription(e.target.value)}
-                  placeholder={t('admin.descriptionPlaceholder')}
-                  disabled={creatingFan}
-                  className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white"
-                />
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={creatingFan || !newFanName.trim()}
-                onClick={() => void createFan()}
-                className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold disabled:opacity-50"
-              >
-                {creatingFan ? <Loader2 className="animate-spin inline" size={16} /> : t('admin.create')}
-              </button>
-              <button
-                type="button"
-                onClick={resetNewFanForm}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-[13px] font-semibold"
-              >
-                {t('admin.cancel')}
-              </button>
-            </div>
-          </div>
-        )}
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('admin.syllabusSearchPlaceholder')}
+            className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 bg-white text-[14px]"
+          />
+        </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="animate-spin text-indigo-600" size={40} />
         </div>
-      ) : !selectedDept ? (
-        filteredDepartments.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-slate-400 text-[14px]">{t('admin.noResults')}</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filteredDepartments.map((dept) => (
-              <button
-                key={dept.id}
-                type="button"
-                onClick={() => {
-                  setSelectedDept(dept);
-                  setSearch('');
-                  setError(null);
-                }}
-                className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white border border-slate-200 text-left hover:border-indigo-200 hover:bg-indigo-50/30 transition"
-              >
-                <span className="flex items-center gap-2 font-bold text-slate-800 min-w-0">
-                  <Building2 size={16} className="text-slate-500 shrink-0" />
-                  <span className="truncate">{dept.name}</span>
-                  <ChevronRight size={16} className="text-slate-400 shrink-0" />
-                </span>
-                <span className="text-[12px] text-slate-500 shrink-0">
-                  {t('admin.fanCount', { count: dept.fanCount })}
-                  {' · '}
-                  {t('admin.topicsCountLabel', { count: dept.topicCount })}
-                </span>
-              </button>
-            ))}
-          </div>
-        )
-      ) : deptFans.length === 0 ? (
-        <div className="text-center py-12 space-y-2">
-          <p className="text-slate-500">{t('admin.emptyDepartmentFans')}</p>
+      ) : filteredDepartments.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-slate-400 text-[14px]">{t('admin.noResults')}</p>
         </div>
       ) : (
-        <ul className="space-y-3">
-          {deptFans.map((row) => {
+        <div className="space-y-2">
+          {filteredDepartments.map((dept) => {
+            const isOpen = openDeptId === dept.id;
+            const fans = isOpen ? fansForDept(dept) : [];
+            return (
+              <div
+                key={dept.id}
+                className={`rounded-xl border bg-white overflow-hidden ${
+                  isOpen ? 'border-indigo-200 shadow-sm' : 'border-slate-200'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = isOpen ? null : dept.id;
+                    setOpenDeptId(next);
+                    setExpandedId(null);
+                    setShowNewFanForm(false);
+                    setError(null);
+                  }}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-indigo-50/30 transition"
+                >
+                  <span className="flex items-center gap-2 font-bold text-slate-800 min-w-0">
+                    <Building2 size={16} className="text-slate-500 shrink-0" />
+                    <span className="truncate">{dept.name}</span>
+                    {isOpen ? (
+                      <ChevronUp size={16} className="text-indigo-500 shrink-0" />
+                    ) : (
+                      <ChevronDown size={16} className="text-slate-400 shrink-0" />
+                    )}
+                  </span>
+                  <span className="text-[12px] text-slate-500 shrink-0">
+                    {t('admin.fanCount', { count: dept.fanCount })}
+                    {' · '}
+                    {t('admin.topicsCountLabel', { count: dept.topicCount })}
+                  </span>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-slate-100 bg-slate-50/50 px-3 sm:px-4 py-3 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowNewFanForm((v) => !v)}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold"
+                      >
+                        <Plus size={16} /> {t('admin.newSubject')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => singleInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-[13px] font-semibold text-slate-700"
+                      >
+                        <Upload size={16} /> {t('admin.uploadSyllabusSingle')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => bulkInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-[13px] font-semibold text-indigo-800"
+                      >
+                        <Upload size={16} /> {t('admin.uploadSyllabusBulk')}
+                      </button>
+                    </div>
+
+                    {showNewFanForm && (
+                      <div className="rounded-2xl border border-indigo-100 bg-white p-4 space-y-3">
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <label className="space-y-1">
+                            <span className="text-[12px] font-semibold text-slate-600">{t('admin.subjectName')}</span>
+                            <input
+                              value={newFanName}
+                              onChange={(e) => setNewFanName(e.target.value)}
+                              placeholder={t('admin.subjectNamePlaceholder')}
+                              disabled={creatingFan}
+                              className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white"
+                              autoFocus
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[12px] font-semibold text-slate-600">{t('admin.descriptionLabel')}</span>
+                            <input
+                              value={newFanDescription}
+                              onChange={(e) => setNewFanDescription(e.target.value)}
+                              placeholder={t('admin.descriptionPlaceholder')}
+                              disabled={creatingFan}
+                              className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white"
+                            />
+                          </label>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={creatingFan || !newFanName.trim()}
+                            onClick={() => void createFan()}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold disabled:opacity-50"
+                          >
+                            {creatingFan ? <Loader2 className="animate-spin inline" size={16} /> : t('admin.create')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={resetNewFanForm}
+                            className="px-4 py-2 rounded-xl border border-slate-200 text-[13px] font-semibold"
+                          >
+                            {t('admin.cancel')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {fans.length === 0 ? (
+                      <p className="text-center text-slate-500 text-[13px] py-6">{t('admin.emptyDepartmentFans')}</p>
+                    ) : (
+                      <ul className="space-y-3">
+          {fans.map((row) => {
             const variants = draftTopicsByFan[row.id] || resolveSyllabusVariants(row);
             const open = expandedId === row.id;
             const topicTotal = totalTopicCount(variants);
@@ -952,7 +1018,14 @@ export default function AdminSyllabusCatalog() {
               </li>
             );
           })}
-        </ul>
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       <input
