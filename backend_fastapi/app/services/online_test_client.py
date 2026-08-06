@@ -11,7 +11,7 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 _catalog_cache: dict[str, Any] = {"data": None, "expires_at": 0.0}
-ACADEMIC_CATALOG_CACHE_TTL = 600
+ACADEMIC_CATALOG_CACHE_TTL = 300
 
 
 class OnlineTestAuthError(Exception):

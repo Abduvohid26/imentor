@@ -48,6 +48,15 @@ export default function SyllabusUploadPreview({
     onChange({ ...data, variants });
   };
 
+  const updateTopicTitle = (variantIndex: number, topicIndex: number, title: string) => {
+    const variants = data.variants.map((v, i) => {
+      if (i !== variantIndex) return v;
+      const topics = v.topics.map((topic, ti) => (ti === topicIndex ? { ...topic, title } : topic));
+      return { ...v, topics };
+    });
+    onChange({ ...data, variants });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50">
       <div className="w-full sm:max-w-2xl max-h-[92vh] overflow-hidden bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col">
@@ -90,6 +99,8 @@ export default function SyllabusUploadPreview({
 
           {data.variants.map((variant, index) => {
             const counts = countTopicsByType(variant.topics);
+            const lectures = variant.topics.filter((x) => x.type === 'lecture');
+            const practicals = variant.topics.filter((x) => x.type !== 'lecture');
             return (
               <div
                 key={`${variant.file_name}-${index}`}
@@ -117,16 +128,30 @@ export default function SyllabusUploadPreview({
                     practicals: counts.practicals,
                   })}
                 </div>
-                <ul className="max-h-40 overflow-y-auto divide-y divide-slate-50">
-                  {variant.topics.slice(0, 24).map((topic) => (
-                    <TopicPreviewRow key={`${variant.label}-${topic.id}`} topic={topic} />
-                  ))}
-                  {variant.topics.length > 24 && (
-                    <li className="px-3 py-2 text-[11px] text-slate-400 italic">
-                      {t('admin.previewMore', { count: variant.topics.length - 24 })}
-                    </li>
+                <div className="max-h-56 overflow-y-auto divide-y divide-slate-50">
+                  {lectures.length > 0 && (
+                    <TopicGroup
+                      title={t('admin.lecturesSection')}
+                      topics={lectures}
+                      saving={saving}
+                      onTitleChange={(topicId, title) => {
+                        const ti = variant.topics.findIndex((x) => x.id === topicId && x.type === 'lecture');
+                        if (ti >= 0) updateTopicTitle(index, ti, title);
+                      }}
+                    />
                   )}
-                </ul>
+                  {practicals.length > 0 && (
+                    <TopicGroup
+                      title={t('admin.practicalsSection')}
+                      topics={practicals}
+                      saving={saving}
+                      onTitleChange={(topicId, title) => {
+                        const ti = variant.topics.findIndex((x) => x.id === topicId && x.type !== 'lecture');
+                        if (ti >= 0) updateTopicTitle(index, ti, title);
+                      }}
+                    />
+                  )}
+                </div>
               </div>
             );
           })}
@@ -176,18 +201,41 @@ function StatCard({
   );
 }
 
-function TopicPreviewRow({ topic }: { topic: SyllabusTopic }) {
-  const isLecture = topic.type === 'lecture';
+function TopicGroup({
+  title,
+  topics,
+  saving,
+  onTitleChange,
+}: {
+  title: string;
+  topics: SyllabusTopic[];
+  saving: boolean;
+  onTitleChange: (topicId: string, title: string) => void;
+}) {
   return (
-    <li className="px-3 py-1.5 flex items-start gap-2 text-[11px]">
-      <span
-        className={`shrink-0 font-bold px-1.5 py-0.5 rounded ${
-          isLecture ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'
-        }`}
-      >
-        {topic.id}
-      </span>
-      <span className="text-slate-700 leading-snug">{topic.title}</span>
-    </li>
+    <div className="px-3 py-2 space-y-2">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{title}</p>
+      {topics.map((topic) => {
+        const isLecture = topic.type === 'lecture';
+        return (
+          <div key={`${topic.type}-${topic.id}`} className="flex items-start gap-2">
+            <span
+              className={`shrink-0 mt-1.5 font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                isLecture ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'
+              }`}
+            >
+              {topic.id}
+            </span>
+            <input
+              value={topic.title}
+              onChange={(e) => onTitleChange(topic.id, e.target.value)}
+              disabled={saving}
+              className="flex-1 min-w-0 h-8 px-2 rounded-lg border border-slate-200 text-[12px] text-slate-800"
+              aria-label={title}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 }

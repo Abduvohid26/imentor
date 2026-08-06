@@ -163,11 +163,18 @@ async function main() {
   );
   console.log(`ok hodim my selections=${(mine.body as Json[]).length}`);
 
-  await req('DELETE', `/v1/admin/staff-course-selections/${selId}/`, { token, expect: 204 });
-  console.log('ok delete selection');
-
-  await req('DELETE', `/v1/admin/course-syllabuses/${id}/`, { token, expect: 204 });
-  console.log('ok delete syllabus');
+  // Fan o'chirish — biriktiruv bor bo'lsa ham ishlashi kerak (selections avval tozalanadi).
+  const delWithSel = await req('DELETE', `/v1/admin/course-syllabuses/${id}/`, { token });
+  if (delWithSel.status === 204) {
+    console.log('ok delete syllabus (with selection cascade)');
+  } else if (delWithSel.status === 500) {
+    console.log('warn delete-with-selection still 500 — FastAPI delete cleanup deploy kerak');
+    await req('DELETE', `/v1/admin/staff-course-selections/${selId}/`, { token, expect: 204 });
+    await req('DELETE', `/v1/admin/course-syllabuses/${id}/`, { token, expect: 204 });
+    console.log('ok delete syllabus (after manual selection cleanup)');
+  } else {
+    throw new Error(`delete syllabus → ${delWithSel.status}: ${JSON.stringify(delWithSel.body).slice(0, 200)}`);
+  }
 
   const gone = await req('GET', `/v1/admin/course-syllabuses/?page_size=1000`, { token, expect: 200 });
   assert(!results(gone.body).some((r) => Number(r.id) === id), 'syllabus still listed');

@@ -67,6 +67,7 @@ export type SyllabusCatalogStats = {
   variants_count: number;
   topics_count: number;
   by_department: {
+    id: number;
     name: string;
     code: string;
     subjects_count: number;
@@ -101,6 +102,7 @@ export async function fetchAdminCourseSyllabuses(): Promise<CourseSyllabusRow[]>
 export async function createAdminCourseSyllabus(payload: {
   subject_name: string;
   subject_code?: string;
+  department_id?: number | null;
   description?: string;
   instruction_language?: AppLanguage;
   file_name?: string;
@@ -123,6 +125,7 @@ export async function updateAdminCourseSyllabus(
   payload: Partial<{
     subject_name: string;
     description: string;
+    department_id: number | null;
     instruction_language: AppLanguage;
     file_name: string;
     topics: SyllabusTopic[];

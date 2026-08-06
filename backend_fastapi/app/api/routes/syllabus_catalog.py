@@ -249,6 +249,7 @@ def admin_syllabus_stats(
 ) -> dict:
     by_department = db.execute(
         select(
+            AcademicDepartment.id,
             AcademicDepartment.name,
             AcademicDepartment.code,
             func.count(CourseSyllabus.id).filter(CourseSyllabus.is_active.is_(True)).label("subjects_count"),
@@ -256,7 +257,12 @@ def admin_syllabus_stats(
         .select_from(AcademicDepartment)
         .join(CourseSyllabus, CourseSyllabus.department_id == AcademicDepartment.id, isouter=True)
         .where(AcademicDepartment.is_active.is_(True))
-        .group_by(AcademicDepartment.name, AcademicDepartment.code, AcademicDepartment.sort_order)
+        .group_by(
+            AcademicDepartment.id,
+            AcademicDepartment.name,
+            AcademicDepartment.code,
+            AcademicDepartment.sort_order,
+        )
         .order_by(AcademicDepartment.sort_order, AcademicDepartment.name)
     ).all()
 
@@ -282,7 +288,8 @@ def admin_syllabus_stats(
         "variants_count": variants_count,
         "topics_count": topics_count,
         "by_department": [
-            {"name": r.name, "code": r.code, "subjects_count": r.subjects_count} for r in by_department
+            {"id": r.id, "name": r.name, "code": r.code, "subjects_count": r.subjects_count}
+            for r in by_department
         ],
     }
 
@@ -420,8 +427,26 @@ def admin_delete_syllabus(
     db: Session = Depends(get_db),
     auth=Depends(require_roles("admin")),
 ) -> None:
+    from sqlalchemy import delete as sa_delete, update
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models.prepared_content import PreparedContent
+
     obj = db.get(CourseSyllabus, pk)
     if obj is None:
         raise HTTPException(status_code=404, detail="Topilmadi.")
-    db.delete(obj)
-    db.commit()
+
+    # Bog'liq yozuvlarni avval tozalash (DB CASCADE/SET NULL ba'zan ishlamaydi).
+    db.execute(sa_delete(StaffCourseSelection).where(StaffCourseSelection.syllabus_id == pk))
+    db.execute(
+        update(PreparedContent).where(PreparedContent.syllabus_id == pk).values(syllabus_id=None)
+    )
+    try:
+        db.delete(obj)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Bu fanni o'chirib bo'lmadi — bog'liq ma'lumotlar mavjud.",
+        ) from exc

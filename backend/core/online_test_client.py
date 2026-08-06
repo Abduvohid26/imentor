@@ -12,7 +12,7 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 ACADEMIC_CATALOG_CACHE_KEY = "online_test:academic_catalog"
-ACADEMIC_CATALOG_CACHE_TTL = 600  # 10 daqiqa
+ACADEMIC_CATALOG_CACHE_TTL = 300  # 5 daqiqa
 
 
 class OnlineTestAuthError(Exception):
@@ -83,7 +83,7 @@ def fetch_academic_catalog(*, timeout: float = 12.0, use_cache: bool = True) -> 
     Muvaffaqiyat: {kafedralar: [{id,name,code,directions:[{id,name,groups:[
     {id,name,level,student_count}]}]}], unassigned_directions: [...]}
 
-    Natija `ACADEMIC_CATALOG_CACHE_TTL` (10 daqiqa) davomida keshlanadi — bu
+    Natija `ACADEMIC_CATALOG_CACHE_TTL` (5 daqiqa) davomida keshlanadi — bu
     ma'lumot tez-tez o'zgarmaydi, har so'rovda OnlineTest'ga urilmaslik uchun.
     """
     if use_cache:

@@ -1,21 +1,23 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   BookOpen,
+  Building2,
   ChevronDown,
-  ChevronUp,
   ChevronRight,
-  Loader2,
-  Trash2,
+  ChevronUp,
   FileText,
-  ToggleLeft,
-  ToggleRight,
-  FolderOpen,
+  Loader2,
+  Pencil,
   Plus,
   Search,
-  Building2,
+  ToggleLeft,
+  ToggleRight,
+  Trash2,
+  Upload,
 } from 'lucide-react';
 import { HttpError } from '../../api/httpClient';
-import { aiService, syllabusExtractionErrorMessage } from '../../services/aiService';
+import { aiService, syllabusExtractionErrorMessage, type SyllabusTopic } from '../../services/aiService';
 import { clearBackendAuthTokens } from '../../utils/backendAuth';
 import {
   createAdminCourseSyllabus,
@@ -52,11 +54,13 @@ type UploadProgress = {
   fileName: string;
 };
 
-/**
- * Variant (yo'nalish) belgilarini noyob qiladi: bir nechta PDF nomidan bir xil
- * belgi chiqsa (masalan ikkalasi ham "XT"), takrorlanganiga "XT 2", "XT 3" beriladi.
- * Foydalanuvchi preview'da istagan nomga tahrirlashi mumkin.
- */
+type DepartmentRow = {
+  id: number;
+  name: string;
+  code: string;
+  subjects_count: number;
+};
+
 function dedupeVariantLabels(variants: SyllabusVariant[]): SyllabusVariant[] {
   const used = new Set<string>();
   return variants.map((v) => {
@@ -74,12 +78,8 @@ function dedupeVariantLabels(variants: SyllabusVariant[]): SyllabusVariant[] {
 
 function listLoadErrorMessage(err: unknown, t: ReturnType<typeof useUiText>['t']): string {
   if (err instanceof HttpError) {
-    if (err.status === 403) {
-      return t('admin.error.adminRequired');
-    }
-    if (err.status === 401) {
-      return t('admin.error.reloginRequired');
-    }
+    if (err.status === 403) return t('admin.error.adminRequired');
+    if (err.status === 401) return t('admin.error.reloginRequired');
   }
   return t('admin.error.subjectsLoadFailed');
 }
@@ -87,31 +87,33 @@ function listLoadErrorMessage(err: unknown, t: ReturnType<typeof useUiText>['t']
 export default function AdminSyllabusCatalog() {
   const { t, language } = useUiText();
   const [list, setList] = useState<CourseSyllabusRow[]>([]);
+  const [departments, setDepartments] = useState<DepartmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [preview, setPreview] = useState<SyllabusUploadPreviewData | null>(null);
+  const [search, setSearch] = useState('');
 
-  // Yangi fan yaratish — hujjatsiz, faqat nom+tavsif
+  const [selectedDept, setSelectedDept] = useState<DepartmentRow | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [editingNameId, setEditingNameId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [draftTopicsByFan, setDraftTopicsByFan] = useState<Record<number, SyllabusVariant[]>>({});
+  const [savingTopicsId, setSavingTopicsId] = useState<number | null>(null);
+
+  const [preview, setPreview] = useState<SyllabusUploadPreviewData | null>(null);
+  const [previewMode, setPreviewMode] = useState<'create' | 'append'>('create');
+  const [uploadTargetId, setUploadTargetId] = useState<number | null>(null);
+
   const [showNewFanForm, setShowNewFanForm] = useState(false);
   const [newFanName, setNewFanName] = useState('');
   const [newFanDescription, setNewFanDescription] = useState('');
-  const [newFanFiles, setNewFanFiles] = useState<File[]>([]);
   const [creatingFan, setCreatingFan] = useState(false);
-  // Preview qaysi rejimda ochilgan: yangi fan yaratish yoki mavjudiga qo'shish
-  const [previewMode, setPreviewMode] = useState<'create' | 'append'>('append');
 
-  // Qaysi fan qatorida hujjat yuklash oynasi ochiq
-  const [uploadTargetId, setUploadTargetId] = useState<number | null>(null);
-
-  // Kafedra bo'yicha guruhlash + qidiruv.
-  // expandedDepts bo'sh = barcha kafedralar yopiq (default).
-  const [search, setSearch] = useState('');
-  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
-  const [departments, setDepartments] = useState<{ name: string; code: string }[]>([]);
+  const singleInputRef = useRef<HTMLInputElement>(null);
+  const bulkInputRef = useRef<HTMLInputElement>(null);
+  const appendInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,8 +126,10 @@ export default function AdminSyllabusCatalog() {
       setList(syllabi);
       setDepartments(
         (stats?.by_department || []).map((d) => ({
+          id: d.id,
           name: d.name,
           code: d.code || d.name,
+          subjects_count: d.subjects_count,
         })),
       );
     } catch (err) {
@@ -141,17 +145,6 @@ export default function AdminSyllabusCatalog() {
     void load();
   }, [load]);
 
-  const resetNewFanForm = () => {
-    setNewFanName('');
-    setNewFanDescription('');
-    setNewFanFiles([]);
-    setShowNewFanForm(false);
-  };
-
-  /**
-   * PDF(lar)dan AI orqali mavzularni ajratib variantlar yig'adi.
-   * Bitta fayl xato bo'lsa — qolganlarini davom ettiradi; kamida bitta muvaffaqiyat kerak.
-   */
   const extractVariantsFromFiles = async (
     files: File[],
     fallbackLanguage: AppLanguage,
@@ -218,36 +211,50 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
+  const resetNewFanForm = () => {
+    setNewFanName('');
+    setNewFanDescription('');
+    setShowNewFanForm(false);
+  };
+
+  const deptFans = useMemo(() => {
+    if (!selectedDept) return [];
+    return list.filter(
+      (row) =>
+        row.department === selectedDept.id ||
+        row.department_code === selectedDept.code ||
+        (!row.department && !row.department_code && selectedDept.code === '__none__'),
+    );
+  }, [list, selectedDept]);
+
+  const filteredDepartments = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const withCounts = departments.map((d) => {
+      const rows = list.filter((r) => r.department === d.id || r.department_code === d.code);
+      const topics = rows.reduce((sum, r) => sum + totalTopicCount(resolveSyllabusVariants(r)), 0);
+      return { ...d, fanCount: rows.length || d.subjects_count, topicCount: topics };
+    });
+    if (!q) return withCounts.sort((a, b) => a.name.localeCompare(b.name));
+    return withCounts
+      .filter((d) => d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [departments, list, search]);
+
   const createFan = async () => {
+    if (!selectedDept) return;
     const name = newFanName.trim();
     if (!name) {
       setError(t('admin.error.enterSubjectName'));
       return;
     }
-
-    // PDF(lar) tanlangan bo'lsa: AI tahlil → preview (create rejimi) → tasdiqda yaratiladi
-    if (newFanFiles.length) {
-      const result = await extractVariantsFromFiles(newFanFiles, 'uz');
-      if (!result) return;
-      setPreviewMode('create');
-      setUploadTargetId(null);
-      setPreview({
-        subjectName: name,
-        description: newFanDescription.trim(),
-        instructionLanguage: result.language,
-        variants: result.variants.map((v) => ({ ...v, editableLabel: v.label })),
-      });
-      return;
-    }
-
-    // PDFsiz: nom bilan bo'sh fan yaratish (keyin hujjat qo'shiladi)
     setCreatingFan(true);
     setError(null);
     try {
       await createAdminCourseSyllabus({
         subject_name: name,
         description: newFanDescription.trim(),
-        sort_order: list.length,
+        department_id: selectedDept.id,
+        sort_order: deptFans.length,
       });
       resetNewFanForm();
       await load();
@@ -262,20 +269,48 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
-  const processFiles = async (files: FileList | File[]) => {
-    const target = list.find((r) => r.id === uploadTargetId);
-    if (!target) return;
-
+  const startUploadForDepartment = async (files: FileList | File[], mode: 'single' | 'bulk') => {
+    if (!selectedDept) return;
     const uploadFiles = filterSyllabusUploadFiles(files);
     if (!uploadFiles.length) {
       setError(t('admin.error.filesRequired'));
       return;
     }
-
-    const result = await extractVariantsFromFiles(uploadFiles, resolveSyllabusInstructionLanguage(target));
+    if (mode === 'single' && uploadFiles.length > 1) {
+      // still allow first file only for single button semantics
+    }
+    const result = await extractVariantsFromFiles(uploadFiles, 'uz');
     if (!result) return;
 
+    // Har bir variant = alohida fan (bulk da bir nechta PDF → bir nechta fan)
+    // Preview da bitta subjectName; bulk uchun birinchi fayl nomi asosida.
+    const subjectGuess =
+      uploadFiles.length === 1
+        ? uploadFiles[0].name.replace(/\.(pdf|docx?)$/i, '').replace(/\([^)]*\)\s*$/, '').trim()
+        : t('admin.newSubject');
+
+    setPreviewMode('create');
+    setUploadTargetId(null);
+    setPreview({
+      subjectName: subjectGuess || t('admin.newSubject'),
+      description: '',
+      instructionLanguage: result.language,
+      variants: result.variants.map((v) => ({ ...v, editableLabel: v.label })),
+    });
+  };
+
+  const processAppendFiles = async (files: FileList | File[], targetId: number) => {
+    const target = list.find((r) => r.id === targetId);
+    if (!target) return;
+    const uploadFiles = filterSyllabusUploadFiles(files);
+    if (!uploadFiles.length) {
+      setError(t('admin.error.filesRequired'));
+      return;
+    }
+    const result = await extractVariantsFromFiles(uploadFiles, resolveSyllabusInstructionLanguage(target));
+    if (!result) return;
     setPreviewMode('append');
+    setUploadTargetId(targetId);
     setPreview({
       subjectName: target.subject_name,
       description: target.description || '',
@@ -285,7 +320,7 @@ export default function AdminSyllabusCatalog() {
   };
 
   const savePreview = async () => {
-    if (!preview) return;
+    if (!preview || !selectedDept) return;
 
     const variants: SyllabusVariant[] = preview.variants.map((v) => ({
       label: v.editableLabel.trim() || v.label,
@@ -303,18 +338,54 @@ export default function AdminSyllabusCatalog() {
     setError(null);
     try {
       if (previewMode === 'create') {
-        const subjectName = preview.subjectName.trim();
-        if (!subjectName) {
-          setError(t('admin.error.enterSubjectName'));
-          return;
+        // Bulk: har bir variant alohida fan; single: bitta fan ichida barcha variantlar.
+        if (variants.length > 1 && preview.variants.every((v) => v.file_name)) {
+          const uniqueFiles = new Set(variants.map((v) => v.file_name));
+          if (uniqueFiles.size === variants.length) {
+            for (const v of variants) {
+              const nameFromFile = v.file_name
+                .replace(/\.(pdf|docx?)$/i, '')
+                .replace(/\([^)]*\)\s*$/, '')
+                .trim();
+              await createAdminCourseSyllabus({
+                subject_name: nameFromFile || preview.subjectName.trim() || v.label,
+                description: preview.description.trim(),
+                instruction_language: preview.instructionLanguage,
+                department_id: selectedDept.id,
+                variants: [v],
+                sort_order: deptFans.length,
+              });
+            }
+          } else {
+            const subjectName = preview.subjectName.trim();
+            if (!subjectName) {
+              setError(t('admin.error.enterSubjectName'));
+              return;
+            }
+            await createAdminCourseSyllabus({
+              subject_name: subjectName,
+              description: preview.description.trim(),
+              instruction_language: preview.instructionLanguage,
+              department_id: selectedDept.id,
+              variants,
+              sort_order: deptFans.length,
+            });
+          }
+        } else {
+          const subjectName = preview.subjectName.trim();
+          if (!subjectName) {
+            setError(t('admin.error.enterSubjectName'));
+            return;
+          }
+          await createAdminCourseSyllabus({
+            subject_name: subjectName,
+            description: preview.description.trim(),
+            instruction_language: preview.instructionLanguage,
+            department_id: selectedDept.id,
+            variants,
+            sort_order: deptFans.length,
+          });
         }
-        await createAdminCourseSyllabus({
-          subject_name: subjectName,
-          description: preview.description.trim(),
-          instruction_language: preview.instructionLanguage,
-          variants,
-          sort_order: list.length,
-        });
         resetNewFanForm();
       } else {
         if (uploadTargetId == null) return;
@@ -339,13 +410,6 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
-  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files?.length) return;
-    await processFiles(files);
-    e.target.value = '';
-  };
-
   const toggleActive = async (row: CourseSyllabusRow) => {
     try {
       await updateAdminCourseSyllabus(row.id, { is_active: !row.is_active });
@@ -359,9 +423,76 @@ export default function AdminSyllabusCatalog() {
     if (!window.confirm(t('admin.confirmDeleteCourse', { name: row.subject_name }))) return;
     try {
       await deleteAdminCourseSyllabus(row.id);
+      setExpandedId((id) => (id === row.id ? null : id));
+      await load();
+    } catch (err) {
+      if (err instanceof HttpError && (err.status === 409 || err.status === 400)) {
+        const detail =
+          err.body && typeof err.body === 'object' && 'detail' in err.body
+            ? String((err.body as { detail: unknown }).detail)
+            : '';
+        setError(detail || t('admin.error.deleteFailedGeneric'));
+      } else {
+        setError(t('admin.error.deleteFailedGeneric'));
+      }
+    }
+  };
+
+  const saveSubjectName = async (row: CourseSyllabusRow) => {
+    const name = editingName.trim();
+    if (!name || name === row.subject_name) {
+      setEditingNameId(null);
+      return;
+    }
+    try {
+      await updateAdminCourseSyllabus(row.id, { subject_name: name });
+      setEditingNameId(null);
       await load();
     } catch {
-      setError(t('admin.error.deleteFailedGeneric'));
+      setError(t('admin.error.updateFailedGeneric'));
+    }
+  };
+
+  const ensureDraftVariants = (row: CourseSyllabusRow) => {
+    if (draftTopicsByFan[row.id]) return draftTopicsByFan[row.id];
+    return resolveSyllabusVariants(row);
+  };
+
+  const updateDraftTopicTitle = (
+    row: CourseSyllabusRow,
+    variantLabel: string,
+    topicKey: string,
+    title: string,
+  ) => {
+    const base = ensureDraftVariants(row);
+    const next = base.map((v) => {
+      if (v.label !== variantLabel) return v;
+      return {
+        ...v,
+        topics: v.topics.map((topic) =>
+          `${topic.type}-${topic.id}` === topicKey ? { ...topic, title } : topic,
+        ),
+      };
+    });
+    setDraftTopicsByFan((prev) => ({ ...prev, [row.id]: next }));
+  };
+
+  const saveFanTopics = async (row: CourseSyllabusRow) => {
+    const variants = draftTopicsByFan[row.id] || resolveSyllabusVariants(row);
+    setSavingTopicsId(row.id);
+    setError(null);
+    try {
+      await updateAdminCourseSyllabus(row.id, { variants });
+      setDraftTopicsByFan((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+      await load();
+    } catch {
+      setError(t('admin.error.updateFailedGeneric'));
+    } finally {
+      setSavingTopicsId(null);
     }
   };
 
@@ -380,64 +511,7 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
-  const toggleExpand = (row: CourseSyllabusRow) => {
-    const next = expandedId === row.id ? null : row.id;
-    setExpandedId(next);
-    if (next === null) {
-      setUploadTargetId(null);
-    }
-  };
-
-  const toggleDept = (key: string) => {
-    setExpandedDepts((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const filteredList = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((row) =>
-      `${row.subject_name} ${row.department_name || ''} ${row.subject_code}`.toLowerCase().includes(q),
-    );
-  }, [list, search]);
-
-  const groupedByDepartment = useMemo(() => {
-    const map = new Map<string, { departmentName: string; rows: CourseSyllabusRow[] }>();
-
-    // Avval barcha kafedralar (sillabus yo'q bo'lsa ham).
-    for (const d of departments) {
-      const code = d.code || d.name;
-      if (!map.has(code)) map.set(code, { departmentName: d.name, rows: [] });
-    }
-
-    for (const row of filteredList) {
-      const key = row.department_code || '__none__';
-      const name = row.department_name || t('admin.noDepartment');
-      if (!map.has(key)) map.set(key, { departmentName: name, rows: [] });
-      map.get(key)!.rows.push(row);
-    }
-
-    let groups = [...map.entries()]
-      .map(([code, v]) => ({ code, ...v }))
-      .sort((a, b) => a.departmentName.localeCompare(b.departmentName));
-
-    const q = search.trim().toLowerCase();
-    if (q) {
-      groups = groups.filter(
-        (g) =>
-          g.departmentName.toLowerCase().includes(q) ||
-          g.code.toLowerCase().includes(q) ||
-          g.rows.length > 0,
-      );
-    }
-    return groups;
-  }, [departments, filteredList, search, t]);
-
-  const busy = uploading;
+  const busy = uploading || creatingFan;
 
   return (
     <div className="p-3 sm:p-5 lg:p-6 h-full overflow-y-auto w-full space-y-6">
@@ -453,22 +527,86 @@ export default function AdminSyllabusCatalog() {
 
       <div className="ios-glass rounded-3xl border border-white/70 p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center">
-              <BookOpen size={24} />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">{t('admin.syllabusTitle')}</h2>
-              <p className="text-[13px] text-slate-500 leading-relaxed">{t('admin.syllabusDescription')}</p>
+          <div className="flex items-center gap-3 min-w-0">
+            {selectedDept ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDept(null);
+                  setExpandedId(null);
+                  setShowNewFanForm(false);
+                  setError(null);
+                }}
+                className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 hover:bg-slate-200"
+                title={t('admin.backToDepartments')}
+              >
+                <ArrowLeft size={22} />
+              </button>
+            ) : (
+              <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                <BookOpen size={24} />
+              </div>
+            )}
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold text-slate-900 truncate">
+                {selectedDept ? selectedDept.name : t('admin.syllabusTitle')}
+              </h2>
+              <p className="text-[13px] text-slate-500 leading-relaxed">
+                {selectedDept ? t('admin.departmentsListHint') : t('admin.syllabusDescription')}
+              </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowNewFanForm((v) => !v)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold shadow-md"
-          >
-            <Plus size={18} /> {t('admin.newSubject')}
-          </button>
+
+          {selectedDept && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowNewFanForm((v) => !v)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold"
+              >
+                <Plus size={16} /> {t('admin.newSubject')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => singleInputRef.current?.click()}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-[13px] font-semibold text-slate-700"
+              >
+                <Upload size={16} /> {t('admin.uploadSyllabusSingle')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => bulkInputRef.current?.click()}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-[13px] font-semibold text-indigo-800"
+              >
+                <Upload size={16} /> {t('admin.uploadSyllabusBulk')}
+              </button>
+              <input
+                ref={singleInputRef}
+                type="file"
+                accept={SYLLABUS_UPLOAD_ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files?.length) void startUploadForDepartment(files, 'single');
+                  e.target.value = '';
+                }}
+              />
+              <input
+                ref={bulkInputRef}
+                type="file"
+                accept={SYLLABUS_UPLOAD_ACCEPT}
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files?.length) void startUploadForDepartment(files, 'bulk');
+                  e.target.value = '';
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {listError && (
@@ -487,7 +625,36 @@ export default function AdminSyllabusCatalog() {
           </div>
         )}
 
-        {showNewFanForm && (
+        {error && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-800">
+            {error}
+          </div>
+        )}
+
+        {progress && (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-[13px] text-indigo-900 flex items-center gap-2">
+            <Loader2 className="animate-spin" size={16} />
+            {t('admin.progress', {
+              current: progress.current,
+              total: progress.total,
+              fileName: progress.fileName,
+            })}
+          </div>
+        )}
+
+        {!selectedDept && (
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('admin.syllabusSearchPlaceholder')}
+              className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 bg-white text-[14px]"
+            />
+          </div>
+        )}
+
+        {selectedDept && showNewFanForm && (
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="space-y-1">
@@ -496,7 +663,7 @@ export default function AdminSyllabusCatalog() {
                   value={newFanName}
                   onChange={(e) => setNewFanName(e.target.value)}
                   placeholder={t('admin.subjectNamePlaceholder')}
-                  disabled={creatingFan || uploading}
+                  disabled={creatingFan}
                   className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white"
                   autoFocus
                 />
@@ -507,181 +674,122 @@ export default function AdminSyllabusCatalog() {
                   value={newFanDescription}
                   onChange={(e) => setNewFanDescription(e.target.value)}
                   placeholder={t('admin.descriptionPlaceholder')}
-                  disabled={creatingFan || uploading}
+                  disabled={creatingFan}
                   className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white"
-                />
-              </label>
-            </div>
-            <div className="space-y-2">
-              <span className="text-[12px] font-semibold text-slate-600">
-                {t('admin.syllabusDocumentsTitle')}
-              </span>
-              {newFanFiles.length > 0 && (
-                <ul className="space-y-1">
-                  {newFanFiles.map((f, i) => (
-                    <li
-                      key={`${f.name}-${i}`}
-                      className="flex items-center gap-2 rounded-lg bg-white border border-slate-100 px-3 py-1.5"
-                    >
-                      <FileText size={14} className="text-slate-500 shrink-0" />
-                      <span className="text-[12px] text-slate-700 truncate flex-1">{f.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setNewFanFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                        disabled={uploading}
-                        className="p-1 text-rose-400 hover:text-rose-600 disabled:opacity-40"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <label
-                className={`flex flex-col items-center justify-center gap-1.5 w-full py-4 rounded-xl border-2 border-dashed cursor-pointer transition ${
-                  uploading ? 'border-slate-200 bg-slate-50' : 'border-indigo-300 bg-indigo-50/50 hover:bg-indigo-50'
-                }`}
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="animate-spin text-indigo-600" size={18} />
-                    <span className="text-[12px] font-semibold text-indigo-700 text-center px-4">
-                      {progress
-                        ? t('admin.progress', {
-                            current: progress.current,
-                            total: progress.total,
-                            fileName: progress.fileName,
-                          })
-                        : t('admin.analyzing')}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <FolderOpen size={20} className="text-indigo-600" />
-                    <span className="text-[12px] font-semibold text-indigo-800">{t('admin.uploadDocuments')}</span>
-                  </>
-                )}
-                <input
-                  type="file"
-                  accept={SYLLABUS_UPLOAD_ACCEPT}
-                  multiple
-                  className="hidden"
-                  disabled={uploading || creatingFan}
-                  onChange={(e) => {
-                    const picked = filterSyllabusUploadFiles(e.target.files || []);
-                    if (picked.length) {
-                      setNewFanFiles((prev) => [...prev, ...picked]);
-                      setError(null);
-                    }
-                    e.target.value = '';
-                  }}
                 />
               </label>
             </div>
             <div className="flex gap-2">
               <button
                 type="button"
+                disabled={creatingFan || !newFanName.trim()}
                 onClick={() => void createFan()}
-                disabled={creatingFan || uploading || !newFanName.trim()}
-                className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold disabled:opacity-40"
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold disabled:opacity-50"
               >
-                {creatingFan || uploading ? <Loader2 className="animate-spin inline" size={16} /> : t('admin.create')}
+                {creatingFan ? <Loader2 className="animate-spin inline" size={16} /> : t('admin.create')}
               </button>
               <button
                 type="button"
                 onClick={resetNewFanForm}
-                disabled={uploading}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-[13px] font-semibold text-slate-700 disabled:opacity-40"
+                className="px-4 py-2 rounded-xl border border-slate-200 text-[13px] font-semibold"
               >
                 {t('admin.cancel')}
               </button>
             </div>
           </div>
         )}
-
-        {error && <p className="text-[13px] text-rose-600 font-medium">{error}</p>}
       </div>
-
-      {!loading && list.length > 0 && (
-        <div className="relative sm:max-w-sm">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('admin.syllabusSearchPlaceholder')}
-            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-[13px]"
-          />
-        </div>
-      )}
 
       {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="animate-spin text-indigo-600" size={40} />
         </div>
-      ) : departments.length === 0 && list.length === 0 ? (
-        <div className="text-center py-12 space-y-3">
-          <p className="text-slate-500">{t('admin.noSubjectsYet')}</p>
-          <p className="text-[13px] text-slate-400">{t('admin.uploadSyllabus')}</p>
-        </div>
-      ) : groupedByDepartment.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-slate-400 text-[14px]">{t('admin.noResults')}</p>
+      ) : !selectedDept ? (
+        filteredDepartments.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-slate-400 text-[14px]">{t('admin.noResults')}</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredDepartments.map((dept) => (
+              <button
+                key={dept.id}
+                type="button"
+                onClick={() => {
+                  setSelectedDept(dept);
+                  setSearch('');
+                  setError(null);
+                }}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white border border-slate-200 text-left hover:border-indigo-200 hover:bg-indigo-50/30 transition"
+              >
+                <span className="flex items-center gap-2 font-bold text-slate-800 min-w-0">
+                  <Building2 size={16} className="text-slate-500 shrink-0" />
+                  <span className="truncate">{dept.name}</span>
+                  <ChevronRight size={16} className="text-slate-400 shrink-0" />
+                </span>
+                <span className="text-[12px] text-slate-500 shrink-0">
+                  {t('admin.fanCount', { count: dept.fanCount })}
+                  {' · '}
+                  {t('admin.topicsCountLabel', { count: dept.topicCount })}
+                </span>
+              </button>
+            ))}
+          </div>
+        )
+      ) : deptFans.length === 0 ? (
+        <div className="text-center py-12 space-y-2">
+          <p className="text-slate-500">{t('admin.emptyDepartmentFans')}</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {groupedByDepartment.map((dept) => {
-            const deptExpanded = expandedDepts.has(dept.code);
-            const deptTopicTotal = dept.rows.reduce(
-              (sum, r) => sum + totalTopicCount(resolveSyllabusVariants(r)),
-              0,
-            );
+        <ul className="space-y-3">
+          {deptFans.map((row) => {
+            const variants = draftTopicsByFan[row.id] || resolveSyllabusVariants(row);
+            const open = expandedId === row.id;
+            const topicTotal = totalTopicCount(variants);
+            const editing = editingNameId === row.id;
             return (
-              <div key={dept.code} className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => toggleDept(dept.code)}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-100/80 border border-slate-200 text-left"
-                >
-                  <span className="flex items-center gap-2 font-bold text-slate-800">
-                    {deptExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <Building2 size={16} className="text-slate-500" />
-                    {dept.departmentName}
-                  </span>
-                  <span className="text-[12px] text-slate-500 shrink-0">
-                    {t('admin.subjectStats', { tracks: dept.rows.length, topics: deptTopicTotal })}
-                  </span>
-                </button>
-
-                {deptExpanded && (
-                  <ul className="space-y-3">
-                    {dept.rows.length === 0 ? (
-                      <li className="px-4 py-3 text-[13px] text-slate-400 rounded-2xl border border-dashed border-slate-200 bg-white/60">
-                        {t('admin.noSubjectsYet')}
-                      </li>
-                    ) : (
-                      dept.rows.map((row) => {
-                      const variants = resolveSyllabusVariants(row);
-                      const open = expandedId === row.id;
-                      const topicTotal = totalTopicCount(variants);
-                      const uploaderOpen = uploadTargetId === row.id;
-                      return (
-                        <li key={row.id} className="ios-glass rounded-2xl border border-white/70 overflow-hidden">
-                          <div className="p-4 flex flex-wrap items-start gap-3">
+              <li key={row.id} className="ios-glass rounded-2xl border border-white/70 overflow-hidden">
+                <div className="p-4 flex flex-wrap items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
                     <FileText size={20} className="text-slate-600" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-900 flex items-center gap-2 flex-wrap">
-                      {row.subject_name}
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                        {instructionLanguageBadge(resolveSyllabusInstructionLanguage(row))}
-                      </span>
-                      {topicTotal === 0 && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                          {t('admin.topicsWithoutData')}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    {editing ? (
+                      <div className="flex gap-2 flex-wrap">
+                        <input
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="flex-1 min-w-[160px] h-9 px-3 rounded-lg border border-slate-200 text-[14px] font-semibold"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void saveSubjectName(row)}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[12px] font-semibold"
+                        >
+                          {t('admin.save')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingNameId(null)}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-[12px] font-semibold"
+                        >
+                          {t('admin.cancel')}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                        {row.subject_name}
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                          {instructionLanguageBadge(resolveSyllabusInstructionLanguage(row))}
                         </span>
-                      )}
-                    </p>
+                        {topicTotal === 0 && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                            {t('admin.topicsWithoutData')}
+                          </span>
+                        )}
+                      </p>
+                    )}
                     <p className="text-[12px] text-slate-500">
                       {t('admin.subjectStats', {
                         tracks: variants.length,
@@ -693,9 +801,28 @@ export default function AdminSyllabusCatalog() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => toggleExpand(row)}
+                    onClick={() => {
+                      setEditingNameId(row.id);
+                      setEditingName(row.subject_name);
+                    }}
                     className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
-                    title={t('admin.directionsTitle')}
+                    title={t('admin.editSubjectName')}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = open ? null : row.id;
+                      setExpandedId(next);
+                      if (next !== null && !draftTopicsByFan[row.id]) {
+                        setDraftTopicsByFan((prev) => ({
+                          ...prev,
+                          [row.id]: resolveSyllabusVariants(row),
+                        }));
+                      }
+                    }}
+                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
                   >
                     {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                   </button>
@@ -704,7 +831,11 @@ export default function AdminSyllabusCatalog() {
                     onClick={() => void toggleActive(row)}
                     className="flex items-center gap-1 text-[12px] font-semibold text-slate-600"
                   >
-                    {row.is_active ? <ToggleRight className="text-emerald-600" size={22} /> : <ToggleLeft size={22} />}
+                    {row.is_active ? (
+                      <ToggleRight className="text-emerald-600" size={22} />
+                    ) : (
+                      <ToggleLeft size={22} />
+                    )}
                     {row.is_active ? t('admin.active') : t('admin.toggleInactive')}
                   </button>
                   <button
@@ -718,24 +849,37 @@ export default function AdminSyllabusCatalog() {
 
                 {open && (
                   <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 space-y-4">
-                    <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-[12px] font-bold text-slate-700 flex items-center gap-1.5">
                         <FileText size={14} />
                         {t('admin.syllabusDocumentsTitle')}
                       </p>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setUploadTargetId(row.id);
+                          appendInputRef.current?.click();
+                        }}
+                        className="text-[12px] font-semibold text-indigo-600 hover:underline"
+                      >
+                        + {t('admin.addDocumentToSubject')}
+                      </button>
+                    </div>
 
-                      {variants.length === 0 ? (
-                        <p className="text-[12px] text-amber-700 py-1">
-                          {t('admin.noDocumentUploaded')}
-                        </p>
-                      ) : (
-                        variants.map((v) => {
-                          const counts = countTopicsByType(v.topics);
-                          return (
-                            <div
-                              key={`${row.id}-${v.label}-${v.file_name}`}
-                              className="flex items-center gap-3 rounded-xl bg-white border border-slate-100 px-3 py-2"
-                            >
+                    {variants.length === 0 ? (
+                      <p className="text-[12px] text-amber-700 py-1">{t('admin.noDocumentUploaded')}</p>
+                    ) : (
+                      variants.map((v) => {
+                        const lectures = v.topics.filter((x) => x.type === 'lecture');
+                        const practicals = v.topics.filter((x) => x.type !== 'lecture');
+                        const counts = countTopicsByType(v.topics);
+                        return (
+                          <div
+                            key={`${row.id}-${v.label}-${v.file_name}`}
+                            className="rounded-xl bg-white border border-slate-100 overflow-hidden"
+                          >
+                            <div className="flex items-center gap-3 px-3 py-2 border-b border-slate-50">
                               <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md shrink-0">
                                 {v.label}
                               </span>
@@ -755,67 +899,101 @@ export default function AdminSyllabusCatalog() {
                                 <Trash2 size={14} />
                               </button>
                             </div>
-                          );
-                        })
-                      )}
+                            <div className="px-3 py-2 space-y-3">
+                              {lectures.length > 0 && (
+                                <TopicEditGroup
+                                  title={t('admin.lecturesSection')}
+                                  topics={lectures}
+                                  onChange={(key, title) =>
+                                    updateDraftTopicTitle(row, v.label, key, title)
+                                  }
+                                />
+                              )}
+                              {practicals.length > 0 && (
+                                <TopicEditGroup
+                                  title={t('admin.practicalsSection')}
+                                  topics={practicals}
+                                  onChange={(key, title) =>
+                                    updateDraftTopicTitle(row, v.label, key, title)
+                                  }
+                                />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
 
-                      {uploaderOpen ? (
-                        <label
-                          className={`flex flex-col items-center justify-center gap-1.5 w-full py-4 rounded-xl border-2 border-dashed cursor-pointer transition ${
-                            uploading ? 'border-slate-200 bg-slate-50' : 'border-indigo-300 bg-indigo-50/50 hover:bg-indigo-50'
-                          }`}
-                        >
-                          {uploading ? (
-                            <>
-                              <Loader2 className="animate-spin text-indigo-600" size={18} />
-                              <span className="text-[12px] font-semibold text-indigo-700 text-center px-4">
-                                {progress
-                                  ? t('admin.progress', {
-                                      current: progress.current,
-                                      total: progress.total,
-                                      fileName: progress.fileName,
-                                    })
-                                  : t('admin.analyzing')}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <FolderOpen size={20} className="text-indigo-600" />
-                              <span className="text-[12px] font-semibold text-indigo-800">{t('admin.uploadDocuments')}</span>
-                            </>
-                          )}
-                          <input
-                            type="file"
-                            accept={SYLLABUS_UPLOAD_ACCEPT}
-                            multiple
-                            className="hidden"
-                            disabled={busy}
-                            onChange={(e) => void handleDocumentUpload(e)}
-                          />
-                        </label>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setUploadTargetId(row.id)}
-                          className="text-[12px] font-semibold text-indigo-600 hover:underline"
-                        >
-                          + {t('admin.addDocumentToSubject')}
-                        </button>
-                      )}
-                    </div>
+                    {draftTopicsByFan[row.id] && (
+                      <button
+                        type="button"
+                        disabled={savingTopicsId === row.id}
+                        onClick={() => void saveFanTopics(row)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold disabled:opacity-50"
+                      >
+                        {savingTopicsId === row.id ? (
+                          <Loader2 className="animate-spin" size={16} />
+                        ) : null}
+                        {t('admin.saveTopics')}
+                      </button>
+                    )}
                   </div>
                 )}
-                        </li>
-                      );
-                    })
-                    )}
-                  </ul>
-                )}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
+
+      <input
+        ref={appendInputRef}
+        type="file"
+        accept={SYLLABUS_UPLOAD_ACCEPT}
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = e.target.files;
+          const targetId = uploadTargetId;
+          if (files?.length && targetId != null) void processAppendFiles(files, targetId);
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
+function TopicEditGroup({
+  title,
+  topics,
+  onChange,
+}: {
+  title: string;
+  topics: SyllabusTopic[];
+  onChange: (key: string, title: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{title}</p>
+      {topics.map((topic) => {
+        const key = `${topic.type}-${topic.id}`;
+        const isLecture = topic.type === 'lecture';
+        return (
+          <div key={key} className="flex items-center gap-2">
+            <span
+              className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                isLecture ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'
+              }`}
+            >
+              {topic.id}
+            </span>
+            <input
+              value={topic.title}
+              onChange={(e) => onChange(key, e.target.value)}
+              className="flex-1 min-w-0 h-8 px-2 rounded-lg border border-slate-200 text-[12px]"
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

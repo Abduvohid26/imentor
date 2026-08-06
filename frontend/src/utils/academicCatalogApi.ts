@@ -17,7 +17,7 @@ function apiBaseUrl(): string {
 
 let cached: AcademicCatalog | null = null;
 let cachedAt = 0;
-const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 daqiqa — backend'da ham 10 daqiqalik kesh bor
+const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 daqiqa — backend bilan bir xil TTL
 
 /** Backend `fetch_academic_catalog()` ni proksi qiladi — OnlineTest kaliti frontendga chiqmaydi. */
 export async function fetchAcademicCatalog(opts?: { force?: boolean }): Promise<AcademicCatalog> {
