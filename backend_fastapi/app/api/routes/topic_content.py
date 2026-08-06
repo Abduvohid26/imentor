@@ -77,6 +77,23 @@ def _resolve_norms(request: Request, topic_norm_list: list[str]) -> list[str]:
     return tn.norms_from_params(dict(request.query_params), topic_norm_list)
 
 
+def _resolve_handout_topic_norm(
+    topic: str,
+    topic_norm: str,
+    syllabus_id: int | None,
+    variant_label: str,
+    topic_code: str,
+) -> str:
+    """Django `TopicHandoutUploadSerializer.validate()` bilan bir xil: agar
+    syllabus_id+variant_label+topic_code hammasi berilgan bo'lsa shulardan
+    quriladi, aks holda berilgan topic_norm (yoki topic'dan) olinadi."""
+    if syllabus_id and variant_label.strip() and topic_code.strip():
+        built = tn.build_topic_norm(syllabus_id, variant_label, topic_code)
+        if built:
+            return built
+    return tn.canonical_topic_norm(topic_norm or "", topic)
+
+
 # ---------------- Handouts ----------------
 
 
@@ -100,15 +117,16 @@ def list_handouts(
 @router.post("/handouts/", response_model=TopicHandoutOut, status_code=201)
 async def upload_handout(
     file: UploadFile,
-    syllabus_id: int = Form(...),
-    variant_label: str = Form(...),
-    topic_code: str = Form(...),
     topic: str = Form(...),
+    topic_norm: str = Form(""),
+    syllabus_id: int | None = Form(None),
+    variant_label: str = Form(""),
+    topic_code: str = Form(""),
     title: str = Form(""),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
 ) -> TopicHandoutOut:
-    topic_norm = tn.build_topic_norm(syllabus_id, variant_label, topic_code)
+    topic_norm = _resolve_handout_topic_norm(topic, topic_norm, syllabus_id, variant_label, topic_code)
     if not topic_norm:
         raise HTTPException(status_code=400, detail="Mavzu normallashtirilmadi.")
     if not storage.validate_extension(file.filename or ""):
@@ -196,17 +214,18 @@ def admin_list_handouts(
 @router.post("/admin/handouts/", response_model=TopicHandoutOut, status_code=201)
 async def admin_upload_handout(
     file: UploadFile,
-    syllabus_id: int = Form(...),
-    variant_label: str = Form(...),
-    topic_code: str = Form(...),
     topic: str = Form(...),
+    topic_norm: str = Form(""),
+    syllabus_id: int | None = Form(None),
+    variant_label: str = Form(""),
+    topic_code: str = Form(""),
     title: str = Form(""),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_roles("admin")),
 ) -> TopicHandoutOut:
     return await upload_handout(
-        file, syllabus_id=syllabus_id, variant_label=variant_label, topic_code=topic_code,
-        topic=topic, title=title, db=db, auth=auth,
+        file, topic=topic, topic_norm=topic_norm, syllabus_id=syllabus_id,
+        variant_label=variant_label, topic_code=topic_code, title=title, db=db, auth=auth,
     )
 
 
@@ -247,15 +266,17 @@ def list_presentations(
 @router.post("/presentations/", response_model=TopicPresentationOut, status_code=201)
 async def upload_presentation(
     file: UploadFile,
-    syllabus_id: int = Form(...),
-    variant_label: str = Form(...),
-    topic_code: str = Form(...),
     topic: str = Form(...),
+    topic_norm: str = Form(""),
     title: str = Form(""),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
 ) -> TopicPresentationOut:
-    topic_norm = tn.build_topic_norm(syllabus_id, variant_label, topic_code)
+    # Django `TopicPresentationUploadSerializer.validate()` bilan bir xil —
+    # syllabus_id/variant_label/topic_code bu yerda mavjud emas, faqat
+    # topic_norm (yoki topic'dan) ishlatiladi.
+    topic_norm = (topic_norm or "").strip() or topic.strip().lower()
+    topic_norm = topic_norm[:255]
     if not topic_norm:
         raise HTTPException(status_code=400, detail="Mavzu normallashtirilmadi.")
     if not storage.validate_extension(file.filename or "", presentation=True):

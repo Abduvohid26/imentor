@@ -808,6 +808,46 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — 🐛 **Real production'da topilgan yana bir jiddiy bug**:
+  yangi taqdimot yaratish/yuklash "AI taqdimot yaratilmadi. [object Object]
+  [object Object] [object Object]" xatosi bilan muvaffaqiyatsiz tugardi.
+  Sabab: `POST /handouts/` va `POST /presentations/` FastAPI'da butunlay
+  **noto'g'ri kontrakt** bilan yozilgan edi — `syllabus_id`, `variant_label`,
+  `topic_code` maydonlarini **majburiy** (`Form(...)`) deb talab qilardi,
+  lekin frontend (`presentationUploadApi.ts`/`handoutApi.ts`) haqiqatda
+  faqat `topic`, `topic_norm`, `file`, (`title`) yuboradi — bular Django
+  original API kontraktiga (`TopicHandoutUploadSerializer`/
+  `TopicPresentationUploadSerializer`) mos, FastAPI esa mos EMAS edi.
+  Natijada 3 ta majburiy maydon doim yo'q bo'lib, FastAPI 422 xatosi
+  (3 ta validatsiya xatosi) qaytarardi — frontend'ning `apiErrorMessage()`
+  bu xato obyektlar massivini `String(x)` bilan formatlab
+  "[object Object]"ga aylantirardi (o'zi ham alohida kichik bug, lekin
+  asosiy sabab emas).
+
+  Bu xato taqdimotlar uchun **har doim** (syllabus_id har doim yo'q
+  yuborilgani uchun) va handoutlar uchun **faqat to'liq topic-context
+  bo'lmaganda** yuz berardi.
+
+  Tuzatish: `topic_content.py`dagi `upload_handout`/`admin_upload_handout`/
+  `upload_presentation` Django bilan bir xil kontraktga o'tkazildi —
+  `syllabus_id`/`variant_label`/`topic_code` endi **ixtiyoriy** (mavjud
+  bo'lsa ulardan `topic_norm` quriladi, Django'ning
+  `_build_topic_norm`/`_canonical_topic_norm` mantig'i bilan bir xil —
+  bu funksiyalar allaqachon `topic_norm.py`da to'g'ri yozilgan edi, faqat
+  endpoint ularni chaqirmasdi), `topic_norm` endi to'g'ridan-to'g'ri
+  qabul qilinadigan ixtiyoriy Form maydoni. Taqdimot uchun Django'da bu
+  3 maydon umuman yo'qligi sababli ular butunlay olib tashlandi (faqat
+  `topic`/`topic_norm`/`title`/`file`).
+
+  Real curl bilan tekshirildi: taqdimot (`topic`+`topic_norm`+`file`,
+  syllabus_id'siz) → `201`; handout ikkala holatda ham (syllabus_id bilan
+  va bilansiz) → `201`, `topic_norm` ikkala holatda ham to'g'ri hisoblandi.
+
+  Shu bilan birga, taqdimot generatsiyasi paytidagi progress paneli ham
+  chiroyliroq qilindi (foydalanuvchi so'rovi): xom JSON matn o'rniga
+  `parsePresentationProgress()` orqali "N-slayd tayyorlanmoqda" hisoblagichi
+  va oxirgi o'qilishi mumkin bo'lgan matn parchasi ko'rsatiladi, ikonka +
+  animatsiya bilan silliqroq kartochka dizaynida.
 - **2026-08-06** — Taqdimotlar (AI) uchun ham ma'ruza bilan bir xil 3 ta
   yaxshilanish qo'llanildi (foydalanuvchi: "taqdimotlarda ham baza kerak,
   real-time tez ishlasin, ochiq manbalardan rasm joylasin"):
