@@ -24,20 +24,21 @@ import { translate } from '../../i18n/translations';
 import LoginPage from '../auth/LoginPage';
 import RegisterPage from '../auth/RegisterPage';
 import DesktopHodimQrLogin from '../auth/DesktopHodimQrLogin';
+import AdminPasswordLogin from '../auth/AdminPasswordLogin';
 import MobileMinimalLogin from '../auth/MobileMinimalLogin';
 import { isDesktopBrowser } from '../../utils/deviceDetection';
 import PublicContentCatalog from './PublicContentCatalog';
 
 type AuthScreen = 'login' | 'register';
 
+type DesktopAuthView = 'talaba' | 'qr' | 'admin';
+
 type Props = {
   language: AppLanguage;
   setLanguage: (lang: AppLanguage) => void;
   isMobileDevice: boolean;
-  desktopStaffLogin: boolean;
-  setDesktopStaffLogin: (v: boolean) => void;
-  staffPasswordUnlocked: boolean;
-  setStaffPasswordUnlocked: (v: boolean) => void;
+  desktopAuthView: DesktopAuthView;
+  setDesktopAuthView: (v: DesktopAuthView) => void;
 };
 
 function t(lang: AppLanguage, key: Parameters<typeof translate>[1]) {
@@ -108,10 +109,8 @@ export default function PublicLandingPage({
   language,
   setLanguage,
   isMobileDevice,
-  desktopStaffLogin,
-  setDesktopStaffLogin,
-  staffPasswordUnlocked,
-  setStaffPasswordUnlocked,
+  desktopAuthView,
+  setDesktopAuthView,
 }: Props) {
   const [authOpen, setAuthOpen] = useState(false);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('login');
@@ -544,20 +543,19 @@ export default function PublicLandingPage({
                   ) : (
                     <RegisterPage onSwitchToLogin={() => setAuthScreen('login')} />
                   )
-                ) : isDesktopBrowser() && !desktopStaffLogin ? (
+                ) : isDesktopBrowser() && desktopAuthView === 'qr' ? (
                   <DesktopHodimQrLogin
-                    onOtherRoles={() => {
-                      setStaffPasswordUnlocked(true);
-                      setDesktopStaffLogin(true);
-                    }}
+                    showRoleTabs
+                    onSelectTalaba={() => setDesktopAuthView('talaba')}
+                    onOtherRoles={() => setDesktopAuthView('admin')}
                   />
+                ) : isDesktopBrowser() && desktopAuthView === 'admin' ? (
+                  <AdminPasswordLogin onBack={() => setDesktopAuthView('qr')} />
                 ) : authScreen === 'login' ? (
                   <LoginPage
                     onSwitchToRegister={() => setAuthScreen('register')}
-                    onBackToQr={isDesktopBrowser() ? () => setDesktopStaffLogin(false) : undefined}
-                    onWantsHodimQr={
-                      isDesktopBrowser() && !staffPasswordUnlocked ? () => setDesktopStaffLogin(false) : undefined
-                    }
+                    onBackToQr={isDesktopBrowser() ? () => setDesktopAuthView('qr') : undefined}
+                    onWantsHodimQr={isDesktopBrowser() ? () => setDesktopAuthView('qr') : undefined}
                   />
                 ) : (
                   <RegisterPage
@@ -566,7 +564,7 @@ export default function PublicLandingPage({
                       isDesktopBrowser()
                         ? () => {
                             setAuthScreen('login');
-                            setDesktopStaffLogin(false);
+                            setDesktopAuthView('qr');
                           }
                         : undefined
                     }

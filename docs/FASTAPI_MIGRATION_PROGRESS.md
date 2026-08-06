@@ -808,6 +808,42 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — Login modal UX yana takomillashtirildi (foydalanuvchi
+  qo'shimcha so'rovi bo'yicha), state modeli soddalashtirildi:
+  `App.tsx`/`PublicLandingPage.tsx`dagi ikkita boolean (`desktopStaffLogin`,
+  `staffPasswordUnlocked`) bitta aniqroq enum bilan almashtirildi:
+  `desktopAuthView: 'talaba' | 'qr' | 'admin'`.
+  1. **QR sahifasiga ham Talaba/Xodim tab bar qo'shildi**
+     (`DesktopHodimQrLogin.tsx`ga yangi `showRoleTabs`/`onSelectTalaba`
+     prop'lari) — Talaba bosilsa asosiy Talaba formaga qaytadi, Xodim esa
+     joriy (QR) holatni ko'rsatadi.
+  2. **"Boshqa rollar" endi alohida, faqat administrator uchun mo'ljallangan
+     kichik ekranga olib boradi** — yangi `AdminPasswordLogin.tsx`
+     komponenti: telefon+parol forma + "← Orqaga" tugmasi (QR'ga qaytaradi)
+     + pastda "Demo admin bilan kirish" tezkor tugmasi (faqat admin uchun,
+     `getDemoRoleLogins()`dan filtrlanadi). Hodim bu ekrandan kira olmaydi —
+     agar hodim raqami kiritilsa, mavjud `hodimDesktopRestriction` xatosi
+     bilan rad etiladi.
+  3. **QR sahifasi vizual jihatdan ixchamlashtirildi** (foydalanuvchi:
+     "scroll bo'lib xunuk bo'lib turibdi" degan shikoyat) — header ikonkasi/
+     matni kichraytirildi, ko'rsatmalar bloki siqildi, QR rasm o'lchami
+     260px→210px, kartochka padding'lari kamaytirildi — modal balandligi
+     sezilarli qisqardi, scroll extenti kamaydi.
+  Yangi tarjima kalitlari (`auth.backButton`, `auth.adminLoginTitle`,
+  `auth.adminLoginSubtitle`, `auth.demoAdminLogin`) uz/ru/en — barcha 3
+  tilga qo'shildi.
+
+  **Sinov metodologiyasi bo'yicha eslatma**: ushbu sessiyada brauzer
+  paneli vizual ravishda "displayed emas" holatida edi (`screenshot`/`zoom`
+  doim "pane is not displayed, so the page is not compositing frames" xatosi
+  bilan muvaffaqiyatsiz tugadi) — bu Framer Motion animatsiyalarini
+  (`requestAnimationFrame`ga tayangan) butunlay to'xtatib qo'ydi, ba'zi
+  o'tishlarda modal `opacity: 0`da "qotib qolganday" ko'rinardi (5+ soniya
+  kutilsa ham o'zgarmadi). Bu **kod xatosi emas** — muhit/asbob cheklovi
+  ekanligi `document.body.textContent` (CSS render holatidan mustaqil,
+  `innerText`dan farqli) orqali tasdiqlandi: barcha o'tishlar
+  (Talaba→Xodim/QR→Talaba, QR→Boshqa rollar→Admin panel) DOM darajasida
+  to'g'ri va kutilganidek ishladi.
 - **2026-08-06** — Login modal UX qayta qurildi (frontend, foydalanuvchi
   so'rovi bo'yicha): `App.tsx`, `PublicLandingPage.tsx`,
   `LoginPage.tsx`.

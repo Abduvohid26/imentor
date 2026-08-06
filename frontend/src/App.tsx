@@ -287,13 +287,9 @@ export default function App() {
   const [mountedViews, setMountedViews] = useState<View[]>([]);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [user, setUser] = useState<LocalStaffUser | null>(() => getCurrentLocalUser());
-  /** Kompyuterda standart holat — telefon/parol (yoki Talaba ID) login formasi;
-   * faqat "Xodim" tab tanlanganda QR ko'rsatiladi (LoginPage'dagi onWantsHodimQr). */
-  const [desktopStaffLogin, setDesktopStaffLogin] = useState(true);
-  /** QR ekranidagi "Boshqa rollar (telefon + parol)" bosilgandan keyin — "Xodim"
-   * tab endi QR'ga qaytarmaydi, haqiqiy telefon+parol formasini ko'rsatadi
-   * (admin/startuper uchun; hodim baribir submit vaqtida rad etiladi). */
-  const [staffPasswordUnlocked, setStaffPasswordUnlocked] = useState(false);
+  /** Kompyuterda login modal holati: 'talaba' — standart (Talaba ID+parol),
+   * 'qr' — hodim uchun QR, 'admin' — faqat administrator uchun telefon+parol. */
+  const [desktopAuthView, setDesktopAuthView] = useState<'talaba' | 'qr' | 'admin'>('talaba');
   const [selectedTopic, setSelectedTopic] = useState<SyllabusTopicContext | null>(() =>
     loadPersistedSelectedTopic(),
   );
@@ -653,10 +649,8 @@ export default function App() {
           language={language}
           setLanguage={setLanguage}
           isMobileDevice={isMobileDevice}
-          desktopStaffLogin={desktopStaffLogin}
-          setDesktopStaffLogin={setDesktopStaffLogin}
-          staffPasswordUnlocked={staffPasswordUnlocked}
-          setStaffPasswordUnlocked={setStaffPasswordUnlocked}
+          desktopAuthView={desktopAuthView}
+          setDesktopAuthView={setDesktopAuthView}
         />
       ) : shouldHodimUseMobileCompanion(user, isMobileDevice) ? (
         <HodimMobileCompanion />

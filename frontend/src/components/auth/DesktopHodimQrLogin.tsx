@@ -16,9 +16,13 @@ import { useUiText } from '../../i18n/useUiText';
 
 type Props = {
   onOtherRoles: () => void;
+  /** Talaba/Xodim tab bar ko'rsatilsinmi (login modal ichida — ha; post-login
+   * majburiy pairing ekranida — yo'q). */
+  showRoleTabs?: boolean;
+  onSelectTalaba?: () => void;
 };
 
-export default function DesktopHodimQrLogin({ onOtherRoles }: Props) {
+export default function DesktopHodimQrLogin({ onOtherRoles, showRoleTabs, onSelectTalaba }: Props) {
   const { t } = useUiText();
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,25 +135,43 @@ export default function DesktopHodimQrLogin({ onOtherRoles }: Props) {
   }, [startPairing, stopPoll]);
 
   return (
-    <div className="w-full max-w-md mx-auto space-y-5">
-      <div className="text-center space-y-2">
-        <div className="mx-auto w-14 h-14 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-lg">
-          <Monitor size={28} />
+    <div className="w-full max-w-md mx-auto space-y-4">
+      <div className="text-center space-y-1">
+        <div className="mx-auto w-11 h-11 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-lg">
+          <Monitor size={22} />
         </div>
-        <h2 className="text-2xl font-bold text-[#083047] tracking-tight">{t('auth.qrTitle')}</h2>
-        <p className="text-[14px] text-black/55 leading-relaxed">
+        <h2 className="text-xl font-bold text-[#083047] tracking-tight">{t('auth.qrTitle')}</h2>
+        <p className="text-[13px] text-black/55 leading-snug">
           {t('auth.qrSubtitle')}
         </p>
       </div>
 
-      <div className="rounded-2xl border border-sky-100 bg-sky-50/90 px-4 py-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Smartphone size={18} className="text-sky-700 shrink-0" />
-          <span className="text-[13px] font-bold text-sky-900">{t('auth.qrPhoneInstructions')}</span>
+      {showRoleTabs && (
+        <div className="grid grid-cols-2 gap-2 rounded-xl bg-black/[0.04] p-1">
+          <button
+            type="button"
+            onClick={onSelectTalaba}
+            className="rounded-lg py-2 text-[13px] font-semibold text-black/45 transition"
+          >
+            {t('auth.loginModeStudent')}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg py-2 text-[13px] font-semibold bg-white text-black/90 shadow-sm transition"
+          >
+            {t('auth.loginModeStaff')}
+          </button>
         </div>
-        <ol className="space-y-2">
+      )}
+
+      <div className="rounded-2xl border border-sky-100 bg-sky-50/90 px-3.5 py-2.5">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Smartphone size={16} className="text-sky-700 shrink-0" />
+          <span className="text-[12px] font-bold text-sky-900">{t('auth.qrPhoneInstructions')}</span>
+        </div>
+        <ol className="space-y-1">
           {([1, 2, 3] as const).map((n) => (
-            <li key={n} className="flex gap-2.5 text-[13px] text-sky-950/90 leading-snug">
+            <li key={n} className="flex gap-2 text-[12px] text-sky-950/90 leading-snug">
               <span className="font-bold text-sky-700 shrink-0">{n}.</span>
               <span>{t((`auth.qrStep${n}`) as 'auth.qrStep1' | 'auth.qrStep2' | 'auth.qrStep3')}</span>
             </li>
@@ -157,15 +179,15 @@ export default function DesktopHodimQrLogin({ onOtherRoles }: Props) {
         </ol>
       </div>
 
-      <div className="rounded-3xl border border-white/80 bg-white/90 p-6 shadow-xl flex flex-col items-center gap-4">
+      <div className="rounded-2xl border border-white/80 bg-white/90 p-4 shadow-xl flex flex-col items-center gap-3">
         {loading && !qrDataUrl ? (
-          <div className="py-12 flex flex-col items-center gap-3 text-black/50">
-            <Loader2 className="animate-spin text-sky-600" size={36} />
+          <div className="py-8 flex flex-col items-center gap-3 text-black/50">
+            <Loader2 className="animate-spin text-sky-600" size={32} />
             <span className="text-sm font-medium">{t('auth.qrPreparing')}</span>
           </div>
         ) : qrDataUrl ? (
           <>
-            <img src={qrDataUrl} alt={t('auth.qrAlt')} className="w-[260px] h-[260px] rounded-2xl" />
+            <img src={qrDataUrl} alt={t('auth.qrAlt')} className="w-[210px] h-[210px] rounded-xl" />
             {expiresLabel && (
               <p className="text-[12px] text-black/45">{t('auth.qrExpires', { time: expiresLabel })}</p>
             )}
@@ -184,9 +206,9 @@ export default function DesktopHodimQrLogin({ onOtherRoles }: Props) {
         <button
           type="button"
           onClick={() => void startPairing()}
-          className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl border border-sky-200 bg-white text-sky-800 font-semibold text-[14px] hover:bg-sky-50 transition-colors"
+          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-sky-200 bg-white text-sky-800 font-semibold text-[14px] hover:bg-sky-50 transition-colors"
         >
-          <RefreshCw size={18} />
+          <RefreshCw size={16} />
           {t('auth.qrNew')}
         </button>
       </div>
