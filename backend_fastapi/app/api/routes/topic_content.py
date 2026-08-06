@@ -106,7 +106,7 @@ async def upload_handout(
     topic: str = Form(...),
     title: str = Form(""),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("admin")),
+    auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
 ) -> TopicHandoutOut:
     topic_norm = tn.build_topic_norm(syllabus_id, variant_label, topic_code)
     if not topic_norm:
@@ -253,7 +253,7 @@ async def upload_presentation(
     topic: str = Form(...),
     title: str = Form(""),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("admin")),
+    auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
 ) -> TopicPresentationOut:
     topic_norm = tn.build_topic_norm(syllabus_id, variant_label, topic_code)
     if not topic_norm:

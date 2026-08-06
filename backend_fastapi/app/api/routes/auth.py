@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthContext, require_roles
 from app.core.config import get_settings
 from app.core.db import get_db
-from app.core.security import create_access_token, create_refresh_token, verify_password
+from app.core.security import create_access_token, create_refresh_token, decode_token, verify_password
 from app.models.user import User
-from app.schemas.auth import LocalLoginRequest, LoginResponse
+from app.schemas.auth import LocalLoginRequest, LoginResponse, TokenRefreshRequest, TokenRefreshResponse
 from app.schemas.auth_extra import OnlineTestStudentLoginRequest
 from app.services import auth_service
 from app.services import online_test_client as otc
@@ -78,6 +79,32 @@ def local_login(payload: LocalLoginRequest, db: Session = Depends(get_db)) -> Lo
     auth_service.touch_last_login(db, user)
     db.commit()
     return _login_response(db, user, role)
+
+
+@router.post("/auth/token/refresh/", response_model=TokenRefreshResponse)
+def token_refresh(payload: TokenRefreshRequest, db: Session = Depends(get_db)) -> TokenRefreshResponse:
+    try:
+        claims = decode_token(payload.refresh)
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token yaroqsiz yoki muddati o'tgan.")
+    if claims.get("token_type") != "refresh":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token talab qilinadi.")
+
+    user_id = claims.get("user_id")
+    user = db.get(User, int(user_id)) if user_id else None
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Foydalanuvchi topilmadi.")
+
+    extra: dict = {}
+    if claims.get("role"):
+        extra["role"] = claims["role"]
+    if claims.get("student_id"):
+        extra["student_id"] = claims["student_id"]
+
+    return TokenRefreshResponse(
+        access=create_access_token(user.id, extra),
+        refresh=create_refresh_token(user.id, extra),
+    )
 
 
 @router.post("/auth/online-test-login/", response_model=LoginResponse)

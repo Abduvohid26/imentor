@@ -808,6 +808,84 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-03** — 🐛 **Real production'da topilgan ENG JIDDIY bug**:
+  foydalanuvchilar taxminan 30 daqiqadan keyin "o'zidan-o'zi" tizimdan
+  chiqib ketayotgani xabar qilindi. Sabab: **`POST
+  /api/v1/auth/token/refresh/` endpoint FastAPI'da butunlay yo'q edi**.
+  Access token muddati 30 daqiqa (`django_jwt_access_minutes`), frontend
+  (`backendAuth.ts`) muddati tugaganda avtomatik shu endpointga refresh
+  token yuborib yangi access token so'raydi — lekin endpoint mavjud
+  bo'lmagani uchun `404` qaytib, frontend buni "sessiya tugadi" deb
+  talqin qilib chiqib ketardi.
+
+  **Nega path-audit buni topmadi**: bu endpoint Django'da `core/urls.py`da
+  EMAS, balki **root `config/urls.py`da** ro'yxatdan o'tgan
+  (`rest_framework_simplejwt.views.TokenRefreshView`,
+  `path('api/v1/auth/token/refresh/', ...)`). Oldingi to'liq path-audit
+  faqat `core/urls.py`ni regex bilan skanerlagan edi — root
+  `config/urls.py` butunlay ko'zdan qochirilgan. Bu — audit metodologiyasi
+  faqat bitta URL fayliga tayangani sababli yuzaga kelgan **haqiqiy
+  ko'r nuqta**.
+
+  Tuzatish: `app/schemas/auth.py`ga `TokenRefreshRequest`/
+  `TokenRefreshResponse` qo'shildi; `app/api/routes/auth.py`ga
+  `token_refresh()` funksiyasi qo'shildi — refresh tokenni dekodlab
+  (`token_type == "refresh"` tekshiruvi bilan), foydalanuvchi
+  faol ekanini tasdiqlab, eski token'dagi `role`/`student_id`
+  claim'larini saqlab qolgan holda yangi access+refresh juftlik
+  qaytaradi (Django'ning `ROTATE_REFRESH_TOKENS=True`ga o'xshab — har
+  chaqiriqda yangi refresh ham beriladi, garchi to'liq blacklist
+  infratuzilmasi FastAPI'da yo'q bo'lsa ham, bu funksional jihatdan
+  "chiqib ketmaslik" muammosini butunlay hal qiladi).
+
+  Real production'da tekshirildi: login → refresh token bilan
+  `/auth/token/refresh/` chaqirildi → `200 OK`, yangi access token bilan
+  `/auth/me/` → `200 OK`; yaroqsiz refresh token bilan → to'g'ri `401`.
+
+  **Yana bir marta xuddi shu infra xatosi takrorlandi** (dev compose
+  buyrug'i prod konteynerini bosib qo'ydi) — ikkinchi marta ham darhol
+  payqalib, prod konfiguratsiyasi bilan qayta tiklandi. Bu endi
+  takrorlanadigan xato ekan — memory faylida qayd etilgan qoidaga qat'iy
+  rioya qilish kerak: `backend_fastapi`ga tegishli HAR bir buyruqda ANIQ
+  `-f docker-compose.prod.yml --env-file deploy/.env.production` (yoki
+  ataylab dev) ko'rsatilishi shart.
+- **2026-08-03** — 🐛 **Real production'da topilgan jiddiy bug**: hodim
+  (`imentor.devfliq.uz`da real foydalanuvchi) "Taqdimotlar" sahifasida
+  taqdimot yuklamoqchi bo'lganda `403 Forbidden` ("AI taqdimot yaratmadi.
+  Ruxsat yo'q.") xatosi bilan to'xtadi. Sabab: `topic_content.py`da
+  `upload_handout` (`POST /handouts/`) va `upload_presentation`
+  (`POST /presentations/`) — ikkalasi ham noto'g'ri `require_roles("admin")`
+  bilan cheklangan edi, Django esa `HasEducationRole` permission
+  (`STAFF_ROLES` — admin, hodim, startuper, klinika_admin) ishlatadi.
+  Ikkalasi ham `require_roles(*STAFF_ROLES)`ga tuzatildi.
+
+  Bu xil bug boshqa joyda ham bormi tekshirish uchun barcha FastAPI
+  route'larni skript bilan avtomatik audit qildim: har bir
+  `require_roles("admin")` chaqiruvini o'z route path'i bilan bog'lab,
+  `/admin/` prefiksisiz yo'llarni tekshirdim. Faqat 2 ta legitim holat
+  qoldi (`/auth/admin-provision-staff/`, `/auth/admin-deprovision-staff/`
+  — bular Django'da ham `IsAdminRole`, nomi "admin-" bilan boshlanadi
+  garchi path prefiksida `/admin/` bo'lmasa ham) — boshqa yashirin bug
+  topilmadi.
+
+  Tuzatilgandan keyin real production (`https://imentor.devfliq.uz` →
+  `127.0.0.1:9050`) orqali hodim hisobi bilan haqiqiy fayl yuklab,
+  `201 Created` qaytarilgani tasdiqlandi (handout ham, presentation ham),
+  test yozuvlar tozalandi.
+
+  **Ikkinchi muammo — infra darajasida**: tuzatishni deploy qilishda
+  avval `docker compose -f docker-compose.dev.yml up -d --build
+  backend_fastapi` ishlatilgan edi — bu **production konteynerini dev
+  konfiguratsiyasi bilan almashtirib qo'ydi** (bind-mount kod, zaifroq
+  CORS/debug sozlamalari), chunki ikkalasi bir xil "imentor" compose
+  loyihasi va bir xil konteyner nomini ("imentor-backend_fastapi-1")
+  bo'lishadi. Darhol payqalib, `docker-compose.prod.yml`dan qayta
+  `--build backend_fastapi` bilan tiklandi (prod image, bind-mount yo'q).
+  **Eslatma o'zim uchun**: bundan buyon `backend_fastapi`ni yangilashda
+  har doim ANIQ qaysi compose fayl (`-f docker-compose.prod.yml
+  --env-file deploy/.env.production`) ishlatilayotganini tekshirish
+  shart — muhitlar bir xil resurs nomlarini bo'lishgani uchun adashish
+  oson.
 - **2026-08-03** — Django to'liq retire qilindi (foydalanuvchi so'rovi:
   "django qaysi portda ishlagan bo'lsa fastapi ham shu portda ishlashi
   kerak... django comment qilib turaversan"). O'zgarishlar:

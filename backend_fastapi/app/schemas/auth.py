@@ -40,3 +40,12 @@ class LoginResponse(BaseModel):
     photo_url: str = ""
     student_id: str | None = None
     group_name: str | None = None
+
+
+class TokenRefreshRequest(BaseModel):
+    refresh: str
+
+
+class TokenRefreshResponse(BaseModel):
+    access: str
+    refresh: str

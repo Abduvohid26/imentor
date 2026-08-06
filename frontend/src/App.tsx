@@ -287,8 +287,9 @@ export default function App() {
   const [mountedViews, setMountedViews] = useState<View[]>([]);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [user, setUser] = useState<LocalStaffUser | null>(() => getCurrentLocalUser());
-  /** Kompyuterda admin/startuper uchun klassik login */
-  const [desktopStaffLogin, setDesktopStaffLogin] = useState(false);
+  /** Kompyuterda standart holat — telefon/parol (yoki Talaba ID) login formasi;
+   * faqat "Xodim" tab tanlanganda QR ko'rsatiladi (LoginPage'dagi onWantsHodimQr). */
+  const [desktopStaffLogin, setDesktopStaffLogin] = useState(true);
   const [selectedTopic, setSelectedTopic] = useState<SyllabusTopicContext | null>(() =>
     loadPersistedSelectedTopic(),
   );

@@ -22,11 +22,14 @@ import { useUiText } from '../../i18n/useUiText';
 interface LoginPageProps {
   onSwitchToRegister: () => void;
   onBackToQr?: () => void;
+  /** Desktop'da "Xodim" tab tanlanganda chaqiriladi — hodim faqat QR orqali
+   * kira olgani uchun shu yerda QR ekraniga o'tkaziladi. */
+  onWantsHodimQr?: () => void;
 }
 
-export default function LoginPage({ onSwitchToRegister, onBackToQr }: LoginPageProps) {
+export default function LoginPage({ onSwitchToRegister, onBackToQr, onWantsHodimQr }: LoginPageProps) {
   const { t } = useUiText();
-  const [loginMode, setLoginMode] = useState<'staff' | 'student'>('staff');
+  const [loginMode, setLoginMode] = useState<'staff' | 'student'>('student');
   const [phone, setPhone] = useState('');
   const [studentId, setStudentId] = useState('');
   const [password, setPassword] = useState('');
@@ -175,7 +178,14 @@ export default function LoginPage({ onSwitchToRegister, onBackToQr }: LoginPageP
         <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-black/[0.04] p-1">
           <button
             type="button"
-            onClick={() => { setLoginMode('staff'); setError(null); }}
+            onClick={() => {
+              if (isDesktopBrowser() && onWantsHodimQr) {
+                onWantsHodimQr();
+                return;
+              }
+              setLoginMode('staff');
+              setError(null);
+            }}
             className={`rounded-lg py-2 text-[13px] font-semibold transition ${
               loginMode === 'staff' ? 'bg-white text-black/90 shadow-sm' : 'text-black/45'
             }`}
