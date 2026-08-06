@@ -109,11 +109,14 @@ async function previousCaseAvoidBlock(topic: string): Promise<string> {
 
 async function previousTestAvoidBlock(topic: string): Promise<string> {
   try {
-    const summaries = (await listPreparedForTopicSynced('test', topic)).slice(0, 6);
-    const sessions = (
-      await Promise.all(summaries.map((v) => loadPreparedByIdSynced<TestSession>('test', v.id)))
-    ).filter((s): s is TestSession => Boolean(s?.questions?.length));
-    return buildAvoidRepeatsBlock(sessions.map(summarizeTestForAvoid));
+    // Tezlik: to'liq payload yuklamaymiz — faqat sarlavhalar (mine list).
+    const summaries = (await listPreparedForTopicSynced('test', topic)).slice(0, 8);
+    if (!summaries.length) return '';
+    const lines = summaries.map((s, i) => `${i + 1}. ${s.topic}`).join('\n');
+    return (
+      `\nAvoid repeating these previously generated test topics / angles:\n${lines}\n` +
+      'Create NEW clinical vignettes and distractors.\n'
+    );
   } catch {
     return '';
   }
@@ -162,7 +165,9 @@ export interface TestSession {
   references?: MedicalReference[];
   createdAt?: number;
   authorUid?: string;
-  /** Qolgan 2 tildagi tarjimalar — asosiy til `topic`/`questions`da, boshqalari shu yerda (uz/ru/en to'liq to'plami) */
+  /** Asosiy generatsiya tili — `questions` shu tilda; boshqalari `translations`da. */
+  primaryLanguage?: AppLanguage;
+  /** Qolgan tillardagi tarjimalar (uz/ru/en to'liq to'plami uchun). */
   translations?: Partial<Record<AppLanguage, TestSessionContent>>;
 }
 
@@ -640,10 +645,9 @@ function isWeakTestSession(data: TestSession | null | undefined, requestedCount:
     const expLen = (q.explanation || '').trim().length;
     const opts = Array.isArray(q.options) ? q.options : [];
     const badOptions = opts.length !== 5 || opts.some((o) => (o || '').trim().length < 8);
-    // explanation endi batafsil (8–12 gap) — juda qisqa izoh zaif hisoblanadi
-    return qLen < 120 || expLen < 280 || badOptions;
+    return qLen < 80 || expLen < 120 || badOptions;
   });
-  return badQuestions.length > Math.max(1, Math.floor(data.questions.length * 0.35));
+  return badQuestions.length > Math.max(1, Math.floor(data.questions.length * 0.4));
 }
 
 function normalizeTestSession(
@@ -739,6 +743,14 @@ async function attachPerQuestionBookReferences(
 
 const ALL_TEST_LANGUAGES: AppLanguage[] = ['uz', 'ru', 'en'];
 
+function toTestSessionContent(session: TestSessionContent): TestSessionContent {
+  return {
+    topic: session.topic,
+    questions: session.questions,
+    ...(session.references?.length ? { references: session.references } : {}),
+  };
+}
+
 /** Tayyor testni boshqa tilga tarjima qiladi — faktlar/to'g'ri javob o'zgarmaydi, faqat matn. */
 async function translateTestSession(
   content: TestSessionContent,
@@ -766,8 +778,8 @@ async function translateTestSession(
       `("Manba" → "Источник" for Russian, "Source" for English), keeping the book title and page number unchanged. ` +
       'Return ONLY valid JSON, no markdown fences.',
     user: JSON.stringify(source),
-    maxTokens: 6144,
-    temperature: 0.15,
+    maxTokens: 8192,
+    temperature: 0.1,
     parse: (t) => parseJSONSafe(t),
   });
 
@@ -800,11 +812,25 @@ async function translateTestSession(
   };
 }
 
-/** Test'ni asosiy tilda generatsiya qilgandan keyin qolgan 2 tilga parallel tarjima qiladi. */
+async function translateTestSessionWithRetry(
+  content: TestSessionContent,
+  targetLang: AppLanguage,
+): Promise<TestSessionContent> {
+  try {
+    return await translateTestSession(content, targetLang);
+  } catch (err) {
+    console.warn(`Test translation to ${targetLang} failed, retrying…`, err);
+    return translateTestSession(content, targetLang);
+  }
+}
+
+/** Test'ni asosiy tilda generatsiya qilgandan keyin qolgan 2 tilga parallel tarjima qiladi.
+ * Har doim 3 til (primary + 2 tarjima) bo'lishiga urinadi. */
 async function attachTestTranslations(session: TestSession, primaryLang: AppLanguage): Promise<TestSession> {
   const remaining = ALL_TEST_LANGUAGES.filter((l) => l !== primaryLang);
+  const baseContent = toTestSessionContent(session);
   const results = await Promise.allSettled(
-    remaining.map((lang) => translateTestSession(session, lang)),
+    remaining.map((lang) => translateTestSessionWithRetry(baseContent, lang)),
   );
   const translations: Partial<Record<AppLanguage, TestSessionContent>> = {};
   results.forEach((res, i) => {
@@ -814,7 +840,11 @@ async function attachTestTranslations(session: TestSession, primaryLang: AppLang
       console.warn(`Test translation to ${remaining[i]} failed:`, res.reason);
     }
   });
-  return Object.keys(translations).length ? { ...session, translations } : session;
+  return {
+    ...session,
+    primaryLanguage: primaryLang,
+    ...(Object.keys(translations).length ? { translations } : {}),
+  };
 }
 
 const PRESENTATION_MIN_SLIDES = 10;
@@ -1222,10 +1252,18 @@ export const aiService = {
       let bookRefs: MedicalReference[] = [];
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
-        system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: {topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[]}]}. explanation — BATAFSIL (8–12 to'liq gap yoki ~600–1200 belgi): klinik asos, nega to'g'ri javob, boshqa yondashuvlar nega mos emas; FAQAT berilgan darslik kontekstidagi faktlar (yo'q narsani uydirma). optionExplanations — options bilan bir xil tartibda, HAR variant uchun 2–3 to'liq gap: to'g'ri uchun nega to'g'ri, xato uchun aynan shu variant nega noto'g'ri. Manba/havola YOZMANG — foydalanilgan darslik va sahifalarni tizim o'zi biriktiradi. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
-        user: `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 3-6 gap, 5 ta teng variant, kuchli distraktorlar. explanation ${shortMode ? '6–8' : '8–12'} to'liq gap (qisqa 1–2 gap QABUL QILINMAYDI), hech qanday havola/manba raqami qo'shmasdan; faktlardan chetga chiqma. optionExplanations: har bir variant uchun 2–3 gapli aniq sabab (manba/havola yozmasdan). ${strict ? 'Faqat valid JSON.' : ''}`,
-        maxTokens: 12288,
-        temperature: strict ? 0.42 : 0.68,
+        system:
+          `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: ` +
+          `{topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[]}]}. ` +
+          `explanation — ${shortMode ? '3–5' : '4–6'} to'liq gap (klinik asos, nega to'g'ri). ` +
+          'optionExplanations — HAR variant uchun 1–2 gap. Manba/havola YOZMANG. ' +
+          `Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
+        user:
+          `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 2–4 gap, 5 ta variant. ` +
+          `explanation ${shortMode ? '3–5' : '4–6'} gap; optionExplanations qisqa va aniq. ` +
+          `${strict ? 'Faqat valid JSON.' : ''}`,
+        maxTokens: shortMode ? 8192 : 10240,
+        temperature: strict ? 0.4 : 0.55,
         parse: (t) => parseJSONSafe<TestSession>(t),
         bookContext,
         onBookReferences: (refs) => {
@@ -1235,48 +1273,51 @@ export const aiService = {
       return normalizeTestSession(topic, parsed, requestedCount, bookRefs);
     };
 
-    const generateChunked = async (total: number): Promise<TestSession> => {
-      const safeTotal = Math.max(1, total);
-      const chunkSize = 4;
-      let remaining = safeTotal;
-      const merged: TestQuestion[] = [];
-      while (remaining > 0) {
-        const current = Math.min(chunkSize, remaining);
-        const part = await generate(current, true, true);
-        merged.push(...(part.questions || []).slice(0, current));
-        remaining -= current;
-      }
-      return normalizeTestSession(topic, { topic, questions: merged }, safeTotal);
-    };
-
     const base = await (async (): Promise<TestSession> => {
       try {
-        let data: TestSession;
-        try {
-          data = await generate(safeCount, false, false);
-        } catch {
-          data = await generate(Math.min(safeCount, 10), true, true);
-        }
+        // Tez yo'l: bitta so'rov (qisqa izohlar) — kerak bo'lsa 1 marta qayta urinish
+        let data = await generate(safeCount, true, false);
         if (isWeakTestSession(data, safeCount)) {
-          data = await generate(Math.min(safeCount, 10), true, true);
-        }
-        if (isWeakTestSession(data, safeCount)) {
-          data = await generateChunked(safeCount);
+          data = await generate(Math.min(safeCount, 12), true, true);
         }
         return normalizeTestSession(topic, data, safeCount);
       } catch (error) {
-        try {
-          return await generateChunked(safeCount);
-        } catch (fallbackError) {
-          console.error("Test generation failed:", fallbackError);
-          throw fallbackError;
-        }
+        console.warn('Test generation first pass failed, retrying compact…', error);
+        return generate(Math.min(safeCount, 10), true, true);
       }
     })();
 
-    return attachPerQuestionBookReferences(base, subjectCode).then((withRefs) =>
-      attachTestTranslations(withRefs, language),
-    );
+    // Manba biriktirish + 2 til tarjimasi parallel — umumiy kutishni qisqartiradi
+    const [withRefs, translated] = await Promise.all([
+      attachPerQuestionBookReferences(base, subjectCode),
+      attachTestTranslations(base, language),
+    ]);
+
+    const translations = translated.translations
+      ? Object.fromEntries(
+          Object.entries(translated.translations).map(([lang, content]) => [
+            lang,
+            {
+              ...content,
+              questions: content.questions.map((q, i) => ({
+                ...q,
+                ...(withRefs.questions[i]?.references?.length
+                  ? { references: withRefs.questions[i].references }
+                  : {}),
+              })),
+              ...(withRefs.references?.length ? { references: withRefs.references } : {}),
+            },
+          ]),
+        )
+      : undefined;
+
+    return {
+      ...withRefs,
+      primaryLanguage: language,
+      ...(translations && Object.keys(translations).length
+        ? { translations: translations as TestSession['translations'] }
+        : {}),
+    };
   },
 
   async generateLectureNotes(

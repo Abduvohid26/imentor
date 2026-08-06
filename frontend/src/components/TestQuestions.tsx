@@ -179,13 +179,15 @@ export default function TestQuestions() {
 
   const availableTestLangs = useMemo<AppLanguage[]>(() => {
     if (!testSession) return [];
-    const langs = new Set<AppLanguage>(['uz', 'ru', 'en']);
-    return [...langs].filter((l) => l === language || testSession.translations?.[l]);
+    const primary = testSession.primaryLanguage || language;
+    const langs: AppLanguage[] = ['uz', 'ru', 'en'];
+    return langs.filter((l) => l === primary || Boolean(testSession.translations?.[l]));
   }, [testSession, language]);
 
   const displayedTest = useMemo(() => {
     if (!testSession) return null;
-    if (viewLang === language) return testSession;
+    const primary = testSession.primaryLanguage || language;
+    if (viewLang === primary) return testSession;
     const translated = testSession.translations?.[viewLang];
     return translated ? { ...testSession, ...translated } : testSession;
   }, [testSession, viewLang, language]);
@@ -581,6 +583,7 @@ export default function TestQuestions() {
       setVersions(list);
       const sid = await setupTeacherLiveSession(data);
       setTestSession(data);
+      setViewLang(data.primaryLanguage || contentLanguage);
       setActiveVersionId(list[0]?.id ?? null);
       try {
         const u = getCurrentLocalUser();
