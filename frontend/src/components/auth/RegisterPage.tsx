@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Loader2, AlertCircle, Phone, Lock, Building2, Users, BookOpen, Briefcase } from 'lucide-react';
+import { Loader2, AlertCircle, Phone, Lock, Building2, Users, BookOpen } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
   isValidPhoneDigits,
   normalizePhoneDigits,
   isDemoAuthEnabled,
   TEST_STAFF_PHONE,
-  type UserRole,
 } from '../../utils/localStaffAuth';
 import { registerStaffWithBackend } from '../../utils/backendAuth';
 import { HttpError } from '../../api/httpClient';
@@ -51,10 +50,6 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
   const [faculty, setFaculty] = useState(demoDefaults.faculty);
   const [department, setDepartment] = useState(demoDefaults.department);
   const [direction, setDirection] = useState(demoDefaults.direction);
-  const [regRole, setRegRole] = useState<Extract<UserRole, 'hodim' | 'startuper'>>('hodim');
-  const [participantKind, setParticipantKind] = useState<'student' | 'employee'>('student');
-  const [studyGroup, setStudyGroup] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,16 +79,6 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
       setError(t('auth.register.errorPasswordMismatch'));
       return;
     }
-    if (regRole === 'startuper') {
-      if (participantKind === 'student' && !studyGroup.trim()) {
-        setError(t('auth.register.errorStudentGroup'));
-        return;
-      }
-      if (participantKind === 'employee' && !jobTitle.trim()) {
-        setError(t('auth.register.errorEmployeeTitle'));
-        return;
-      }
-    }
     setLoading(true);
     try {
       await registerStaffWithBackend({
@@ -104,10 +89,7 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
         faculty: faculty.trim(),
         department: department.trim(),
         direction: direction.trim(),
-        role: regRole,
-        participantKind: regRole === 'startuper' ? participantKind : undefined,
-        studyGroup: regRole === 'startuper' && participantKind === 'student' ? studyGroup.trim() : undefined,
-        jobTitle: regRole === 'startuper' && participantKind === 'employee' ? jobTitle.trim() : undefined,
+        role: 'hodim',
       });
     } catch (err: unknown) {
       const code = err instanceof Error ? err.message : '';
@@ -119,8 +101,6 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
         setError(t('auth.register.errorExists'));
       } else if (code === 'weak-password') {
         setError(t('auth.register.errorWeak'));
-      } else if (code === 'startuper-no-group' || code === 'startuper-no-title') {
-        setError(t('auth.register.errorStartup'));
       } else {
         setError(t('auth.register.errorGeneric'));
       }
@@ -150,18 +130,6 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-black/55">{t('auth.register.roleLabel')}</label>
-            <select
-              value={regRole}
-              onChange={(e) => setRegRole(e.target.value as 'hodim' | 'startuper')}
-              className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
-            >
-              <option value="hodim">{t('auth.register.hodimOption')}</option>
-              <option value="startuper">{t('auth.register.startuperOption')}</option>
-            </select>
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-black/55">{t('auth.register.firstName')}</label>
@@ -218,47 +186,6 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
               placeholder={t('auth.register.directionPlaceholder')}
             />
           </div>
-
-          {regRole === 'startuper' && (
-            <>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-black/55">{t('auth.register.statusLabel')}</label>
-                <select
-                  value={participantKind}
-                  onChange={(e) => setParticipantKind(e.target.value as 'student' | 'employee')}
-                  className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
-                >
-                  <option value="student">{t('auth.register.student')}</option>
-                  <option value="employee">{t('auth.register.employee')}</option>
-                </select>
-              </div>
-              {participantKind === 'student' ? (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-black/55 flex items-center gap-1">
-                    <Users size={12} /> {t('auth.register.studyGroup')}
-                  </label>
-                  <input
-                    value={studyGroup}
-                    onChange={(e) => setStudyGroup(e.target.value)}
-                    className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
-                    placeholder={t('auth.register.studyGroupPlaceholder')}
-                  />
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-black/55 flex items-center gap-1">
-                    <Briefcase size={12} /> {t('auth.register.jobTitle')}
-                  </label>
-                  <input
-                    value={jobTitle}
-                    onChange={(e) => setJobTitle(e.target.value)}
-                    className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
-                    placeholder={t('auth.register.jobTitlePlaceholder')}
-                  />
-                </div>
-              )}
-            </>
-          )}
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-black/55">{t('auth.register.phoneNumber')}</label>

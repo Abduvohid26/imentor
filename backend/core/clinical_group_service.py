@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from .models import ClinicalGroup, ClinicalGroupMember
 from .permissions import ALLOWED_ROLES, resolve_user_role
 
-MEMBER_APP_ROLES = ("hodim", "startuper", "klinika_admin")
+MEMBER_APP_ROLES = ("hodim", "klinika_admin")
 
 
 def clinic_for_klinika_admin(user: User, request=None) -> ClinicalGroup | None:
@@ -128,5 +128,5 @@ def can_provision_role(actor_role: str | None, target_role: str) -> bool:
     if actor_role == "admin":
         return True
     if actor_role == "klinika_admin":
-        return target in ("hodim", "startuper")
+        return target == "hodim"
     return False

@@ -25,6 +25,7 @@ import { fetchStaffDirectory, type StaffDirectoryEntry } from '../../utils/staff
 import { resolveSyllabusVariants } from '../../utils/syllabusVariant';
 import { useUiText } from '../../i18n/useUiText';
 import SearchableSelect from './SearchableSelect';
+import SearchableMultiSelect from './SearchableMultiSelect';
 
 type FanBucket = {
   fanId: number;
@@ -81,10 +82,10 @@ export default function AdminCourseAssignments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Biriktirish: o'qituvchi → kafedra → fan (syllabus)
+  // Biriktirish: o'qituvchi → kafedra → fan(lar) (syllabus)
   const [phone, setPhone] = useState('');
   const [deptKey, setDeptKey] = useState('');
-  const [fanId, setFanId] = useState('');
+  const [fanIds, setFanIds] = useState<string[]>([]);
   const [assigning, setAssigning] = useState(false);
 
   const [search, setSearch] = useState('');
@@ -184,26 +185,45 @@ export default function AdminCourseAssignments() {
       .sort((a, b) => a.subject_name.localeCompare(b.subject_name, 'uz'));
   }, [fans, selectedDept]);
 
-  const selectedFan = useMemo(() => fans.find((f) => String(f.id) === fanId) || null, [fans, fanId]);
-  const selectedPdfs = useMemo(
-    () => (selectedFan ? syllabusPdfNames(selectedFan) : []),
-    [selectedFan],
+  const selectedFans = useMemo(
+    () => fansInDept.filter((f) => fanIds.includes(String(f.id))),
+    [fansInDept, fanIds],
   );
+  const selectedPdfs = useMemo(() => {
+    const names: string[] = [];
+    for (const f of selectedFans) {
+      for (const n of syllabusPdfNames(f)) {
+        if (!names.includes(n)) names.push(n);
+      }
+    }
+    return names;
+  }, [selectedFans]);
 
   useEffect(() => {
-    setFanId('');
+    setFanIds([]);
   }, [deptKey]);
 
   useEffect(() => {
-    if (fanId && !fansInDept.some((f) => String(f.id) === fanId)) {
-      setFanId('');
-    }
-  }, [fansInDept, fanId]);
+    const allowed = new Set(fansInDept.map((f) => String(f.id)));
+    setFanIds((prev) => {
+      const next = prev.filter((id) => allowed.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [fansInDept]);
 
-  const alreadyAssigned = useMemo(() => {
-    if (!phone || !fanId) return false;
-    return selections.some((sel) => sel.owner_key === phone && String(sel.syllabus.id) === fanId);
-  }, [selections, phone, fanId]);
+  const assignedFanIds = useMemo(() => {
+    if (!phone) return new Set<string>();
+    const set = new Set<string>();
+    for (const sel of selections) {
+      if (sel.owner_key === phone) set.add(String(sel.syllabus.id));
+    }
+    return set;
+  }, [selections, phone]);
+
+  const fanIdsToAssign = useMemo(
+    () => fanIds.filter((id) => !assignedFanIds.has(id)),
+    [fanIds, assignedFanIds],
+  );
 
   const teacherGroups = useMemo<TeacherGroup[]>(() => {
     const map = new Map<
@@ -273,15 +293,15 @@ export default function AdminCourseAssignments() {
   );
 
   const assign = async () => {
-    if (!phone || !fanId) return;
+    if (!phone || fanIdsToAssign.length === 0) return;
     setAssigning(true);
     setError(null);
     try {
-      // Yo'nalish tanlanmaydi — butun fan (syllabus) biriktiriladi.
-      await assignStaffToCourseSyllabus(phone, Number(fanId), []);
+      // Yo'nalish tanlanmaydi — tanlangan har bir fan (syllabus) biriktiriladi.
+      await Promise.all(fanIdsToAssign.map((id) => assignStaffToCourseSyllabus(phone, Number(id), [])));
       setPhone('');
       setDeptKey('');
-      setFanId('');
+      setFanIds([]);
       setSelections(await fetchAllStaffCourseSelections());
     } catch {
       setError(t('admin.error.assignFailed'));
@@ -300,7 +320,7 @@ export default function AdminCourseAssignments() {
     }
   };
 
-  const canAssign = Boolean(phone) && Boolean(fanId) && !alreadyAssigned && !assigning;
+  const canAssign = Boolean(phone) && fanIdsToAssign.length > 0 && !assigning;
 
   useEffect(() => {
     if (detailKey && !loading && !teacherGroups.some((g) => g.ownerKey === detailKey)) {
@@ -365,17 +385,20 @@ export default function AdminCourseAssignments() {
 
           <label className="space-y-1">
             <span className="text-[12px] font-semibold text-slate-600">3 · {t('admin.subjectName')}</span>
-            <SearchableSelect
-              value={fanId}
-              onChange={setFanId}
+            <SearchableMultiSelect
+              value={fanIds}
+              onChange={setFanIds}
               disabled={assigning || !deptKey}
-              placeholder={t('admin.selectSubjectPlaceholder')}
+              placeholder={t('admin.selectSubjectsPlaceholder')}
               noMatchText={t('admin.noResults')}
+              selectedCountLabel={(count) => t('admin.subjectsSelectedCount', { count })}
               options={fansInDept.map((f) => {
                 const inactive = f.is_active ? '' : ` · ${t('admin.toggleInactive')}`;
+                const assigned = assignedFanIds.has(String(f.id));
+                const mark = assigned ? ` · ${t('admin.alreadyAssigned')}` : '';
                 return {
                   value: String(f.id),
-                  label: `${f.subject_name}${inactive}`,
+                  label: `${f.subject_name}${inactive}${mark}`,
                   searchText: `${f.subject_name} ${f.subject_code || ''} ${syllabusPdfNames(f).join(' ')}`,
                 };
               })}
@@ -383,7 +406,7 @@ export default function AdminCourseAssignments() {
           </label>
         </div>
 
-        {fanId && (
+        {fanIds.length > 0 && (
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5 space-y-1.5">
             <span className="text-[12px] font-semibold text-slate-600">{t('admin.attachedPdfs')}</span>
             {selectedPdfs.length === 0 ? (
@@ -398,7 +421,7 @@ export default function AdminCourseAssignments() {
                 ))}
               </ul>
             )}
-            {alreadyAssigned && (
+            {fanIds.length > 0 && fanIdsToAssign.length === 0 && (
               <p className="text-[11px] font-semibold text-emerald-600">{t('admin.alreadyAssigned')}</p>
             )}
           </div>

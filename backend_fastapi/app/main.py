@@ -22,8 +22,6 @@ from app.api.routes import (
     prepared_content,
     staff_admin,
     staff_location,
-    startup,
-    startup_ai,
     subject_book,
     syllabus_catalog,
     topic_content,
@@ -51,7 +49,6 @@ app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(syllabus_catalog.router, prefix="/api/v1", tags=["syllabus"])
 app.include_router(live_test.router, prefix="/api/v1", tags=["live-test"])
 app.include_router(staff_location.router, prefix="/api/v1", tags=["staff-location"])
-app.include_router(startup.router, prefix="/api/v1", tags=["startup"])
 app.include_router(clinical_group.router, prefix="/api/v1", tags=["clinical-group"])
 app.include_router(clinic_admin.router, prefix="/api/v1", tags=["clinic-admin"])
 app.include_router(subject_book.router, prefix="/api/v1", tags=["subject-book"])
@@ -60,7 +57,6 @@ app.include_router(staff_admin.router, prefix="/api/v1", tags=["staff-admin"])
 app.include_router(content_catalog.router, prefix="/api/v1", tags=["content-catalog"])
 app.include_router(topic_content.router, prefix="/api/v1", tags=["topic-content"])
 app.include_router(education_ai.router, prefix="/api/v1", tags=["education-ai"])
-app.include_router(startup_ai.router, prefix="/api/v1", tags=["startup-ai"])
 app.include_router(external_api.router, prefix="/api/v1", tags=["external-api"])
 app.include_router(prepared_content.router, prefix="/api/v1", tags=["prepared-content"])
 app.include_router(legacy.router, prefix="/api/v1", tags=["legacy"])

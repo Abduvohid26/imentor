@@ -276,7 +276,7 @@ def _set_user_role_group(user: User, role: str) -> None:
     role = (role or "").strip().lower()
     if role not in ALLOWED_ROLES:
         return
-    for name in ALLOWED_ROLES:
+    for name in ALLOWED_ROLES + ("startuper",):
         group = Group.objects.filter(name=name).first()
         if group is not None:
             user.groups.remove(group)
@@ -294,7 +294,7 @@ def _resolve_login_role(user: User, requested_role: str) -> str:
     if requested == "admin":
         db_role = resolve_user_role(user, request=None)
         return db_role or "hodim"
-    if requested in ("hodim", "startuper"):
+    if requested == "hodim":
         _set_user_role_group(user, requested)
         return requested
     db_role = resolve_user_role(user, request=None)
@@ -450,7 +450,7 @@ class LocalLoginView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
             reg_role = requested_role or "hodim"
-            if reg_role not in ("hodim", "startuper"):
+            if reg_role != "hodim":
                 reg_role = "hodim"
             user = User.objects.create_user(
                 username=username,

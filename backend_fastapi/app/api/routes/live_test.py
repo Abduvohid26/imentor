@@ -20,7 +20,7 @@ from app.services import live_test_service as svc
 
 router = APIRouter()
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 
 def _get_session(db: Session, session_key: str) -> LiveTestSession | None:

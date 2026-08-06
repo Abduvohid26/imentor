@@ -13,7 +13,7 @@ from app.services.pagination import paginate
 
 router = APIRouter()
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 
 def _query_params(request: Request) -> dict:

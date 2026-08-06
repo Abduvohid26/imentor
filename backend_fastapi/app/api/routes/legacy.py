@@ -28,7 +28,7 @@ from app.schemas.syllabus_document import SyllabusDocumentOut, SyllabusUpsertReq
 router = APIRouter()  # /api/v1 ostida ulanadi (syllabuses/, ai-jobs/)
 root_router = APIRouter()  # /api ostida ulanadi (prepared-content/, v1'siz)
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 
 # ---------------- legacy prepared-content (v1'siz, auth'siz) ----------------

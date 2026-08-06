@@ -15,7 +15,6 @@ DEFAULT_DEMO_CREDENTIALS: dict[str, tuple[str, str]] = {
     "admin": ("998901110001", "AdminDemo123"),
     "klinika_admin": ("998900000002", "Demo12345!"),
     "hodim": ("998901112233", "TestHodim123"),
-    "startuper": ("998901110003", "StartupDemo123"),
 }
 
 
@@ -34,7 +33,7 @@ def should_ensure_demo_users() -> bool:
 
 class Command(BaseCommand):
     help = (
-        "Ensure demo users per role (admin, klinika_admin, hodim, startuper). "
+        "Ensure demo users per role (admin, klinika_admin, hodim). "
         "Runs in DEBUG=True or when DJANGO_ENSURE_DEMO_USERS=True."
     )
 

@@ -18,7 +18,7 @@ from app.services import staff_profile as sp
 router = APIRouter()
 settings = get_settings()
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 
 def _login_response(
@@ -60,7 +60,7 @@ def local_login(payload: LocalLoginRequest, db: Session = Depends(get_db)) -> Lo
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Ro'yxatdan o'tish faqat administrator orqali mumkin.",
             )
-        reg_role = payload.role if payload.role in ("hodim", "startuper") else "hodim"
+        reg_role = "hodim"
         user = auth_service.create_user(
             db, username, payload.password, payload.first_name.strip(), payload.last_name.strip()
         )

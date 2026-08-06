@@ -193,7 +193,7 @@ export default function LoginPage({ onSwitchToRegister, onWantsHodimQr }: LoginP
               <button type="button" onClick={onSwitchToRegister} className="text-blue-600 font-semibold underline-offset-2 hover:underline">
                 {t('auth.registerLink')}
               </button>{' '}
-              {t('auth.newAccountRoles', { hodim: t('auth.hodimRole'), startuper: t('auth.startuperRole') })}
+              {`— ${t('auth.hodimRole')}.`}
             </p>
           ) : (
             <p className="text-[11px] text-black/45 leading-relaxed bg-black/[0.03] rounded-xl px-3 py-2 border border-black/5">

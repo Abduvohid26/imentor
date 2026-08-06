@@ -16,7 +16,7 @@ import { normalizePhotoUrlForCompare } from './profilePhotoApi';
 type BackendTokenBundle = {
   access: string;
   refresh: string;
-  role: 'admin' | 'hodim' | 'startuper' | 'student';
+  role: UserRole;
   username: string;
   first_name?: string;
   last_name?: string;
@@ -24,6 +24,13 @@ type BackendTokenBundle = {
   student_id?: string;
   group_name?: string;
 };
+
+/** Server hali `startuper` qaytarsa — mahalliy sessiyada hodim. */
+function normalizeBackendRole(role: string | undefined | null): UserRole {
+  if (role === 'admin' || role === 'hodim' || role === 'student') return role;
+  if (role === 'startuper') return 'hodim';
+  return 'hodim';
+}
 
 type CachedBundle = BackendTokenBundle & {
   accessExpMs: number;
@@ -81,16 +88,19 @@ function readCached(): CachedBundle | null {
   try {
     const raw = localStorage.getItem(TOKEN_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as CachedBundle;
+    const parsed = JSON.parse(raw) as CachedBundle;
+    return { ...parsed, role: normalizeBackendRole(parsed.role) };
   } catch {
     return null;
   }
 }
 
 function writeCached(bundle: BackendTokenBundle): CachedBundle {
-  syncCurrentUserRoleFromServer(bundle.role);
+  const role = normalizeBackendRole(bundle.role);
+  syncCurrentUserRoleFromServer(role);
   const next: CachedBundle = {
     ...bundle,
+    role,
     accessExpMs: decodeJwtExpMs(bundle.access),
     refreshExpMs: decodeJwtExpMs(bundle.refresh),
   };
@@ -234,7 +244,7 @@ function buildLocalUserFromBackendLogin(
     direction: existing?.direction ?? '',
     email: phoneDigitsToEmail(digits),
     password: '',
-    role: bundle.role,
+    role: normalizeBackendRole(bundle.role),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     lastActiveAt: now,
@@ -413,7 +423,7 @@ export async function fetchAuthMe(): Promise<AuthMeResponse | null> {
 export async function syncSessionRoleFromServer(): Promise<UserRole | null> {
   const me = await fetchAuthMe();
   if (!me?.role) return null;
-  const role = me.role as UserRole;
+  const role = normalizeBackendRole(me.role);
   syncCurrentUserRoleFromServer(role);
   const user = getCurrentLocalUser();
   if (user) {
@@ -428,7 +438,7 @@ export async function syncSessionRoleFromServer(): Promise<UserRole | null> {
   if (cached) {
     writeCached({
       ...cached,
-      role: me.role,
+      role,
       username: me.username,
       first_name: me.first_name,
       last_name: me.last_name,

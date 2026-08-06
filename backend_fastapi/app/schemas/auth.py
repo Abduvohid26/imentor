@@ -25,8 +25,8 @@ class LocalLoginRequest(BaseModel):
         if value is None:
             return value
         v = value.strip().lower()
-        if v not in ("admin", "hodim", "startuper"):
-            raise ValueError("role must be admin, hodim or startuper")
+        if v not in ("admin", "hodim"):
+            raise ValueError("role must be admin or hodim")
         return v
 
 

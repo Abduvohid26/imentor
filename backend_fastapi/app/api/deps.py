@@ -13,7 +13,7 @@ from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-ALLOWED_ROLES = ("admin", "klinika_admin", "hodim", "startuper", "student")
+ALLOWED_ROLES = ("admin", "klinika_admin", "hodim", "student")
 
 
 class AuthContext:

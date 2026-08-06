@@ -119,13 +119,6 @@ def clinic_admin_dashboard(
             ClinicalGroupMember.app_role == "hodim",
         )
     ).scalar_one()
-    members_startuper = db.execute(
-        select(func.count()).select_from(ClinicalGroupMember).where(
-            ClinicalGroupMember.clinic_id == clinic.id,
-            ClinicalGroupMember.is_active.is_(True),
-            ClinicalGroupMember.app_role == "startuper",
-        )
-    ).scalar_one()
     paid_total = db.execute(
         select(func.coalesce(func.sum(ClinicalGroupPayment.amount_uzs), 0)).where(
             ClinicalGroupPayment.clinic_id == clinic.id, ClinicalGroupPayment.status == "paid"
@@ -148,7 +141,6 @@ def clinic_admin_dashboard(
         "stats": {
             "members_total": members_total,
             "members_hodim": members_hodim,
-            "members_startuper": members_startuper,
             "payments_paid_total_uzs": str(paid_total),
             "payments_pending_total_uzs": str(pending_total),
             "payments_overdue_count": overdue_count,

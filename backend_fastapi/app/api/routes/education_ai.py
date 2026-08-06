@@ -21,7 +21,7 @@ from app.services.education_ai_utils import clip_education_messages
 
 router = APIRouter()
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 
 @router.post("/education-ai/completion/", response_model=EducationAiCompletionResponse)

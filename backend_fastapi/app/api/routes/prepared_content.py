@@ -21,7 +21,7 @@ from app.services.pagination import paginate
 
 router = APIRouter()
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 
 @router.get("/prepared-content/mine/")

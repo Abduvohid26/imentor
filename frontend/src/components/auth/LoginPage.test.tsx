@@ -43,14 +43,19 @@ describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    loginMock.mockResolvedValue({ phoneDigits: '998901112233', role: 'startuper' });
+    loginMock.mockResolvedValue({ phoneDigits: '998901112233', role: 'hodim' });
     tokenMock.mockResolvedValue('access-token');
     syncMock.mockResolvedValue(undefined);
   });
 
+  async function switchToStaffLogin(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Xodim' }));
+  }
+
   it('shows phone validation error for incomplete number', async () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginPage onSwitchToRegister={() => {}} />);
+    await switchToStaffLogin(user);
 
     await user.type(screen.getByPlaceholderText('+998 90 123 45 67'), '123');
     await user.click(screen.getByRole('button', { name: 'Kirish' }));
@@ -64,6 +69,7 @@ describe('LoginPage', () => {
   it('submits valid credentials and syncs session role', async () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginPage onSwitchToRegister={() => {}} />);
+    await switchToStaffLogin(user);
 
     await user.type(screen.getByPlaceholderText('+998 90 123 45 67'), '+998 90 111 22 33');
     await user.type(screen.getByPlaceholderText(/parol/i), 'StrongPass123');
@@ -80,6 +86,7 @@ describe('LoginPage', () => {
     loginMock.mockRejectedValue(new Error('wrong-password'));
     const user = userEvent.setup();
     renderWithProviders(<LoginPage onSwitchToRegister={() => {}} />);
+    await switchToStaffLogin(user);
 
     await user.type(screen.getByPlaceholderText('+998 90 123 45 67'), '+998 90 111 22 33');
     await user.type(screen.getByPlaceholderText(/parol/i), 'bad');

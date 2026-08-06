@@ -3,7 +3,7 @@ from __future__ import annotations
 from rest_framework.permissions import BasePermission
 
 # Xodim / ta'lim rollari (o'qituvchi paneli)
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 # OnlineTest orqali kelgan talaba (shadow user + JWT claim)
 STUDENT_ROLE = "student"
 ALLOWED_ROLES = STAFF_ROLES + (STUDENT_ROLE,)
@@ -69,6 +69,9 @@ def resolve_user_role_from_db(user) -> str | None:
     for role in ALLOWED_ROLES:
         if role in group_names:
             return role
+    # Eski startuper guruhini hodim deb hisoblaymiz.
+    if "startuper" in group_names:
+        return "hodim"
     return None
 
 
@@ -108,7 +111,7 @@ def user_has_admin_db_role(user) -> bool:
 
 
 class HasEducationRole(BasePermission):
-    """Xodim rollari: admin, hodim, startuper, klinika_admin (talaba emas)."""
+    """Xodim rollari: admin, hodim, klinika_admin (talaba emas)."""
 
     message = "You do not have a permitted role for this endpoint."
 
@@ -157,11 +160,12 @@ class IsAdminOrKlinikaAdmin(BasePermission):
 
 
 class IsStartuperOrAdmin(BasePermission):
-    message = "Startuper yoki administrator huquqi kerak."
+    """Legacy: startuper moduli o'chirilgan — faqat admin."""
+
+    message = "Administrator huquqi kerak."
 
     def has_permission(self, request, view) -> bool:
-        role = resolve_user_role(request.user, request)
-        return role in ("startuper", "admin")
+        return user_has_admin_db_role(request.user)
 
 
 class IsHodimRole(BasePermission):

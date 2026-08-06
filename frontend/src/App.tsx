@@ -22,8 +22,6 @@ import {
   ClipboardList,
   FileText,
   Users,
-  Rocket,
-  FolderOpen,
   MapPin,
   Building2,
   Files,
@@ -78,7 +76,6 @@ import AdminDashboardHome from './components/admin/AdminDashboardHome';
 import AdminStaffManagement from './components/admin/AdminStaffManagement';
 import AdminCasesLibrary from './components/admin/AdminCasesLibrary';
 import AdminTestsLibrary from './components/admin/AdminTestsLibrary';
-import AdminStartupInbox from './components/admin/AdminStartupInbox';
 import AdminStaffLocationConsole from './components/admin/AdminStaffLocationConsole';
 import AdminLiveTeachingBoard from './components/admin/AdminLiveTeachingBoard';
 import AdminCampusBuildingsPage from './components/admin/AdminCampusBuildingsPage';
@@ -87,8 +84,6 @@ import AdminCourseAssignments from './components/admin/AdminCourseAssignments';
 import AdminTopicVideos from './components/admin/AdminTopicVideos';
 import AdminTopicHandouts from './components/admin/AdminTopicHandouts';
 import AdminBooksLibrary from './components/admin/AdminBooksLibrary';
-import StartupWorkspace from './components/startup/StartupWorkspace';
-import StartupDossierSubmit from './components/startup/StartupDossierSubmit';
 import HodimGpsPromptBar from './components/staff/HodimGpsPromptBar';
 import HandoutTopicBanner from './components/staff/HandoutTopicBanner';
 import HandoutMaterials from './components/HandoutMaterials';
@@ -112,7 +107,6 @@ type View =
   | 'admin-campus-buildings'
   | 'admin-cases'
   | 'admin-tests'
-  | 'admin-startups'
   | 'admin-syllabuses'
   | 'admin-course-assignments'
   | 'admin-videos'
@@ -126,8 +120,6 @@ type View =
   | 'lectures'
   | 'handouts'
   | 'content-catalog'
-  | 'startup'
-  | 'startup-dossier'
   | 'my-tests';
 
 type NavItemDef = { id: View; label: string; icon: LucideIcon };
@@ -140,7 +132,6 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   'admin-campus-buildings': Building2,
   'admin-cases': BriefcaseMedical,
   'admin-tests': ClipboardList,
-  'admin-startups': Rocket,
   'admin-syllabuses': BookOpen,
   'admin-course-assignments': GraduationCap,
   'admin-videos': Youtube,
@@ -154,8 +145,6 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   cases: BriefcaseMedical,
   tests: ClipboardList,
   profile: UserCircle,
-  startup: Rocket,
-  'startup-dossier': FolderOpen,
   'my-tests': ClipboardList,
 };
 
@@ -166,7 +155,6 @@ const ADMIN_NAV_IDS: View[] = [
   'admin-staff-location',
   'admin-live-teaching',
   'admin-campus-buildings',
-  'admin-startups',
   'admin-syllabuses',
   'admin-course-assignments',
   'admin-videos',
@@ -176,18 +164,11 @@ const ADMIN_NAV_IDS: View[] = [
   'admin-tests',
   'profile',
 ];
-const STARTUPER_NAV_IDS: View[] = ['startup', 'startup-dossier', 'profile'];
 const STUDENT_NAV_IDS: View[] = ['my-tests', 'profile'];
 
 function navItemsForRole(role: UserRole, lang: AppLanguage): NavItemDef[] {
   const ids =
-    role === 'admin'
-      ? ADMIN_NAV_IDS
-      : role === 'startuper'
-        ? STARTUPER_NAV_IDS
-        : role === 'student'
-          ? STUDENT_NAV_IDS
-          : HODIM_NAV_IDS;
+    role === 'admin' ? ADMIN_NAV_IDS : role === 'student' ? STUDENT_NAV_IDS : HODIM_NAV_IDS;
   return ids.map((id) => ({ id, label: navLabel(lang, id), icon: NAV_ICONS[id] }));
 }
 
@@ -523,8 +504,6 @@ export default function App() {
         return <AdminCasesLibrary />;
       case 'admin-tests':
         return <AdminTestsLibrary />;
-      case 'admin-startups':
-        return <AdminStartupInbox />;
       case 'admin-syllabuses':
         return <AdminSyllabusCatalog />;
       case 'admin-course-assignments':
@@ -535,10 +514,6 @@ export default function App() {
         return <AdminTopicHandouts />;
       case 'admin-books':
         return <AdminBooksLibrary />;
-      case 'startup':
-        return <StartupWorkspace />;
-      case 'startup-dossier':
-        return <StartupDossierSubmit />;
       case 'syllabus':
         return (
           <SyllabusView
@@ -749,9 +724,7 @@ export default function App() {
                 <p className="hidden sm:block text-[12px] text-black/50 font-medium tracking-wide truncate">
                   {userRole === 'admin'
                     ? translate(language, 'shell.platformSubtitle.admin')
-                    : userRole === 'startuper'
-                      ? translate(language, 'shell.platformSubtitle.startuper')
-                      : translate(language, 'shell.platformSubtitle.default')}
+                    : translate(language, 'shell.platformSubtitle.default')}
                 </p>
               </div>
             </div>

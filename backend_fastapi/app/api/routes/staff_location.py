@@ -30,7 +30,7 @@ from app.services.pagination import paginate
 
 router = APIRouter()
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 
 def _slot_out(s: StaffScheduleSlot) -> StaffScheduleSlotOut:

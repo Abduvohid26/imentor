@@ -151,7 +151,7 @@ class ClinicalGroupMemberWriteSerializer(serializers.Serializer):
 
 
 class ClinicalGroupMemberPatchSerializer(serializers.Serializer):
-    app_role = serializers.ChoiceField(choices=("hodim", "startuper"), required=False)
+    app_role = serializers.ChoiceField(choices=("hodim",), required=False)
     first_name = serializers.CharField(max_length=128, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=128, required=False, allow_blank=True)
     faculty = serializers.CharField(max_length=255, required=False, allow_blank=True)
@@ -373,7 +373,6 @@ class ClinicAdminDashboardView(APIView):
                 "stats": {
                     "members_total": members.count(),
                     "members_hodim": members.filter(app_role="hodim").count(),
-                    "members_startuper": members.filter(app_role="startuper").count(),
                     "payments_paid_total_uzs": str(paid_total),
                     "payments_pending_total_uzs": str(pending_total),
                     "payments_overdue_count": payments.filter(

@@ -27,7 +27,7 @@ from app.services.pagination import paginate
 
 router = APIRouter()
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 ALL_ROLES = STAFF_ROLES + ("student",)
 
 
@@ -202,7 +202,7 @@ def admin_staff_list(
 ) -> dict:
     from app.models.user import Group, user_groups
 
-    # Hodimlar boshqaruvi: faqat xodimlar (talaba/startuper emas).
+    # Hodimlar boshqaruvi: faqat xodimlar (talaba emas).
     allowed_roles = ("admin", "klinika_admin", "hodim")
     users = db.execute(
         select(User)

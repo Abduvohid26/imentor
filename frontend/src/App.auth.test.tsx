@@ -88,14 +88,9 @@ vi.mock('./components/admin/AdminDashboardHome', () => ({ default: () => null })
 vi.mock('./components/admin/AdminStaffManagement', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminCasesLibrary', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminTestsLibrary', () => ({ default: () => null }));
-vi.mock('./components/admin/AdminStartupInbox', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminStaffLocationConsole', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminCampusBuildingsPage', () => ({ default: () => null }));
 vi.mock('./components/admin/AdminSyllabusCatalog', () => ({ default: () => null }));
-vi.mock('./components/startup/StartupWorkspace', () => ({
-  default: () => <div data-testid="startup-workspace">STARTUP</div>,
-}));
-vi.mock('./components/startup/StartupDossierSubmit', () => ({ default: () => null }));
 vi.mock('./components/staff/HodimGpsPromptBar', () => ({ default: () => null }));
 vi.mock('./components/staff/HandoutTopicBanner', () => ({ default: () => null }));
 
@@ -115,11 +110,11 @@ describe('App auth shell', () => {
     expect(screen.getByTestId('public-landing')).toBeInTheDocument();
   });
 
-  it('renders main syllabus shell for signed-in startuper', () => {
+  it('renders main syllabus shell for signed-in hodim', () => {
     getCurrentLocalUserMock.mockReturnValue({
       uid: 'u1',
-      displayName: 'Startuper',
-      firstName: 'Startuper',
+      displayName: 'Hodim',
+      firstName: 'Hodim',
       lastName: 'User',
       phoneDisplay: '+998 90 111 22 33',
       phoneDigits: '998901112233',
@@ -128,12 +123,12 @@ describe('App auth shell', () => {
       direction: '',
       email: '998901112233@imentor.local',
       password: '',
-      role: 'startuper',
+      role: 'hodim',
       createdAt: Date.now(),
     });
 
     render(<App />);
-    expect(screen.getByTestId('startup-workspace')).toBeInTheDocument();
+    expect(screen.getByTestId('syllabus-view')).toBeInTheDocument();
     expect(screen.queryByTestId('public-landing')).not.toBeInTheDocument();
   });
 

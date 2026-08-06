@@ -1,11 +1,5 @@
 from django.urls import path
 
-from .startup_ai_views import (
-    StartupAiCoachReplyView,
-    StartupAiInnovationPackView,
-    StartupAiQuestionnaireView,
-    StartupAiTwentyCriteriaView,
-)
 from .device_pairing_views import (
     DevicePairConfirmView,
     DevicePairCreateView,
@@ -111,10 +105,6 @@ from .views import (
     ScheduleWeekInfoView,
     StaffCampusBuildingListView,
     StaffScheduleSelfView,
-    StartupApplicationAdminInboxView,
-    StartupApplicationDetailView,
-    StartupApplicationListCreateView,
-    StartupApplicationSubmitView,
     SyllabusDocumentDestroyView,
     SyllabusDocumentListCreateView,
 )
@@ -226,14 +216,6 @@ urlpatterns = [
     path('v1/topic-videos/', TopicVideoListView.as_view(), name='topic-videos-list'),
     path('v1/admin/topic-videos/', AdminTopicVideoListCreateView.as_view(), name='admin-topic-videos'),
     path('v1/admin/topic-videos/<int:pk>/', AdminTopicVideoDetailView.as_view(), name='admin-topic-video-detail'),
-    path('v1/startup-ai/questionnaire/', StartupAiQuestionnaireView.as_view(), name='startup-ai-questionnaire'),
-    path('v1/startup-ai/twenty-criteria/', StartupAiTwentyCriteriaView.as_view(), name='startup-ai-twenty-criteria'),
-    path('v1/startup-ai/innovation-pack/', StartupAiInnovationPackView.as_view(), name='startup-ai-innovation-pack'),
-    path('v1/startup-ai/coach-reply/', StartupAiCoachReplyView.as_view(), name='startup-ai-coach-reply'),
-    path('v1/startup-applications/', StartupApplicationListCreateView.as_view(), name='startup-applications'),
-    path('v1/startup-applications/admin/inbox/', StartupApplicationAdminInboxView.as_view(), name='startup-admin-inbox'),
-    path('v1/startup-applications/<int:pk>/', StartupApplicationDetailView.as_view(), name='startup-application-detail'),
-    path('v1/startup-applications/<int:pk>/submit/', StartupApplicationSubmitView.as_view(), name='startup-application-submit'),
     path('v1/staff/location-ping/', StaffLocationPingView.as_view(), name='staff-location-ping'),
     path('v1/staff/schedule/', StaffScheduleSelfView.as_view(), name='staff-schedule-self'),
     path('v1/staff/schedule-week-info/', ScheduleWeekInfoView.as_view(), name='staff-schedule-week-info'),

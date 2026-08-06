@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.models.clinical_group import ClinicalGroup, ClinicalGroupMember
 
-MEMBER_APP_ROLES = ("hodim", "startuper", "klinika_admin")
-ALLOWED_ROLES = ("admin", "klinika_admin", "hodim", "startuper", "student")
+MEMBER_APP_ROLES = ("hodim", "klinika_admin")
+ALLOWED_ROLES = ("admin", "klinika_admin", "hodim", "student")
 
 
 def clinic_for_klinika_admin(db: Session, username: str, role: str) -> ClinicalGroup | None:
@@ -98,5 +98,5 @@ def can_provision_role(actor_role: str | None, target_role: str) -> bool:
     if actor_role == "admin":
         return True
     if actor_role == "klinika_admin":
-        return target in ("hodim", "startuper")
+        return target == "hodim"
     return False

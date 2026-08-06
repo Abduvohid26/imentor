@@ -48,7 +48,7 @@ describe('backendAuth', () => {
       JSON.stringify({
         access: makeJwt(exp),
         refresh: makeJwt(futureExpSeconds(7200)),
-        role: 'startuper',
+        role: 'hodim',
         username: '998901112233',
         accessExpMs: exp * 1000,
         refreshExpMs: futureExpSeconds(7200) * 1000,
@@ -69,7 +69,7 @@ describe('backendAuth', () => {
     backendAuth.writeBackendTokensFromPair({
       access: staleAccess,
       refresh: refreshToken,
-      role: 'startuper',
+      role: 'hodim',
       username: '998901112233',
     });
 
@@ -93,7 +93,7 @@ describe('backendAuth', () => {
     backendAuth.writeBackendTokensFromPair({
       access: makeJwt(pastExpSeconds()),
       refresh: makeJwt(futureExpSeconds(7200)),
-      role: 'startuper',
+      role: 'hodim',
       username: '998901112233',
     });
 

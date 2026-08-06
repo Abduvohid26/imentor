@@ -8,7 +8,6 @@ import {
   upsertStaffMember,
   type StaffDirectoryEntry,
 } from '../../utils/staffDirectoryApi';
-import { fetchAcademicCatalog, type AcademicCatalog } from '../../utils/academicCatalogApi';
 import { fetchAdminSyllabusCatalogStats } from '../../utils/syllabusApi';
 import { HttpError } from '../../api/httpClient';
 import { roleLabel } from '../../i18n/translations';
@@ -39,9 +38,6 @@ const emptyForm = {
   department: '',
   departmentId: null as number | null,
   role: 'hodim' as UserRole,
-  participantKind: 'student' as 'student' | 'employee',
-  studyGroup: '',
-  jobTitle: '',
 };
 
 type SortKey = 'displayName' | 'phoneDisplay' | 'role' | 'department' | 'lastActiveAt';
@@ -66,7 +62,6 @@ export default function AdminStaffManagement() {
   const [editing, setEditing] = useState<StaffDirectoryEntry | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [showAdd, setShowAdd] = useState(false);
-  const [catalog, setCatalog] = useState<AcademicCatalog | null>(null);
   const [departments, setDepartments] = useState<DeptOption[]>([]);
 
   const load = useCallback(async () => {
@@ -74,7 +69,7 @@ export default function AdminStaffManagement() {
     setError(null);
     try {
       const all = await fetchStaffDirectory();
-      // Faqat xodimlar: admin / o'qituvchi / klinika_admin (talaba, startuper emas).
+      // Faqat xodimlar: admin / o'qituvchi / klinika_admin (talaba emas).
       setRows(
         all.filter((u) => ['admin', 'hodim', 'klinika_admin'].includes(String(u.role || ''))),
       );
@@ -91,9 +86,6 @@ export default function AdminStaffManagement() {
   }, [load]);
 
   useEffect(() => {
-    fetchAcademicCatalog()
-      .then(setCatalog)
-      .catch(() => setCatalog(null));
     fetchAdminSyllabusCatalogStats()
       .then((stats) => {
         setDepartments(
@@ -106,23 +98,6 @@ export default function AdminStaffManagement() {
       })
       .catch(() => setDepartments([]));
   }, []);
-
-  // Guruhlar: OnlineTest katalogidan (startuper uchun); kafedra Fanlar katalogidan.
-  const selectedKafedra =
-    catalog?.kafedralar.find((k) => k.name === form.department) || null;
-  const groupOptions = (() => {
-    const dirs = selectedKafedra?.directions ?? catalog?.unassigned_directions ?? [];
-    const seen = new Set<string>();
-    const out: { id: string | number; name: string }[] = [];
-    for (const d of dirs) {
-      for (const g of d.groups ?? []) {
-        if (!g?.name || seen.has(g.name)) continue;
-        seen.add(g.name);
-        out.push(g);
-      }
-    }
-    return out;
-  })();
 
   const startEdit = (u: StaffDirectoryEntry) => {
     setEditing(u);
@@ -138,9 +113,6 @@ export default function AdminStaffManagement() {
       department: u.department,
       departmentId: deptId,
       role: (u.role || 'hodim') as UserRole,
-      participantKind: (u.participant_kind || 'student') as 'student' | 'employee',
-      studyGroup: u.study_group,
-      jobTitle: u.job_title,
     });
     setShowAdd(false);
   };
@@ -190,16 +162,6 @@ export default function AdminStaffManagement() {
     setSaving(true);
     setError(null);
     try {
-      if (form.role === 'startuper') {
-        if (form.participantKind === 'student' && !form.studyGroup.trim()) {
-          setError(t('admin.error.startuperGroupRequired'));
-          return;
-        }
-        if (form.participantKind === 'employee' && !form.jobTitle.trim()) {
-          setError(t('admin.error.startuperJobRequired'));
-          return;
-        }
-      }
       await upsertStaffMember({
         phone_digits: editing.phone_digits,
         password: form.password.trim().length >= 6 ? form.password.trim() : '',
@@ -210,9 +172,6 @@ export default function AdminStaffManagement() {
         department: form.department.trim(),
         department_id: form.departmentId,
         direction: editing.direction || '',
-        participant_kind: form.role === 'startuper' ? form.participantKind : undefined,
-        study_group: form.role === 'startuper' && form.participantKind === 'student' ? form.studyGroup.trim() : undefined,
-        job_title: form.role === 'startuper' && form.participantKind === 'employee' ? form.jobTitle.trim() : undefined,
       });
       setEditing(null);
       setForm(emptyForm);
@@ -487,7 +446,6 @@ export default function AdminStaffManagement() {
                         ...f,
                         departmentId: id,
                         department: dept?.name || '',
-                        studyGroup: '',
                       }));
                     }}
                   >
@@ -530,7 +488,6 @@ export default function AdminStaffManagement() {
                   >
                     <option value="hodim">{roleLabel(language, 'hodim')}</option>
                     <option value="admin">{roleLabel(language, 'admin')}</option>
-                    <option value="startuper">{roleLabel(language, 'startuper')}</option>
                   </select>
                 ) : (
                   <input
@@ -541,61 +498,6 @@ export default function AdminStaffManagement() {
                   />
                 )}
               </label>
-              {editing && form.role === 'startuper' && (
-                <>
-                  <label className="space-y-1 sm:col-span-2">
-                    <span className="text-[11px] font-semibold text-black/50">{t('admin.participantKind')}</span>
-                    <select
-                      className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                      value={form.participantKind}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          participantKind: e.target.value as 'student' | 'employee',
-                        }))
-                      }
-                    >
-                      <option value="student">{t('admin.student')}</option>
-                      <option value="employee">{t('admin.employee')}</option>
-                    </select>
-                  </label>
-                  {form.participantKind === 'student' ? (
-                    <label className="space-y-1 sm:col-span-2">
-                      <span className="text-[11px] font-semibold text-black/50">{t('admin.studyGroup')}</span>
-                      {catalog && groupOptions.length > 0 ? (
-                        <select
-                          className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                          value={form.studyGroup}
-                          onChange={(e) => setForm((f) => ({ ...f, studyGroup: e.target.value }))}
-                        >
-                          <option value="">{t('admin.notSelected')}</option>
-                          {form.studyGroup && !groupOptions.some((g) => g.name === form.studyGroup) && (
-                            <option value={form.studyGroup}>{form.studyGroup}</option>
-                          )}
-                          {groupOptions.map((g) => (
-                            <option key={g.id} value={g.name}>{g.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                          value={form.studyGroup}
-                          onChange={(e) => setForm((f) => ({ ...f, studyGroup: e.target.value }))}
-                        />
-                      )}
-                    </label>
-                  ) : (
-                    <label className="space-y-1 sm:col-span-2">
-                      <span className="text-[11px] font-semibold text-black/50">{t('admin.jobTitle')}</span>
-                      <input
-                        className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                        value={form.jobTitle}
-                        onChange={(e) => setForm((f) => ({ ...f, jobTitle: e.target.value }))}
-                      />
-                    </label>
-                  )}
-                </>
-              )}
               <div className="sm:col-span-2 flex gap-2 pt-2">
                 <button
                   type="submit"

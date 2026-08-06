@@ -10,7 +10,6 @@ import {
   GraduationCap,
   MapPin,
   Presentation,
-  Rocket,
   Shield,
   Sparkles,
   Users,
@@ -141,7 +140,6 @@ export default function PublicLandingPage({
     { icon: BriefcaseMedical, titleKey: 'publicLanding.featureCases' as const, descKey: 'publicLanding.featureCasesDesc' as const, color: 'emerald' as const },
     { icon: ClipboardList, titleKey: 'publicLanding.featureTests' as const, descKey: 'publicLanding.featureTestsDesc' as const, color: 'violet' as const },
     { icon: Presentation, titleKey: 'publicLanding.featurePresentation' as const, descKey: 'publicLanding.featurePresentationDesc' as const, color: 'orange' as const },
-    { icon: Rocket, titleKey: 'publicLanding.featureStartup' as const, descKey: 'publicLanding.featureStartupDesc' as const, color: 'pink' as const },
     { icon: MapPin, titleKey: 'publicLanding.gpsTitle' as const, descKey: 'publicLanding.gpsDesc' as const, color: 'amber' as const },
   ];
 
@@ -154,7 +152,6 @@ export default function PublicLandingPage({
   const roles = [
     { icon: Shield, titleKey: 'publicLanding.roleAdmin' as const, descKey: 'publicLanding.roleAdminDesc' as const, color: 'indigo' as const },
     { icon: GraduationCap, titleKey: 'publicLanding.roleHodim' as const, descKey: 'publicLanding.roleHodimDesc' as const, color: 'emerald' as const },
-    { icon: Rocket, titleKey: 'publicLanding.roleStartuper' as const, descKey: 'publicLanding.roleStartuperDesc' as const, color: 'amber' as const },
   ];
 
   return (

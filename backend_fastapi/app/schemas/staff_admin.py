@@ -50,7 +50,7 @@ class AdminStaffUpsertRequest(BaseModel):
     @classmethod
     def _v_role(cls, v: str) -> str:
         v = (v or "hodim").strip().lower()
-        return v if v in ("admin", "klinika_admin", "hodim", "startuper") else "hodim"
+        return v if v in ("admin", "klinika_admin", "hodim") else "hodim"
 
 
 class AdminDeprovisionStaffRequest(BaseModel):

@@ -18,7 +18,7 @@ from app.services.pagination import paginate
 
 router = APIRouter()
 
-STAFF_ROLES = ("admin", "klinika_admin", "hodim", "startuper")
+STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 HANDOUT_MAX_BYTES = 20 * 1024 * 1024
 PRESENTATION_MAX_BYTES = 50 * 1024 * 1024

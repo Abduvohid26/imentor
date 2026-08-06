@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.models.user import Group, User
 
-ALLOWED_ROLES = ("admin", "hodim", "startuper")
+ALLOWED_ROLES = ("admin", "hodim")
 # Guruh sifatida saqlanadigan barcha rollar (Django ALLOWED_ROLES bilan bir xil —
-# STAFF_ROLES + student). LocalLogin faqat admin/hodim/startuper qabul qiladi,
+# STAFF_ROLES + student). LocalLogin faqat admin/hodim qabul qiladi,
 # lekin klinika_admin/student rollari boshqa oqimlar orqali (clinic-admin,
 # online-test-login) tayinlanadi va shu ro'yxatda bo'lishi kerak.
-ALL_GROUP_ROLES = ("admin", "klinika_admin", "hodim", "startuper", "student")
+ALL_GROUP_ROLES = ("admin", "klinika_admin", "hodim", "student")
+# Legacy guruh — yangi tayinlash yo'q; faqat tozalash / resolve fallback uchun.
+_LEGACY_GROUP_ROLES = ("startuper",)
 
 
 def demo_admin_phone_allowlist() -> frozenset[str]:
@@ -33,6 +35,9 @@ def resolve_user_role_from_db(db: Session, user: User) -> str | None:
     for role in ALLOWED_ROLES + ("klinika_admin", "student"):
         if role in group_names:
             return role
+    # Eski startuper guruhini hodim deb hisoblaymiz.
+    if "startuper" in group_names:
+        return "hodim"
     return None
 
 
@@ -40,7 +45,7 @@ def set_user_role_group(db: Session, user: User, role: str) -> None:
     role = (role or "").strip().lower()
     if role not in ALL_GROUP_ROLES:
         return
-    for name in ALL_GROUP_ROLES:
+    for name in ALL_GROUP_ROLES + _LEGACY_GROUP_ROLES:
         group = db.execute(select(Group).where(Group.name == name)).scalar_one_or_none()
         if group is not None and group in user.groups:
             user.groups.remove(group)
@@ -71,7 +76,7 @@ def resolve_login_role(db: Session, user: User, requested_role: str | None) -> s
         return "admin"
     if requested == "admin":
         return resolve_user_role_from_db(db, user) or "hodim"
-    if requested in ("hodim", "startuper"):
+    if requested == "hodim":
         set_user_role_group(db, user, requested)
         return requested
     return resolve_user_role_from_db(db, user) or "hodim"
