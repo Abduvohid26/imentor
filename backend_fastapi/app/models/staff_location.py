@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -89,7 +90,7 @@ class StaffLocationPing(Base):
     longitude: Mapped[float] = mapped_column(Float)
     accuracy_m: Mapped[float | None] = mapped_column(Float, nullable=True)
     recorded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
-    client_ts_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_ts_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class StaffLocationAlert(Base):

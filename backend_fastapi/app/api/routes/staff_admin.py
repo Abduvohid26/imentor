@@ -194,7 +194,8 @@ def admin_staff_list(
 ) -> dict:
     from app.models.user import Group, user_groups
 
-    allowed_roles = ("admin", "klinika_admin", "hodim", "startuper", "student")
+    # Hodimlar boshqaruvi: faqat xodimlar (talaba/startuper emas).
+    allowed_roles = ("admin", "klinika_admin", "hodim")
     users = db.execute(
         select(User)
         .join(user_groups, user_groups.c.user_id == User.id)
@@ -207,13 +208,15 @@ def admin_staff_list(
     profiles = {
         p.owner_key: p
         for p in db.execute(
-            select(StaffProfile).where(StaffProfile.owner_key.in_([u.username for u in users]))
+            select(StaffProfile).where(StaffProfile.owner_key.in_([u.username for u in users] or [""]))
         ).scalars().all()
     }
 
     rows = []
     for u in users:
         role = auth_service.resolve_user_role_from_db(db, u) or ""
+        if role not in allowed_roles:
+            continue
         profile = profiles.get(u.username)
         rows.append(
             AdminStaffListEntry(

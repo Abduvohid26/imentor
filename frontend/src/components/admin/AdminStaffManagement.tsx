@@ -68,7 +68,11 @@ export default function AdminStaffManagement() {
     setLoading(true);
     setError(null);
     try {
-      setRows(await fetchStaffDirectory());
+      const all = await fetchStaffDirectory();
+      // Faqat xodimlar: admin / o'qituvchi / klinika_admin (talaba, startuper emas).
+      setRows(
+        all.filter((u) => ['admin', 'hodim', 'klinika_admin'].includes(String(u.role || ''))),
+      );
     } catch (err) {
       setRows([]);
       setError(loadErrorMessage(err, t));
