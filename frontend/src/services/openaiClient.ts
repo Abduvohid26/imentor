@@ -394,6 +394,47 @@ export async function openaiJson<T>(opts: {
   return opts.parse(text);
 }
 
+/** `openaiJson` bilan bir xil, lekin xom JSON matni generatsiya bo'lgan
+ * sari `onProgress(hozirgacha to'plangan xom matn)` chaqiriladi — UI
+ * foydalanuvchiga "tayyorlanmoqda" his-tuyg'usini bermasdan, jarayonni
+ * jonli ko'rsatishi mumkin. Faqat backend-proxy (production) rejimida
+ * haqiqiy stream; aks holda natija bir martada keladi. */
+export async function openaiJsonStream<T>(opts: {
+  model?: string;
+  system: string;
+  user: string;
+  maxTokens?: number;
+  temperature?: number;
+  parse: (text: string) => T;
+  bookContext?: BookContext;
+  onProgress?: (rawTextSoFar: string) => void;
+  onBookReferences?: (refs: MedicalReference[]) => void;
+}): Promise<T> {
+  const msgs: ChatMessage[] = [{ role: 'system', content: opts.system + JSON_ONLY_SUFFIX }, { role: 'user', content: opts.user }];
+  const useProxy = preferBackendProxy() || !localApiKey();
+  let text: string;
+  if (useProxy) {
+    text = await chatViaBackendStream({
+      model: opts.model ?? OPENAI_CHAT,
+      messages: msgs,
+      maxTokens: opts.maxTokens ?? 8192,
+      temperature: opts.temperature ?? 0.3,
+      bookContext: opts.bookContext,
+      onDelta: opts.onProgress ?? (() => {}),
+      onBookReferences: opts.onBookReferences,
+    });
+  } else {
+    text = await chatViaDirectApi({
+      model: opts.model ?? OPENAI_CHAT,
+      messages: msgs,
+      maxTokens: opts.maxTokens ?? 8192,
+      temperature: opts.temperature ?? 0.3,
+    });
+    opts.onProgress?.(text);
+  }
+  return opts.parse(text);
+}
+
 /** @deprecated openaiText ishlating */
 export const deepseekText = openaiText;
 /** @deprecated openaiJson ishlating */

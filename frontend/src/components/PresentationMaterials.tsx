@@ -1,10 +1,12 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   BookOpen,
   ChevronLeft,
   ChevronRight,
   Download,
   FileText,
+  History,
   Loader2,
   Presentation,
   Sparkles,
@@ -21,7 +23,13 @@ import { buildPresentationPptxFile, type PresentationDeck } from '../utils/build
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
-import { loadLatestPreparedContent, savePreparedContent } from '../utils/preparedContentStore';
+import {
+  loadLatestPreparedContent,
+  loadPreparedByIdSynced,
+  listAllPreparedForKindSynced,
+  savePreparedContent,
+  type PreparedContentSummary,
+} from '../utils/preparedContentStore';
 import {
   deletePresentation,
   fetchPresentationsForTopic,
@@ -300,9 +308,25 @@ export default function PresentationMaterials() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiProgress, setAiProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [savedDecks, setSavedDecks] = useState<PreparedContentSummary[]>([]);
+  const [historyDeck, setHistoryDeck] = useState<PresentationDeck | null>(null);
+  const [historySlideIdx, setHistorySlideIdx] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const refreshDeckHistory = useCallback(() => {
+    void listAllPreparedForKindSynced('presentation').then(setSavedDecks);
+  }, []);
+
+  const openHistoryDeck = async (summary: PreparedContentSummary) => {
+    const deck = await loadPreparedByIdSynced<PresentationDeck>('presentation', summary.id);
+    if (!deck) return;
+    setHistoryDeck(deck);
+    setHistorySlideIdx(0);
+  };
 
   const topicTitle = globalTopic?.title?.trim() ?? '';
   const topicReady = Boolean(globalTopic && topicTitle && isTopicContextComplete(globalTopic));
@@ -363,6 +387,7 @@ export default function PresentationMaterials() {
     if (!topicReady || !globalTopic) return;
     setAiLoading(true);
     setError(null);
+    setAiProgress('');
     try {
       let sourceText = '';
       const pdfItem = items.find((i) => i.kind === 'pdf');
@@ -381,11 +406,13 @@ export default function PresentationMaterials() {
         topicType: globalTopic.type,
         subjectName: globalTopic.subjectName,
         variantLabel: globalTopic.variantLabel,
-        language: globalTopic.instructionLanguage ?? language,
+        // Foydalanuvchi UI'da tanlagan til ustuvor (lekin bilan bir xil qoida).
+        language,
         mode: items.length > 0 ? 'enhance' : 'generate',
         sourceFileName: items[0]?.file_name,
         sourceText,
         subjectCode: globalTopic.subjectCode,
+        onProgress: (textSoFar) => setAiProgress(textSoFar),
       });
       const file = await buildPresentationPptxFile(deck);
       if (!file.size) {
@@ -397,6 +424,7 @@ export default function PresentationMaterials() {
         variantLabel: globalTopic.variantLabel,
         topicCode: globalTopic.id,
       });
+      refreshDeckHistory();
       const shortTopic =
         [globalTopic.id, globalTopic.title].filter(Boolean).join(' — ').slice(0, 240) || topicTitle;
       await uploadPresentation({
@@ -411,6 +439,7 @@ export default function PresentationMaterials() {
       setError(`${t('presentation.errorAi')} ${detail}`);
     } finally {
       setAiLoading(false);
+      setAiProgress('');
     }
   };
 
@@ -424,6 +453,129 @@ export default function PresentationMaterials() {
       setError(t('presentation.errorDelete'));
     }
   };
+
+  if (showHistory) {
+    return (
+      <StaffPageLayout>
+        <div className="flex items-center justify-between gap-3">
+          <button type="button" onClick={() => setShowHistory(false)} className={staffBtnGhost}>
+            <ArrowLeft size={18} />
+            {t('lecture.back')}
+          </button>
+          <h2 className="text-lg font-bold flex items-center gap-2 text-[#083047]">
+            <History size={20} />
+            {t('lecture.database')}
+          </h2>
+        </div>
+        {savedDecks.length === 0 ? (
+          <StaffPanel className="p-10 text-center">
+            <Presentation size={40} className="mx-auto text-black/20 mb-4" />
+            <p className="text-black/50 font-medium">{t('lecture.noSaved')}</p>
+          </StaffPanel>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {savedDecks.map((deck) => (
+              <button
+                key={deck.id}
+                type="button"
+                onClick={() => void openHistoryDeck(deck)}
+                className="ios-glass rounded-2xl border border-white/70 p-5 text-left hover:border-[#083047]/20 transition-all"
+              >
+                <h3 className="font-bold text-[15px] line-clamp-2 mb-2 text-[#083047]">{deck.topic}</h3>
+                <p className="text-[12px] text-black/45">
+                  {deck.createdAt ? new Date(deck.createdAt).toLocaleDateString() : t('common.recently')}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {historyDeck && (
+          <div className="fixed inset-0 z-[200] flex flex-col bg-black/92" role="dialog" aria-modal="true">
+            <header className="flex items-center justify-between px-4 py-3 text-white shrink-0 gap-2">
+              <p className="text-[15px] font-semibold truncate flex-1">{historyDeck.title}</p>
+              <button
+                type="button"
+                onClick={async () => {
+                  const file = await buildPresentationPptxFile(historyDeck);
+                  const url = URL.createObjectURL(file);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = file.name;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-[13px] font-semibold shrink-0"
+              >
+                <Download size={16} /> {t('common.download')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryDeck(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 shrink-0"
+              >
+                <X size={22} />
+              </button>
+            </header>
+            <div className="flex-1 relative flex items-center justify-center min-h-0 px-2 pb-2">
+              {historySlideIdx > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setHistorySlideIdx((i) => i - 1)}
+                  className="absolute left-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+                >
+                  <ChevronLeft size={28} />
+                </button>
+              )}
+              <div className="w-full h-full max-w-5xl mx-auto flex flex-col gap-4">
+                <div className="flex-1 min-h-0 rounded-3xl bg-white/95 backdrop-blur-xl shadow-2xl p-8 sm:p-12 flex flex-col overflow-y-auto">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-[#083047] mb-6">
+                    {historyDeck.slides[historySlideIdx]?.title}
+                  </h2>
+                  {historyDeck.slides[historySlideIdx]?.imageUrl && (
+                    <img
+                      src={historyDeck.slides[historySlideIdx]?.imageUrl}
+                      alt=""
+                      className="max-h-64 rounded-xl object-contain mb-4 mx-auto"
+                    />
+                  )}
+                  <ul className="space-y-2.5 text-[14px] sm:text-[15px] text-black/85">
+                    {(historyDeck.slides[historySlideIdx]?.bullets ?? []).map((b, i) => (
+                      <li key={i} className="flex gap-3 leading-snug">
+                        <span className="text-orange-500 shrink-0 mt-0.5">•</span>
+                        <span>{b}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex items-center justify-center gap-1.5 shrink-0">
+                  {historyDeck.slides.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setHistorySlideIdx(i)}
+                      className={`h-1.5 rounded-full transition-all ${
+                        i === historySlideIdx ? 'w-6 bg-white' : 'w-1.5 bg-white/35 hover:bg-white/55'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              {historySlideIdx < historyDeck.slides.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => setHistorySlideIdx((i) => i + 1)}
+                  className="absolute right-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+                >
+                  <ChevronRight size={28} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </StaffPageLayout>
+    );
+  }
 
   if (!topicReady || !globalTopic) {
     return (
@@ -487,10 +639,35 @@ export default function PresentationMaterials() {
           >
             {loading ? t('common.loading') : t('common.refresh')}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              refreshDeckHistory();
+              setShowHistory(true);
+            }}
+            className={staffBtnGhost}
+          >
+            <History size={16} />
+            {t('lecture.databaseShort')}
+          </button>
         </div>
       </StaffTopicHeader>
 
       {error && <StaffErrorAlert message={error} />}
+
+      {aiLoading && (
+        <StaffPanel className="p-4 sm:p-5 space-y-2">
+          <div className="flex items-center gap-2 text-sky-700">
+            <Loader2 size={16} className="animate-spin shrink-0" />
+            <p className="text-[13px] font-semibold">{t('presentation.aiGenerating')}</p>
+          </div>
+          {aiProgress && (
+            <p className="text-[11px] text-black/40 font-mono leading-relaxed line-clamp-4 break-all">
+              {aiProgress.slice(-600)}
+            </p>
+          )}
+        </StaffPanel>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16">

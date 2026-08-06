@@ -808,6 +808,45 @@ orqali o'qiydi/yozadi) va Faza 2 (kontent/syllabus modellari) ga o'tish.
 
 ## Jurnal (yangi yozuvlar tepaga qo'shiladi)
 
+- **2026-08-06** — Taqdimotlar (AI) uchun ham ma'ruza bilan bir xil 3 ta
+  yaxshilanish qo'llanildi (foydalanuvchi: "taqdimotlarda ham baza kerak,
+  real-time tez ishlasin, ochiq manbalardan rasm joylasin"):
+  1. **"Baza" (tarix)** — `PresentationMaterials.tsx`ga lecture bilan bir
+     xil naqsh qo'llanildi: yangi "Baza" tugmasi, server-sinxron ro'yxat
+     (`listAllPreparedForKindSynced('presentation')` — allaqachon mavjud
+     `/prepared-content/mine/` endpoint qayta ishlatildi, backend'ga
+     qo'shimcha o'zgarish shart bo'lmadi), bosilganda to'liq slayd
+     ko'ruvchi (slide viewer) modal ochiladi — o'qlar bilan varaqlash,
+     "Yuklab olish" (client-side qayta PPTX qurish) tugmasi bilan.
+  2. **Real-time (streaming) generatsiya** — `openaiClient.ts`ga
+     `openaiJsonStream()` qo'shildi (`openaiJson`ning stream varianti,
+     mavjud `chatViaBackendStream` infratuzilmasidan foydalanadi).
+     `requestPresentationDeckFromAi()`da birinchi urinish endi stream
+     orqali (xom JSON matni `onProgress` callback bilan uzatiladi),
+     ikkinchi (zaxira) urinish oddiy `openaiJson`da qoladi. UI'da
+     generatsiya paytida "Taqdimot yaratilmoqda… (jonli)" paneli xom
+     matnning oxirgi qismini ko'rsatib turadi.
+  3. **Ochiq manbadan rasmlar** — yangi `searchOpenImage()` funksiyasi
+     Wikimedia Commons API'siga (kalitsiz, `origin=*` bilan CORS ochiq,
+     CC-litsenziyali) so'rov yuboradi, SVG bo'lmagan (JPEG/PNG) birinchi
+     natijani tanlaydi, litsenziya/muallif matnini ("credit") ham oladi.
+     `attachOpenImagesToDeck()` har bir kontent-slayd (birinchi va oxirgi
+     slayddan tashqari) uchun parallel ravishda rasm qidirib, mavjud
+     `fetchImageAsDataUrl()` (avval yozilgan, lekin ishlatilmagan
+     "o'lik kod" edi) orqali data-URL'ga aylantirib biriktiradi.
+     `PresentationSlide` turiga `imageUrl`/`imageCredit` qo'shildi,
+     `buildPresentationPptxFile()` PPTX'da slaydning o'ng yarmiga rasm +
+     kredit matnini joylashtiradigan qilib yangilandi (rasm bo'lsa matn
+     ustuni tor qilinadi).
+  4. **Til mosligi** — xuddi ma'ruzadagi kabi, `PresentationMaterials.tsx`da
+     ham `globalTopic?.instructionLanguage ?? language` → shunchaki
+     `language` (joriy UI tili) qilib tuzatildi.
+
+  Wikimedia Commons API'si real curl bilan tekshirildi — haqiqiy JPEG
+  rasm URL'lari, litsenziya/muallif metama'lumotlari va SVG-filtri
+  to'g'ri ishlashi tasdiqlandi. `/prepared-content/mine/?kind=presentation`
+  (yangi backend o'zgarishisiz, mavjud endpoint) real curl bilan
+  tekshirildi. `tsc --noEmit` toza, prod rebuild qilindi.
 - **2026-08-06** — Ma'ruza matni (AI) generatsiyasi bo'yicha 3 ta so'rov
   bajarildi (foydalanuvchi: "sekin yaratishni tezlashtirish kerak",
   "baza"dagi eski yozuvlar chiqmayapti, til mos kelmayapti):

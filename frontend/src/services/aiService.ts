@@ -20,6 +20,7 @@ import {
   assertOpenAiApiKey,
   type BookContext,
   openaiJson,
+  openaiJsonStream,
   openaiText,
   openaiTextStream,
 } from './openaiClient';
@@ -373,6 +374,75 @@ async function fetchImageAsDataUrl(url: string, timeoutMs: number = 14000): Prom
   } catch {
     return null;
   }
+}
+
+/** Wikimedia Commons'dan ochiq litsenziyali (CC) rasm izlaydi — API kalit
+ * kerak emas, CORS `origin=*` bilan ochiq. Taqdimot slaydlariga real
+ * rasm biriktirish uchun ishlatiladi (AI o'ylab topgan emas — haqiqiy
+ * ochiq manbadan). */
+async function searchOpenImage(query: string): Promise<{ url: string; credit: string } | null> {
+  const q = query.replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!q) return null;
+  try {
+    const searchUrl =
+      'https://commons.wikimedia.org/w/api.php?action=query&generator=search' +
+      `&gsrsearch=${encodeURIComponent(q)}&gsrnamespace=6&gsrlimit=3` +
+      '&prop=imageinfo&iiprop=url|extmetadata|mime&iiurlwidth=900&format=json&origin=*';
+    const res = await fetch(searchUrl, { signal: AbortSignal.timeout(9000) });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      query?: {
+        pages?: Record<
+          string,
+          {
+            imageinfo?: {
+              thumburl?: string;
+              url?: string;
+              mime?: string;
+              extmetadata?: { Artist?: { value?: string }; LicenseShortName?: { value?: string } };
+            }[];
+          }
+        >;
+      };
+    };
+    const pages = Object.values(data.query?.pages || {});
+    for (const page of pages) {
+      const info = page.imageinfo?.[0];
+      if (!info) continue;
+      const mime = info.mime || '';
+      if (!mime.startsWith('image/') || mime.includes('svg')) continue;
+      const imgUrl = info.thumburl || info.url;
+      if (!imgUrl) continue;
+      const license = info.extmetadata?.LicenseShortName?.value || 'Wikimedia Commons';
+      const artist = (info.extmetadata?.Artist?.value || '').replace(/<[^>]+>/g, '').trim();
+      const credit = artist ? `${artist} · ${license} (Wikimedia Commons)` : `${license} (Wikimedia Commons)`;
+      return { url: imgUrl, credit };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Bir nechta slayd uchun parallel ravishda ochiq manba rasm topib
+ * biriktiradi. Topilmasa slayd matnli holicha qoladi (xato bermaydi). */
+async function attachOpenImagesToDeck(
+  deck: PresentationDeck,
+  subjectName: string,
+): Promise<PresentationDeck> {
+  const slides = await Promise.all(
+    deck.slides.map(async (slide, idx) => {
+      // 1-slayd (Kirish/reja) va oxirgi (Xulosa) uchun rasm shart emas.
+      if (idx === 0 || idx === deck.slides.length - 1) return slide;
+      const query = `${subjectName} ${slide.title}`.trim();
+      const found = await searchOpenImage(query).catch(() => null);
+      if (!found) return slide;
+      const dataUrl = await fetchImageAsDataUrl(found.url).catch(() => null);
+      if (!dataUrl) return slide;
+      return { ...slide, imageUrl: dataUrl, imageCredit: found.credit };
+    }),
+  );
+  return { ...deck, slides };
 }
 
 function isWeakCaseSession(data: CaseStudySession | null | undefined): boolean {
@@ -877,6 +947,9 @@ async function requestPresentationDeckFromAi(params: {
   sourceFileName?: string;
   sourceText?: string;
   subjectCode?: string;
+  /** Generatsiya davom etayotganda xom matn bilan chaqiriladi (birinchi
+   * urinishda) — foydalanuvchi jarayonni jonli kuzatishi uchun. */
+  onProgress?: (rawTextSoFar: string) => void;
 }): Promise<PresentationDeck> {
   assertOpenAiApiKey();
   const outLang = languageName(params.language);
@@ -915,9 +988,10 @@ async function requestPresentationDeckFromAi(params: {
     { maxTokens: 14000, temperature: 0.28 },
   ];
 
-  for (const attempt of attempts) {
+  for (const [attemptIdx, attempt] of attempts.entries()) {
     try {
-      const raw = await openaiJson<Partial<PresentationDeck>>({
+      const requestFn = attemptIdx === 0 ? openaiJsonStream : openaiJson;
+      const raw = await requestFn<Partial<PresentationDeck>>({
         model: OPENAI_CHAT,
         system:
           `${SYS_MEDICAL} Return ONLY valid JSON: ` +
@@ -936,6 +1010,7 @@ async function requestPresentationDeckFromAi(params: {
         temperature: attempt.temperature,
         parse: (t) => parseJSONSafe<Partial<PresentationDeck>>(t),
         bookContext,
+        ...(attemptIdx === 0 ? { onProgress: params.onProgress } : {}),
       });
       const rawCount = Array.isArray(raw?.slides) ? raw.slides.length : 0;
       if (rawCount > 0 && rawCount < 6) {
@@ -953,7 +1028,7 @@ async function requestPresentationDeckFromAi(params: {
         console.warn('Presentation bullets still too short, retrying…', Math.round(avgLen));
         continue;
       }
-      return deck;
+      return await attachOpenImagesToDeck(deck, params.subjectName);
     } catch (error) {
       console.warn('Presentation AI attempt failed:', error);
     }
@@ -1207,6 +1282,7 @@ export const aiService = {
     sourceFileName?: string;
     sourceText?: string;
     subjectCode?: string;
+    onProgress?: (rawTextSoFar: string) => void;
   }): Promise<PresentationDeck> {
     return requestPresentationDeckFromAi(params);
   },
