@@ -262,6 +262,7 @@ def admin_syllabus_stats(
             AcademicDepartment.id,
             AcademicDepartment.name,
             AcademicDepartment.code,
+            AcademicDepartment.sort_order,
             func.count(CourseSyllabus.id).filter(CourseSyllabus.is_active.is_(True)).label("subjects_count"),
         )
         .select_from(AcademicDepartment)
@@ -298,7 +299,13 @@ def admin_syllabus_stats(
         "variants_count": variants_count,
         "topics_count": topics_count,
         "by_department": [
-            {"id": r.id, "name": r.name, "code": r.code, "subjects_count": r.subjects_count}
+            {
+                "id": r.id,
+                "name": r.name,
+                "code": r.code,
+                "subjects_count": r.subjects_count,
+                "sort_order": r.sort_order,
+            }
             for r in by_department
         ],
     }

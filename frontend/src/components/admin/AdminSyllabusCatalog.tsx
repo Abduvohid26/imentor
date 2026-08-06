@@ -59,6 +59,7 @@ type DepartmentRow = {
   name: string;
   code: string;
   subjects_count: number;
+  sort_order?: number;
 };
 
 function dedupeVariantLabels(variants: SyllabusVariant[]): SyllabusVariant[] {
@@ -130,6 +131,7 @@ export default function AdminSyllabusCatalog() {
           name: d.name,
           code: d.code || d.name,
           subjects_count: d.subjects_count,
+          sort_order: d.sort_order ?? 0,
         })),
       );
     } catch (err) {
@@ -234,10 +236,18 @@ export default function AdminSyllabusCatalog() {
       const topics = rows.reduce((sum, r) => sum + totalTopicCount(resolveSyllabusVariants(r)), 0);
       return { ...d, fanCount: rows.length || d.subjects_count, topicCount: topics };
     });
-    if (!q) return withCounts.sort((a, b) => a.name.localeCompare(b.name));
+    // Avval fanlari bor kafedralar, keyin sort_order / nom.
+    const rank = (a: (typeof withCounts)[number], b: (typeof withCounts)[number]) => {
+      const byFans = (b.fanCount > 0 ? 1 : 0) - (a.fanCount > 0 ? 1 : 0);
+      if (byFans !== 0) return byFans;
+      const byOrder = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      if (byOrder !== 0) return byOrder;
+      return a.name.localeCompare(b.name, 'uz');
+    };
+    if (!q) return withCounts.sort(rank);
     return withCounts
       .filter((d) => d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort(rank);
   }, [departments, list, search]);
 
   const createFan = async () => {

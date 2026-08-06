@@ -71,6 +71,7 @@ export type SyllabusCatalogStats = {
     name: string;
     code: string;
     subjects_count: number;
+    sort_order?: number;
   }[];
 };
 
