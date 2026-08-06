@@ -21,6 +21,7 @@ from app.schemas.staff_admin import (
 )
 from app.services import auth_service
 from app.services import file_storage as storage
+from app.services import staff_department as staff_dept
 from app.services import staff_profile
 from app.services.pagination import paginate
 
@@ -87,21 +88,28 @@ def admin_provision_staff(
     # Profil maydonlari har doim yangilanadi (bo'sh = tozalash).
     profile_fields = {
         "faculty": (payload.faculty or "").strip(),
-        "department": (payload.department or "").strip(),
         "direction": (payload.direction or "").strip(),
         "participant_kind": (payload.participant_kind or "").strip(),
         "study_group": (payload.study_group or "").strip(),
         "job_title": (payload.job_title or "").strip(),
     }
+    wants_dept = payload.department_id is not None or bool((payload.department or "").strip())
     profile = db.execute(
         select(StaffProfile).where(StaffProfile.owner_key == username)
     ).scalar_one_or_none()
-    if profile is None and any(profile_fields.values()):
+    if profile is None and (any(profile_fields.values()) or wants_dept):
         profile = StaffProfile(owner_key=username, updated_at=dt.datetime.now(dt.timezone.utc))
         db.add(profile)
+        db.flush()
     if profile is not None:
         for field, value in profile_fields.items():
             setattr(profile, field, value)
+        staff_dept.apply_staff_department(
+            db,
+            profile,
+            department_id=payload.department_id,
+            department_name=(payload.department or "").strip(),
+        )
         profile.updated_at = dt.datetime.now(dt.timezone.utc)
 
     db.commit()
@@ -228,6 +236,7 @@ def admin_staff_list(
                 role=role,
                 faculty=profile.faculty if profile else "",
                 department=profile.department if profile else "",
+                department_id=profile.department_id if profile else None,
                 direction=profile.direction if profile else "",
                 participant_kind=profile.participant_kind if profile else "",
                 study_group=profile.study_group if profile else "",

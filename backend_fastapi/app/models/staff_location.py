@@ -74,11 +74,17 @@ class StaffProfile(Base):
     photo: Mapped[str] = mapped_column(String(512), default="")
     faculty: Mapped[str] = mapped_column(String(255), default="")
     department: Mapped[str] = mapped_column(String(255), default="")
+    department_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core_academicdepartment.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     direction: Mapped[str] = mapped_column(String(255), default="")
     participant_kind: Mapped[str] = mapped_column(String(16), default="")
     study_group: Mapped[str] = mapped_column(String(128), default="")
     job_title: Mapped[str] = mapped_column(String(255), default="")
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+
+    academic_department = relationship("AcademicDepartment", lazy="joined")
 
 
 class StaffLocationPing(Base):

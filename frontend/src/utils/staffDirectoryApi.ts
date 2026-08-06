@@ -13,6 +13,7 @@ export type StaffDirectoryEntry = {
   role: UserRole | '';
   faculty: string;
   department: string;
+  department_id?: number | null;
   direction: string;
   participant_kind: 'student' | 'employee' | '';
   study_group: string;
@@ -52,6 +53,7 @@ export type StaffUpsertInput = {
   last_name?: string;
   faculty?: string;
   department?: string;
+  department_id?: number | null;
   direction?: string;
   participant_kind?: 'student' | 'employee';
   study_group?: string;

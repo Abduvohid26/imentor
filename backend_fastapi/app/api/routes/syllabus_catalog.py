@@ -119,6 +119,16 @@ def my_course_selections(
     db: Session = Depends(get_db),
     auth=Depends(require_roles("hodim")),
 ) -> list[StaffCourseSelectionOut]:
+    from app.models.staff_location import StaffProfile
+    from app.services import staff_department as staff_dept
+
+    profile = db.execute(
+        select(StaffProfile).where(StaffProfile.owner_key == auth.user.username)
+    ).scalar_one_or_none()
+    if profile is not None and profile.department_id:
+        staff_dept.ensure_department_course_selections(db, auth.user.username, profile.department_id)
+        db.commit()
+
     rows = (
         db.execute(
             select(StaffCourseSelection)

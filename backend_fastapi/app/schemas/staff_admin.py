@@ -35,6 +35,7 @@ class AdminStaffUpsertRequest(BaseModel):
     last_name: str = ""
     faculty: str = ""
     department: str = ""
+    department_id: int | None = None
     direction: str = ""
     participant_kind: str = ""
     study_group: str = ""
@@ -74,6 +75,7 @@ class AdminStaffListEntry(BaseModel):
     role: str
     faculty: str = ""
     department: str = ""
+    department_id: int | None = None
     direction: str = ""
     participant_kind: str = ""
     study_group: str = ""

@@ -9,9 +9,12 @@ import {
   type StaffDirectoryEntry,
 } from '../../utils/staffDirectoryApi';
 import { fetchAcademicCatalog, type AcademicCatalog } from '../../utils/academicCatalogApi';
+import { fetchAdminSyllabusCatalogStats } from '../../utils/syllabusApi';
 import { HttpError } from '../../api/httpClient';
 import { roleLabel } from '../../i18n/translations';
 import { useUiText } from '../../i18n/useUiText';
+
+type DeptOption = { id: number; name: string; code: string };
 
 function formatLastActive(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -34,6 +37,7 @@ const emptyForm = {
   firstName: '',
   lastName: '',
   department: '',
+  departmentId: null as number | null,
   role: 'hodim' as UserRole,
   participantKind: 'student' as 'student' | 'employee',
   studyGroup: '',
@@ -63,6 +67,7 @@ export default function AdminStaffManagement() {
   const [form, setForm] = useState(emptyForm);
   const [showAdd, setShowAdd] = useState(false);
   const [catalog, setCatalog] = useState<AcademicCatalog | null>(null);
+  const [departments, setDepartments] = useState<DeptOption[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,11 +93,23 @@ export default function AdminStaffManagement() {
   useEffect(() => {
     fetchAcademicCatalog()
       .then(setCatalog)
-      .catch(() => setCatalog(null)); // katalog ixtiyoriy — bo'lmasa oddiy matn kiritish davom etadi
+      .catch(() => setCatalog(null));
+    fetchAdminSyllabusCatalogStats()
+      .then((stats) => {
+        setDepartments(
+          (stats?.by_department || []).map((d) => ({
+            id: d.id,
+            name: d.name,
+            code: d.code || d.name,
+          })),
+        );
+      })
+      .catch(() => setDepartments([]));
   }, []);
 
-  // Guruhlar kafedra ostidagi barcha yo'nalishlardan yig'iladi (fakultet/yo'nalish UI yo'q).
-  const selectedKafedra = catalog?.kafedralar.find((k) => k.name === form.department) || null;
+  // Guruhlar: OnlineTest katalogidan (startuper uchun); kafedra Fanlar katalogidan.
+  const selectedKafedra =
+    catalog?.kafedralar.find((k) => k.name === form.department) || null;
   const groupOptions = (() => {
     const dirs = selectedKafedra?.directions ?? catalog?.unassigned_directions ?? [];
     const seen = new Set<string>();
@@ -109,12 +126,17 @@ export default function AdminStaffManagement() {
 
   const startEdit = (u: StaffDirectoryEntry) => {
     setEditing(u);
+    const deptId =
+      u.department_id ??
+      departments.find((d) => d.name === u.department)?.id ??
+      null;
     setForm({
       phoneDisplay: u.phone_display,
       password: '',
       firstName: u.first_name,
       lastName: u.last_name,
       department: u.department,
+      departmentId: deptId,
       role: (u.role || 'hodim') as UserRole,
       participantKind: (u.participant_kind || 'student') as 'student' | 'employee',
       studyGroup: u.study_group,
@@ -141,6 +163,7 @@ export default function AdminStaffManagement() {
         last_name: form.lastName.trim(),
         faculty: '',
         department: form.department.trim(),
+        department_id: form.departmentId,
         direction: '',
       });
       setForm(emptyForm);
@@ -185,6 +208,7 @@ export default function AdminStaffManagement() {
         last_name: form.lastName.trim(),
         faculty: editing.faculty || '',
         department: form.department.trim(),
+        department_id: form.departmentId,
         direction: editing.direction || '',
         participant_kind: form.role === 'startuper' ? form.participantKind : undefined,
         study_group: form.role === 'startuper' && form.participantKind === 'student' ? form.studyGroup.trim() : undefined,
@@ -452,29 +476,49 @@ export default function AdminStaffManagement() {
               </label>
               <label className="space-y-1 sm:col-span-2">
                 <span className="text-[11px] font-semibold text-black/50">{t('admin.department')}</span>
-                {catalog ? (
+                {departments.length > 0 ? (
                   <select
                     className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                    value={form.department}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, department: e.target.value, studyGroup: '' }))
-                    }
+                    value={form.departmentId != null ? String(form.departmentId) : ''}
+                    onChange={(e) => {
+                      const id = e.target.value ? Number(e.target.value) : null;
+                      const dept = departments.find((d) => d.id === id) || null;
+                      setForm((f) => ({
+                        ...f,
+                        departmentId: id,
+                        department: dept?.name || '',
+                        studyGroup: '',
+                      }));
+                    }}
                   >
                     <option value="">{t('admin.notSelected')}</option>
-                    {form.department && !catalog.kafedralar.some((k) => k.name === form.department) && (
-                      <option value={form.department}>{form.department}</option>
-                    )}
-                    {catalog.kafedralar.map((k) => (
-                      <option key={k.id} value={k.name}>{k.name}</option>
+                    {form.departmentId == null &&
+                    form.department &&
+                    !departments.some((d) => d.name === form.department) ? (
+                      <option disabled value="">
+                        {form.department}
+                      </option>
+                    ) : null}
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
                     ))}
                   </select>
                 ) : (
                   <input
                     className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
                     value={form.department}
-                    onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        department: e.target.value,
+                        departmentId: null,
+                      }))
+                    }
                   />
                 )}
+                <span className="block text-[11px] text-black/45">{t('admin.departmentFansHint')}</span>
               </label>
               <label className="space-y-1 sm:col-span-2">
                 <span className="text-[11px] font-semibold text-black/50">{t('admin.role')}</span>

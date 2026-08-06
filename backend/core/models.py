@@ -665,6 +665,14 @@ class StaffProfile(models.Model):
     photo = models.FileField(upload_to=staff_avatar_upload_to, max_length=512, blank=True)
     faculty = models.CharField(max_length=255, blank=True, default="")
     department = models.CharField(max_length=255, blank=True, default="")
+    academic_department = models.ForeignKey(
+        "AcademicDepartment",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="staff_profiles",
+        db_column="department_id",
+    )
     direction = models.CharField(max_length=255, blank=True, default="")
     participant_kind = models.CharField(
         max_length=16, choices=PARTICIPANT_KIND_CHOICES, blank=True, default=""
