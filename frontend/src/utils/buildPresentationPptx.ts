@@ -80,8 +80,8 @@ function addFooter(
   });
 }
 
-/** Rasm yo‘q joyda bo‘sh qolmasin — gradient + pattern. */
-function addVisualPlaceholder(
+/** Toza tibbiy ikonka paneli — ma'nosiz geometrik "art" emas. */
+function addMedicalIconPanel(
   s: PptxSlide,
   x: number,
   y: number,
@@ -93,35 +93,50 @@ function addVisualPlaceholder(
     y,
     w,
     h,
+    fill: { color: C.soft },
+    line: { color: C.secondary, width: 1 },
+  });
+  const cx = x + w / 2;
+  const cy = y + h / 2 - 0.15;
+  const arm = Math.min(w, h) * 0.12;
+  // Tibbiy xoch
+  s.addShape('roundRect', {
+    x: cx - arm * 0.35,
+    y: cy - arm * 1.6,
+    w: arm * 0.7,
+    h: arm * 3.2,
     fill: { color: C.primary },
     line: { type: 'none' },
   });
   s.addShape('roundRect', {
-    x: x + w * 0.35,
-    y: y + h * 0.15,
-    w: w * 0.55,
-    h: h * 0.7,
-    fill: { color: C.secondary },
+    x: cx - arm * 1.6,
+    y: cy - arm * 0.35,
+    w: arm * 3.2,
+    h: arm * 0.7,
+    fill: { color: C.primary },
     line: { type: 'none' },
   });
-  s.addShape('ellipse', {
-    x: x + w * 0.08,
-    y: y + h * 0.55,
-    w: w * 0.28,
-    h: w * 0.28,
-    fill: { color: C.accent },
-    line: { type: 'none' },
+  s.addText('Tibbiy illustratsiya', {
+    x: x + 0.2,
+    y: y + h - 0.55,
+    w: w - 0.4,
+    h: 0.35,
+    fontSize: 11,
+    color: C.muted,
+    align: 'center',
+    fontFace: F.body,
   });
 }
 
-function addImageOrPlaceholder(
+/** Rasm bo‘lsa qo‘yadi; bo‘lmasa — toza tibbiy ikonka (abstrakt shakllar yo‘q). */
+function addImageOrMedicalIcon(
   s: PptxSlide,
   slide: ContentSlide,
   x: number,
   y: number,
   w: number,
   h: number,
-): void {
+): boolean {
   if (slide.imageUrl) {
     try {
       s.addImage({
@@ -143,12 +158,13 @@ function addImageOrPlaceholder(
           italic: true,
         });
       }
-      return;
+      return true;
     } catch {
-      /* fallback */
+      /* icon fallback */
     }
   }
-  addVisualPlaceholder(s, x, y, w, h);
+  addMedicalIconPanel(s, x, y, w, h);
+  return false;
 }
 
 function addNumberedBullets(
@@ -158,38 +174,45 @@ function addNumberedBullets(
 ): void {
   const items = bullets.slice(0, 5);
   if (!items.length) return;
-  const rowH = Math.min(0.85, box.h / items.length);
+  // Bo‘sh joy qolmasin: kam bullet → kattaroq qator balandligi va shrift
+  const rowH = Math.min(1.35, Math.max(0.95, box.h / items.length));
+  const baseFs = items.length <= 3 ? 16 : items.length === 4 ? 15 : 14;
   items.forEach((text, i) => {
     const y = box.y + i * rowH;
+    if (y + 0.4 > box.y + box.h) return;
     s.addShape('ellipse', {
       x: box.x,
-      y: y + 0.08,
-      w: 0.38,
-      h: 0.38,
+      y: y + 0.12,
+      w: 0.4,
+      h: 0.4,
       fill: { color: C.primary },
       line: { type: 'none' },
     });
     s.addText(String(i + 1), {
       x: box.x,
-      y: y + 0.08,
-      w: 0.38,
-      h: 0.38,
-      fontSize: 12,
+      y: y + 0.12,
+      w: 0.4,
+      h: 0.4,
+      fontSize: 13,
       bold: true,
       color: C.textLight,
       align: 'center',
       valign: 'middle',
     });
-    const fs = autofitFontSize(text, { base: 15, min: 11, softMaxChars: 55 });
+    const fs = autofitFontSize(text, {
+      base: baseFs,
+      min: 12,
+      softMaxChars: 140,
+    });
     s.addText(text, {
-      x: box.x + 0.52,
-      y: y + 0.05,
-      w: box.w - 0.55,
-      h: rowH - 0.08,
+      x: box.x + 0.55,
+      y: y + 0.06,
+      w: box.w - 0.6,
+      h: rowH - 0.12,
       fontSize: fs,
       color: C.textDark,
       fontFace: F.body,
-      valign: 'middle',
+      valign: 'top',
     });
   });
 }
@@ -204,24 +227,8 @@ function layoutTitle(
   page: number,
   total: number,
 ): void {
+  // Yaxlit bitta fon — ikkinchi "bo‘lak" band yo‘q (BUG 1).
   s.background = { color: C.bgDark };
-  // gradient simulation
-  s.addShape('rect', {
-    x: 0,
-    y: 0,
-    w: 13.333,
-    h: 7.5,
-    fill: { color: C.bgDark },
-    line: { type: 'none' },
-  });
-  s.addShape('rect', {
-    x: 0,
-    y: 4.2,
-    w: 13.333,
-    h: 3.3,
-    fill: { color: C.primary },
-    line: { type: 'none' },
-  });
   addHeaderBadge(s, meta, true);
   s.addText('iMentor', {
     x: 10.8,
@@ -234,12 +241,21 @@ function layoutTitle(
     align: 'right',
     fontFace: F.heading,
   });
+  // Yupqa aksent chiziq (fon emas)
+  s.addShape('rect', {
+    x: M,
+    y: 2.15,
+    w: 1.8,
+    h: 0.07,
+    fill: { color: C.accent },
+    line: { type: 'none' },
+  });
   const titleFs = autofitFontSize(slide.title, { base: 36, min: 22, softMaxChars: 48 });
   s.addText(slide.title, {
     x: M,
     y: 2.4,
     w: 12.2,
-    h: 1.4,
+    h: 1.5,
     fontSize: titleFs,
     bold: true,
     color: C.textLight,
@@ -248,11 +264,11 @@ function layoutTitle(
   if (slide.subtitle) {
     s.addText(slide.subtitle, {
       x: M,
-      y: 3.9,
+      y: 4.1,
       w: 12.2,
-      h: 0.45,
-      fontSize: 16,
-      color: C.soft,
+      h: 0.55,
+      fontSize: 17,
+      color: 'B8C8D8',
       fontFace: F.body,
     });
   }
@@ -335,24 +351,27 @@ function layoutContentBullets(
 ): void {
   s.background = { color: C.bgLight };
   addHeaderBadge(s, meta);
+  const hasImage = Boolean(slide.imageUrl);
+  const titleW = hasImage ? 7.2 : 12.2;
   s.addText(slide.title, {
     x: M,
     y: 0.7,
-    w: 7.2,
+    w: titleW,
     h: 0.55,
     fontSize: autofitFontSize(slide.title, { base: 22, min: 14, softMaxChars: 40 }),
     bold: true,
     color: C.primary,
     fontFace: F.heading,
   });
-  // Matn max ~55% kenglik
   addNumberedBullets(s, slide.body.bullets || slidePreviewBullets(slide), {
     x: M,
-    y: 1.45,
-    w: 6.8,
-    h: 5.2,
+    y: 1.4,
+    w: hasImage ? 6.8 : 12.2,
+    h: 5.25,
   });
-  addImageOrPlaceholder(s, slide, 7.7, 0.85, 5.0, 5.7);
+  if (hasImage) {
+    addImageOrMedicalIcon(s, slide, 7.7, 0.85, 5.0, 5.7);
+  }
   addFooter(s, deckTitle, page, total);
 }
 
@@ -423,9 +442,10 @@ function layoutImageFocus(
   page: number,
   total: number,
 ): void {
+  // Rasm yo‘q bo‘lsa demote allaqachon content_bullets qiladi; shu yerda rasm yoki ikonka.
   s.background = { color: C.bgLight };
   addHeaderBadge(s, meta);
-  addImageOrPlaceholder(s, slide, M, 0.75, 7.4, 5.9);
+  addImageOrMedicalIcon(s, slide, M, 0.75, 7.4, 5.9);
   s.addText(slide.title, {
     x: 8.2,
     y: 0.85,
@@ -716,10 +736,12 @@ function layoutCaseStudy(
 ): void {
   s.background = { color: C.bgLight };
   addHeaderBadge(s, meta);
+  const hasImage = Boolean(slide.imageUrl);
+  const cardW = hasImage ? 7.0 : 12.2;
   s.addText(slide.title, {
     x: M,
     y: 0.7,
-    w: 7.0,
+    w: cardW,
     h: 0.5,
     fontSize: 22,
     bold: true,
@@ -728,28 +750,32 @@ function layoutCaseStudy(
   });
   s.addShape('roundRect', {
     x: M,
-    y: 1.4,
-    w: 7.0,
-    h: 5.1,
+    y: 1.35,
+    w: cardW,
+    h: 5.15,
     fill: { color: C.card },
     line: { color: C.soft, width: 1 },
   });
-  s.addText('Klinik holat', {
+  // Ichki dublikat sarlavha YO‘Q — faqat type badge (BUG 3)
+  s.addText('Case study', {
     x: M + 0.25,
-    y: 1.55,
-    w: 6.5,
-    h: 0.35,
-    fontSize: 12,
+    y: 1.5,
+    w: 2.2,
+    h: 0.3,
+    fontSize: 11,
     bold: true,
     color: C.secondary,
+    fontFace: F.body,
   });
   addNumberedBullets(s, slide.body.bullets || slidePreviewBullets(slide), {
     x: M + 0.25,
-    y: 2.1,
-    w: 6.5,
-    h: 4.1,
+    y: 1.95,
+    w: cardW - 0.5,
+    h: 4.3,
   });
-  addImageOrPlaceholder(s, slide, 8.0, 1.4, 4.7, 5.1);
+  if (hasImage) {
+    addImageOrMedicalIcon(s, slide, 8.0, 1.35, 4.7, 5.15);
+  }
   addFooter(s, deckTitle, page, total);
 }
 
@@ -765,36 +791,50 @@ function layoutSummary(
   addHeaderBadge(s, meta);
   s.addText(slide.title, {
     x: M,
-    y: 0.85,
+    y: 0.7,
     w: 12.2,
-    h: 0.55,
+    h: 0.5,
     fontSize: 26,
     bold: true,
     color: C.primary,
     fontFace: F.heading,
   });
   const bullets = slidePreviewBullets(slide).slice(0, 5);
+  const rowH = Math.min(1.15, 5.4 / Math.max(bullets.length, 1));
   bullets.forEach((b, i) => {
-    const y = 1.8 + i * 0.85;
+    const y = 1.4 + i * rowH;
+    const split = b.match(/^([^:—–-]{4,48})[:—–-]\s*(.+)$/);
+    const head = split ? split[1].trim() : b.slice(0, 48);
+    const tail = split ? split[2].trim() : '';
     s.addText(`${i + 1}.`, {
       x: M,
       y,
-      w: 0.5,
-      h: 0.55,
-      fontSize: 20,
+      w: 0.45,
+      h: 0.4,
+      fontSize: 18,
       bold: true,
       color: C.accent,
       fontFace: F.heading,
     });
-    s.addText(b, {
-      x: M + 0.6,
+    s.addText(head, {
+      x: M + 0.55,
       y,
-      w: 11.5,
-      h: 0.55,
-      fontSize: 18,
+      w: 11.6,
+      h: 0.35,
+      fontSize: 16,
+      bold: true,
       color: C.textDark,
+      fontFace: F.heading,
+    });
+    s.addText(tail || b, {
+      x: M + 0.55,
+      y: y + 0.35,
+      w: 11.6,
+      h: rowH - 0.42,
+      fontSize: 13,
+      color: C.muted,
       fontFace: F.body,
-      valign: 'middle',
+      valign: 'top',
     });
   });
   addFooter(s, deckTitle, page, total);

@@ -163,6 +163,17 @@ def search_semantic_scholar(query: str, limit: int = 5) -> list[dict]:
                 }
             )
         return out
+    except requests.exceptions.HTTPError as e:
+        # Semantic Scholar'ning bepul (API key'siz) darajasi umumiy IP bo'yicha
+        # juda tez limitga uriladi (429) — bu KUTILGAN holat, xato emas. Bunday
+        # holda shunchaki kitob/PubMed manbalari bilan davom etiladi, generatsiya
+        # to'xtamaydi. To'liq traceback bilan "xato" deb log qilinmaydi.
+        status = e.response.status_code if e.response is not None else None
+        if status == 429:
+            logger.info("Semantic Scholar: rate limit (429) — bu safar o'tkazib yuborildi (query=%r)", query)
+        else:
+            logger.warning("Semantic Scholar qidiruv xato (query=%r)", query, exc_info=True)
+        return []
     except Exception:
         logger.warning("Semantic Scholar qidiruv xato (query=%r)", query, exc_info=True)
         return []

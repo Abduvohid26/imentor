@@ -1,7 +1,14 @@
-import type { ContentSlide, PresentationContent } from './presentationContentSchema';
+import type { ContentSlide, PresentationContent, SlideType } from './presentationContentSchema';
 
 const IRRELEVANT_IMAGE_HINTS =
   /portrait|photographer|painting|artwork|album cover|logo|flag of|coat of arms|stamp|banknote|coin\b/i;
+
+const IMAGE_TYPES: SlideType[] = [
+  'content_bullets',
+  'image_focus',
+  'two_column',
+  'case_study',
+];
 
 async function searchOpenImage(query: string): Promise<{ url: string; credit: string } | null> {
   const q = query.replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -9,9 +16,9 @@ async function searchOpenImage(query: string): Promise<{ url: string; credit: st
   try {
     const searchUrl =
       'https://commons.wikimedia.org/w/api.php?action=query&generator=search' +
-      `&gsrsearch=${encodeURIComponent(q)}&gsrnamespace=6&gsrlimit=8` +
+      `&gsrsearch=${encodeURIComponent(q)}&gsrnamespace=6&gsrlimit=10` +
       '&prop=imageinfo&iiprop=url|extmetadata|mime&iiurlwidth=1200&format=json&origin=*';
-    const res = await fetch(searchUrl, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(searchUrl, { signal: AbortSignal.timeout(12000) });
     if (!res.ok) return null;
     const data = (await res.json()) as {
       query?: {
@@ -70,8 +77,7 @@ async function fetchImageAsDataUrl(url: string): Promise<string | null> {
     const contentType = res.headers.get('content-type') || '';
     if (!contentType.startsWith('image/')) return null;
     const buf = await res.arrayBuffer();
-    if (buf.byteLength < 8_000) return null;
-    // Browser FileReader yoki Node Buffer
+    if (buf.byteLength < 3_000) return null;
     if (typeof Buffer !== 'undefined') {
       return `data:${contentType};base64,${Buffer.from(buf).toString('base64')}`;
     }
@@ -88,17 +94,39 @@ async function fetchImageAsDataUrl(url: string): Promise<string | null> {
 }
 
 function queriesForSlide(slide: ContentSlide, subjectArea: string): string[] {
-  const primary = (slide.image_query || slide.title || '').trim();
+  const primary = (slide.image_query || '').trim();
+  const title = (slide.title || '').trim();
   const subject = subjectArea.replace(/\s+/g, ' ').trim().slice(0, 40);
   return [
     primary,
-    `${primary} medical diagram`,
-    `${subject} ${primary}`.trim(),
-    `${subject} clinical medicine`,
+    `${primary} diagram`,
+    `${primary} anatomy`,
+    `${title} medical illustration`,
+    `${subject} skin anatomy histology`,
+    `${subject} dermatology clinical`,
+    'human skin layers epidermis dermis diagram',
+    'medical anatomy textbook illustration',
   ].filter((q, i, arr) => q && arr.indexOf(q) === i);
 }
 
-/** Har slayd uchun image_query → Wikimedia; topilmasa imageUrl bo'sh qoladi (Design Layer placeholder chizadi). */
+/**
+ * Rasm topilmasa: image_focus → content_bullets (to‘liq matn layout).
+ * Ma'nosiz geometrik "art" chizilmaydi.
+ */
+export function demoteSlidesWithoutImages(content: PresentationContent): PresentationContent {
+  return {
+    ...content,
+    slides: content.slides.map((slide) => {
+      if (slide.imageUrl) return slide;
+      if (slide.slide_type === 'image_focus') {
+        return { ...slide, slide_type: 'content_bullets' as const };
+      }
+      return slide;
+    }),
+  };
+}
+
+/** Har kerakli slayd uchun image_query → Wikimedia. */
 export async function resolvePresentationImages(
   content: PresentationContent,
 ): Promise<PresentationContent> {
@@ -108,25 +136,7 @@ export async function resolvePresentationImages(
       slides.push(slide);
       continue;
     }
-    const needsImage = ![
-      'title',
-      'agenda',
-      'statistics',
-      'comparison_table',
-      'process_flow',
-      'quote',
-      'summary',
-      'references',
-    ].includes(slide.slide_type);
-    // Title/image_focus ham urinadi
-    const tryFetch =
-      needsImage ||
-      slide.slide_type === 'image_focus' ||
-      slide.slide_type === 'content_bullets' ||
-      slide.slide_type === 'two_column' ||
-      slide.slide_type === 'case_study' ||
-      Boolean(slide.image_query);
-
+    const tryFetch = IMAGE_TYPES.includes(slide.slide_type) || Boolean(slide.image_query);
     if (!tryFetch) {
       slides.push(slide);
       continue;
@@ -142,10 +152,10 @@ export async function resolvePresentationImages(
         attached = { ...slide, imageUrl: dataUrl, imageCredit: found.credit };
         break;
       } catch {
-        /* next query */
+        /* next */
       }
     }
     slides.push(attached);
   }
-  return { ...content, slides };
+  return demoteSlidesWithoutImages({ ...content, slides });
 }

@@ -55,7 +55,9 @@ export type LegacyPresentationDeck = {
 };
 
 export const MAX_BULLETS = 5;
-export const MAX_WORDS_PER_BULLET = 12;
+/** Qisqa atama emas — har bullet tushuntirish bilan (15–36 so‘z). */
+export const MIN_WORDS_PER_BULLET = 15;
+export const MAX_WORDS_PER_BULLET = 36;
 export const MIN_SLIDES = 8;
 export const MAX_SLIDES = 12;
 
@@ -78,9 +80,22 @@ function normalizeBullets(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((b) => clipWords(String(b || '').trim(), MAX_WORDS_PER_BULLET))
-    .filter(Boolean)
+    .filter((b) => b.length >= 3)
     .slice(0, MAX_BULLETS);
 }
+
+function defaultImageQuery(title: string, subject: string): string {
+  const t = title.replace(/\s+/g, ' ').trim().slice(0, 60);
+  const s = subject.replace(/\s+/g, ' ').trim().slice(0, 40);
+  return `${s} ${t} medical anatomy diagram`.replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+const IMAGE_SLIDE_TYPES: SlideType[] = [
+  'content_bullets',
+  'image_focus',
+  'two_column',
+  'case_study',
+];
 
 function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
   const b = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
@@ -138,7 +153,7 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
       return {
         step_number: Number(s.step_number) || i + 1,
         label: clipWords(String(s.label || ''), 6),
-        description: clipWords(String(s.description || ''), 12),
+        description: clipWords(String(s.description || ''), 24),
       };
     });
   }
@@ -189,10 +204,10 @@ function fallbackSlides(title: string, subject: string): ContentSlide[] {
       title: 'Asosiy tushunchalar',
       body: {
         bullets: [
-          'Markaziy taʼriflar aniq beriladi',
-          'Tasnif klinik ahamiyatli',
-          'Normal va patologiya farqi',
-          'Amaliy eslatma uchun mezon',
+          'Markaziy taʼriflar: asosiy atamalar klinik kontekstda ochiladi va talaba uchun amaliy mezon beriladi.',
+          'Tasniflash: asosiy turlari farqlovchi belgilari bilan ajratiladi va davolash yoʻnalishiga bogʻlanadi.',
+          'Normal va patologik holat farqi: qaysi belgilar ogohlantiruvchi ekanligi aniq koʻrsatiladi.',
+          'Amaliy xulosa: shikoyatdan birinchi diagnostik qadamgacha qisqa klinik zanjir beriladi.',
         ],
       },
       image_query: 'medical anatomy diagram',
@@ -236,23 +251,23 @@ function fallbackSlides(title: string, subject: string): ContentSlide[] {
       title: 'Klinik holat',
       body: {
         bullets: [
-          'Yosh bemor asosiy shikoyat bilan',
-          'Muhim anamnez elementi ajratiladi',
-          'Birinchi differensial gipoteza',
-          'Keyingi diagnostik qadam',
+          'Yosh bemor asosiy shikoyat bilan keladi va muhim anamnez elementi klinik yoʻnalishni belgilaydi.',
+          'Birinchi differensial gipoteza shikoyat va obyektiv topilmalar asosida shakllanadi.',
+          'Keyingi diagnostik qadam: eng xavfsiz va informativ tekshiruvdan boshlanadi.',
+          'Qaror: tashxis ehtimoli va bemor xavfsizligi boʻyicha birinchi chora tanlanadi.',
         ],
       },
-      image_query: 'clinical case medical consultation',
+      image_query: 'clinical dermatology patient examination',
     },
     {
       slide_type: 'summary',
       title: 'Xulosa',
       body: {
         bullets: [
-          'Taʼrif va tasnif esda qolsin',
-          'Erkta belgilarni tanib oling',
-          'Diagnostika ketma-ketligiga rioya',
-          'Davolash individual tanlanadi',
+          'Taʼrif: asosiy tushunchalar aniq mezonlar bilan esda qolishi kerak.',
+          'Erkta belgilar: ogohlantiruvchi simptomlarni oʻz vaqtida tanib olish muhim.',
+          'Diagnostika: ketma-ketlik arzon va xavfsiz usullardan murakkabgacha boradi.',
+          'Davolash: individual yondashuv monitoring va profilaktika bilan birga olib boriladi.',
         ],
       },
     },
@@ -402,12 +417,17 @@ export function normalizePresentationContent(
     ) {
       body.bullets = [clipWords(title, MAX_WORDS_PER_BULLET)];
     }
+    const image_query = s?.image_query
+      ? String(s.image_query).trim().slice(0, 120)
+      : IMAGE_SLIDE_TYPES.includes(slide_type)
+        ? defaultImageQuery(title, subject_area)
+        : undefined;
     mapped.push({
       slide_type,
       title,
       subtitle: s?.subtitle ? String(s.subtitle).trim().slice(0, 120) : undefined,
       body,
-      image_query: s?.image_query ? String(s.image_query).trim().slice(0, 120) : undefined,
+      image_query,
       speaker_notes: s?.speaker_notes ? String(s.speaker_notes).trim().slice(0, 800) : undefined,
       imageUrl: typeof s?.imageUrl === 'string' ? s.imageUrl : undefined,
       imageCredit: typeof s?.imageCredit === 'string' ? s.imageCredit : undefined,

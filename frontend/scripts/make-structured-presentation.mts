@@ -92,13 +92,21 @@ async function main() {
   const system =
     'Siz FJSTI tibbiyot professori va klinik ta\'lim metodistisiz. ' +
     'Sen FAQAT kontent qaytarasan — dizayn, rang, font haqida hech narsa yozma. ' +
-    'Har bir slaydda MAKSIMUM 5 ta bullet, har bir bullet MAKSIMUM 12 so\'z. ' +
+    'Har slaydda MAX 5 bullet. HAR bullet MINIMUM 15, MAXIMUM 36 so\'z — ' +
+    'atama + tushuntirish (nima/qanday/nega muhim). Qisqa 2–4 so\'zlik tezis TAQIQLANGAN. ' +
     '8–10 slayd; slide_type: title, agenda, content_bullets, statistics, process_flow, ' +
-    'comparison_table, case_study, image_focus, summary — aralashtir, ketma-ket bir xil bo\'lmasin. ' +
-    'Til: o\'zbek. Akademik tibbiy ohang.';
+    'comparison_table, case_study, image_focus, summary — aralashtir. ' +
+    'content_bullets/image_focus/case_study uchun image_query MAJBURIY ' +
+    '(inglizcha: "human skin layers epidermis dermis diagram" kabi). ' +
+    'summary: "Sarlavha: tushuntirish" formatida. Til: o\'zbek.';
 
   const user =
     `Fan: ${subject}. Mavzu ${topicId}: ${topicTitle}. ` +
+    'MAJBURIY slide_type ketma-ketligi (9 slayd): title, agenda, content_bullets, statistics, ' +
+    'process_flow, comparison_table, case_study, image_focus, summary. ' +
+    'Har content/case/image bulletida kamida 18 so\'z. ' +
+    'image_query: "human skin layers epidermis dermis diagram", "dermatology clinical rash", ' +
+    '"skin histology microscope" kabi aniq tibbiy EN so\'rovlar. ' +
     'JSON: presentation_title, subject_area, author, slides[] with slide_type, title, subtitle, ' +
     'body{bullets,key_stat,stats,columns,comparison_rows,process_steps,quote_text,quote_author}, ' +
     'image_query, speaker_notes. Ishlatilmagan body maydonlari bo\'sh array/string.';

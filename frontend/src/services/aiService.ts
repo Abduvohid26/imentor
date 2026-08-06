@@ -377,16 +377,6 @@ function syllabusExtractionErrorMessage(err: unknown, fileName: string, lang: Ap
 
 export { syllabusExtractionErrorMessage };
 
-function isWeakCaseSession(data: CaseStudySession | null | undefined): boolean {
-  if (!data || !Array.isArray(data.questions) || data.questions.length < 3) return true;
-  const lengths = data.questions.map((q) => ({
-    s: (q.scenario || '').trim().length,
-    a: (q.answer || '').trim().length,
-  }));
-  const tooShortCount = lengths.filter((x) => x.s < 100 || x.a < 80).length;
-  return tooShortCount >= 2;
-}
-
 const CASE_FOCUS_HINTS: Record<CaseStudyFocus, string> = {
   profilaktika: 'profilaktika, skrining, xavf omillarini boshqarish, kasallikni oldini olish',
   davolash: 'davolash strategiyasi, dori tanlash, kuzatuv, asoratlarni kamaytirish',
@@ -818,11 +808,14 @@ async function requestPresentationDeckFromAi(params: {
   const system =
     `${SYS_MEDICAL} Sen FAQAT kontent qaytarasan — dizayn, rang, font haqida hech narsa yozma. ` +
     'Akademik ohang: aniq, ilmiy, tibbiy ta\'lim (FJSTI) standartiga mos. ' +
-    'Har bir slaydda MAKSIMUM 5 ta bullet, har bir bullet MAKSIMUM 12 so\'z — paragraf-devor matn TAQIQLANGAN. ' +
-    '8–12 slayd; slide_type larini aralashtir: title, agenda, content_bullets (2–3), statistics, ' +
-    'comparison_table yoki process_flow, case_study yoki image_focus, summary. ' +
-    'Bir xil slide_type ketma-ket kelmasin. ' +
-    'Har slaydda image_query (inglizcha tibbiy kalit so\'z) va speaker_notes bo\'lsin. ' +
+    'Har slaydda MAX 5 bullet. HAR bullet MINIMUM 15, MAXIMUM 36 so\'z: ' +
+    'faqat atama emas — nima ekanligi, qanday ishlashi yoki klinik ahamiyati tushuntirilsin. ' +
+    'Qisqa 2–4 so\'zli tezislar TAQIQLANGAN. ' +
+    '8–12 slayd; slide_type: title, agenda, content_bullets (2–3), statistics, ' +
+    'comparison_table yoki process_flow, case_study, image_focus, summary — aralashtir, ketma-ket bir xil bo\'lmasin. ' +
+    'content_bullets / image_focus / case_study / two_column uchun image_query MAJBURIY ' +
+    '(inglizcha tibbiy anatomiya/diagramma kalit so\'zi, masalan "human skin layers epidermis dermis diagram"). ' +
+    'summary bulletlari "Sarlavha: tushuntirish" formatida bo\'lsin. ' +
     `Til: ${outLang}. ` +
     (bookContext
       ? 'Darslik parchalariga tayan; o\'ylab topilgan manba yozma.'
@@ -831,9 +824,9 @@ async function requestPresentationDeckFromAi(params: {
   const user =
     `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
     `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}\n` +
-    'JSON maydonlari: presentation_title, subject_area, author, slides[]. ' +
+    'JSON: presentation_title, subject_area, author, slides[]. ' +
     'slides[].slide_type, title, subtitle, body{bullets,key_stat,stats,columns,comparison_rows,process_steps,quote_text,quote_author}, ' +
-    'image_query, speaker_notes. Ishlatilmagan body maydonlari bo\'sh string/array bo\'lsin.';
+    'image_query, speaker_notes. Ishlatilmagan body maydonlari bo\'sh string/array.';
 
   params.onProgress?.('Kontent generatsiya…');
 
@@ -906,47 +899,44 @@ export const aiService = {
   ): Promise<CaseStudySession> {
     try {
       assertOpenAiApiKey();
-      const outLang = languageName(language);
       const avoid = await previousCaseAvoidBlock(topic);
       const keywordFocus = buildCaseKeywordsFocusPrompt(keywords);
-      const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
       // RAG: kitob chunk'lari + PubMed/Semantic Scholar'dan REAL manbalar — bir marta
       // olinadi va 3 ta fokus (profilaktika/davolash/tashxis) uchun baravar ishlatiladi.
       const { sources: caseSources, contextText: caseContextText } = await fetchCaseContext(topic, subjectCode);
 
-      const requestBatch = async (strict: boolean): Promise<CaseStudySession> => {
-        const structure = buildCaseStructurePrompt(topic);
-        return openaiJson({
-          model: OPENAI_CHAT,
-          system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: {topic, references:[], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[]}]}. Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Manba konteksti berilgan bo'lsa, "answer" matni ichida "(Manba: kitob nomi, sahifa-bet)" deb ko'rsating — JSON'dan tashqariga chiqarmang. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
-          user: `${structure}${keywordFocus}${avoid}\n\nHar scenario 2-4 paragraf. Har answer fokusga mos. ${strict ? 'Maksimal sifat, faqat valid JSON.' : ''}`,
-          maxTokens: 8192,
-          temperature: strict ? 0.45 : 0.6,
-          parse: (t) => parseJSONSafe<CaseStudySession>(t),
-          bookContext,
-        });
-      };
-
-      let questions: CaseStudyQuestion[];
-      try {
-        questions = await Promise.all(
-          CASE_STUDY_FOCUS_ORDER.map((focus) =>
-            generateSingleCaseQuestion(topic, focus, language, keywordFocus, avoid, caseContextText, caseSources),
-          ),
-        );
-      } catch (parallelError) {
-        console.warn('Parallel case generation failed, trying batch:', parallelError);
-        let data: CaseStudySession;
-        try {
-          data = await requestBatch(false);
-        } catch {
-          data = await requestBatch(true);
-        }
-        if (isWeakCaseSession(data)) {
-          data = await requestBatch(true);
-        }
-        questions = data.questions || [];
-      }
+      // Har bir fokus MUSTAQIL urinadi — bittasi vaqtinchalik xato bersa ham
+      // (tarmoq/JSON parse), qolgan ikkitasi qisqa/manbasiz eski rejimga
+      // qaytarilmaydi (avval shunday edi: Promise.all bittasi rad etsa,
+      // HAMMASI eski, manbasiz, qisqa promptga tushib qolardi — aynan shu
+      // sabab foydalanuvchi qisqa/manbasiz javob ko'rgan edi). Endi shu
+      // fokus alohida, o'sha boy/manbali prompt bilan yana bir marta uriniladi.
+      const questions: CaseStudyQuestion[] = await Promise.all(
+        CASE_STUDY_FOCUS_ORDER.map(async (focus) => {
+          try {
+            return await generateSingleCaseQuestion(
+              topic,
+              focus,
+              language,
+              keywordFocus,
+              avoid,
+              caseContextText,
+              caseSources,
+            );
+          } catch (err) {
+            console.warn(`Case focus "${focus}" birinchi urinishda muvaffaqiyatsiz, qayta urinilmoqda:`, err);
+            return generateSingleCaseQuestion(
+              topic,
+              focus,
+              language,
+              keywordFocus,
+              avoid,
+              caseContextText,
+              caseSources,
+            );
+          }
+        }),
+      );
 
       const data: CaseStudySession = {
         topic,
