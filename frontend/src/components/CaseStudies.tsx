@@ -43,7 +43,6 @@ import {
   caseFocusLabel,
 } from '../utils/caseFocusLabels';
 import type { CaseStudyFocus } from '../utils/generationVariety';
-import MedicalReferencesList from './staff/MedicalReferencesList';
 
 const CASE_FOCUS_ICONS: Record<CaseStudyFocus, typeof ShieldCheck> = {
   profilaktika: ShieldCheck,
@@ -276,10 +275,6 @@ export default function CaseStudies() {
             </div>
           )}
 
-          {caseSession.references && caseSession.references.length > 0 && (
-            <MedicalReferencesList references={caseSession.references} />
-          )}
-
           <div className="flex items-center gap-2 print:hidden">
             <p className="text-[11px] font-bold uppercase tracking-wide text-[#083047]/50">
               {t('case.viewLabel')}
@@ -336,28 +331,22 @@ export default function CaseStudies() {
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
-                        className="mt-4 rounded-2xl p-5 bg-black/[0.025] border border-black/6 space-y-3"
+                        className="mt-4 rounded-2xl p-5 bg-black/[0.025] border border-black/6"
                       >
                         <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-2 ${STAFF_HEADING}`}>
                           {t('case.answerLabel')}
                         </h4>
                         <p className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap">{q.answer}</p>
-                        {q.references && q.references.length > 0 && (
-                          <MedicalReferencesList references={q.references} compact />
-                        )}
                       </motion.div>
                     )}
                   </div>
 
                   {/* Print: har doim javobni ko'rsatish */}
-                  <div className="hidden print:block px-7 pb-7 pl-[84px] space-y-3">
+                  <div className="hidden print:block px-7 pb-7 pl-[84px]">
                     <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-2 ${STAFF_HEADING}`}>
                       {t('case.answerLabel')}
                     </h4>
                     <p className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap">{q.answer}</p>
-                    {q.references && q.references.length > 0 && (
-                      <MedicalReferencesList references={q.references} compact />
-                    )}
                   </div>
                 </StaffPanel>
               );

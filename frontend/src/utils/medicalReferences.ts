@@ -118,10 +118,8 @@ export function mergeReferences(...groups: MedicalReference[][]): MedicalReferen
   const seen = new Set<string>();
   for (const group of groups) {
     for (const ref of group) {
-      if (!ref?.title && !ref?.url) continue;
-      const key = `${(ref.url || '').toLowerCase()}|${(ref.title || '').toLowerCase()}|${ref.pages || ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (!ref?.url || seen.has(ref.url)) continue;
+      seen.add(ref.url);
       out.push(ref);
     }
   }

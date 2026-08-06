@@ -41,18 +41,15 @@ import {
 } from '../utils/generationVariety';
 import { listPreparedForTopicSynced, loadPreparedByIdSynced } from '../utils/preparedContentStore';
 import { normalizeCaseFocus } from '../utils/caseFocusLabels';
-import {
-  MEDICAL_REFERENCES_AI_RULES,
-  mergeReferences,
-  normalizeMedicalReferences,
-  type MedicalReference,
-} from '../utils/medicalReferences';
+import { type MedicalReference } from '../utils/medicalReferences';
 import { stripUnfilledSourceTemplate } from '../utils/sourceTemplate';
 import { httpJson } from '../api/httpClient';
 import { ensureBackendAccessToken, getBackendAccessToken } from '../utils/backendAuth';
 
-// Test/ma'ruza: tashqi DOI/PubMed odatda AI tomonidan o'ylab topiladi — JSON references bo'sh;
-// kitob RAG alohida biriktiriladi. Keys: tashqi manbalar ruxsat (quyida CASE_EXTERNAL_REFS).
+// Hech qachon tashqi (DOI/PubMed/veb) havola yoki "Foydalanilgan adabiyotlar" ro'yxati so'ralmaydi —
+// bular ko'pincha AI tomonidan o'ylab topiladi (haqiqiy maqolaga bog'lanmasligi mumkin). Kitob
+// konteksti bo'lsa — manba matn ichida (Manba: kitob, sahifa-bet) ko'rinishida ko'rsatiladi;
+// bo'lmasa — hech qanday manba/havola ko'rsatilmaydi, faqat mazmun.
 const NO_EXTERNAL_REFS_JSON_RULE_BOOK =
   'MAJBURIY: bu fan uchun rasmiy darslik (kitob) manba sifatida berilgan. Tashqi adabiyot/DOI/PubMed ' +
   'havolalari QO\'SHMANG — "references" maydonini bo\'sh massiv [] qoldiring (manbani tizim ' +
@@ -76,15 +73,6 @@ const NO_EXTERNAL_REFS_TEXT_RULE_NOBOOK =
   'MAJBURIY: oxirida "## Foydalanilgan adabiyotlar" / "## Manbalar" bo\'limini YOZMANG, tashqi ' +
   '(DOI/PubMed/veb) havolalar yoki o\'ylab topilgan manbalar qo\'shmang — hech qanday link/manba ' +
   'ko\'rsatmasdan, faqat mazmunning o\'ziga tayanib yozing.';
-
-/** Keys create: tashqi ilmiy manbalar (PubMed/DOI/WHO/…) — UI da ko'rsatiladi. */
-const CASE_EXTERNAL_REFS_JSON_RULE =
-  `${MEDICAL_REFERENCES_AI_RULES} ` +
-  'Keys uchun "references" maydoniga kamida 2 ta ishonchli tashqi manba yozing ' +
-  '(PubMed, DOI, WHO, CDC, NICE, Cochrane, guideline). ' +
-  'Har birida title + url (https://...). O\'ylab topilgan PMID/DOI yozmang — ' +
-  'mavzuga mos haqiqiy qidiruv yoki ma\'lum guideline havolasi bo\'lsin. ' +
-  'Matn ichida "(Manba: ...)" majburiy emas — manbalar JSON references orqali keladi.';
 
 /** Xavfsizlik to'ri: AI ba'zan ko'rsatma ichidagi TO'LDIRILMAGAN namuna
  * matnini ("kitob nomi, sahifa-bet") o'zgarishsiz qaytarib yuboradi — bu
@@ -576,27 +564,27 @@ async function generateSingleCaseQuestion(
   const outLang = languageName(language);
   const structure = buildCaseStructurePrompt(topic);
   const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
-  let bookRefs: MedicalReference[] = [];
+  const hasBookContext = Boolean(bookContext);
   const request = (strict: boolean) =>
     openaiJson<{ scenario?: string; answer?: string; references?: MedicalReference[]; focus?: string }>({
       model: OPENAI_CHAT,
       system:
         `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} Return ONLY valid JSON object: ` +
-        `{"scenario":"...","answer":"...","references":[{"title":"...","url":"https://...","year":"..."}]}. ` +
-        `Language: ${outLang}. focus="${focus}". ${CASE_EXTERNAL_REFS_JSON_RULE}`,
+        `{"scenario":"...","answer":"...","references":[]}. ` +
+        `If book excerpts (manba context) were given, cite them inside "answer" text as "(Manba: kitob nomi, sahifa-bet)" — never outside the JSON. ` +
+        `Language: ${outLang}. focus="${focus}". ${jsonReferencesRule(hasBookContext)}`,
       user:
         `${structure}${keywordFocus}${avoid}\n\n` +
         `Generate ONE clinical case with focus="${focus}" (${CASE_FOCUS_HINTS[focus]}). ` +
         'Scenario: 2–4 paragraphs with patient details. Answer: 2–4 paragraphs, focus-specific clinical reasoning. ' +
-        'Include at least 2 trusted external references in "references". ' +
+        (hasBookContext
+          ? 'Leave "references" as an empty array — cite the book inline in "answer" instead. '
+          : 'Leave "references" as an empty array — do not fabricate or cite any sources. ') +
         (strict ? 'Strict valid JSON only.' : ''),
       maxTokens: 3072,
       temperature: strict ? 0.4 : 0.58,
       parse: (t) => parseJSONSafe(t),
       bookContext,
-      onBookReferences: (refs) => {
-        bookRefs = refs;
-      },
     });
 
   let raw: { scenario?: string; answer?: string; references?: MedicalReference[]; focus?: string };
@@ -606,21 +594,14 @@ async function generateSingleCaseQuestion(
     raw = await request(true);
   }
 
-  const external = normalizeMedicalReferences(raw.references, `${topic} ${focus}`);
-  const refs = mergeReferences(bookRefs, external);
   return {
     scenario: (raw.scenario || '').trim(),
     answer: (raw.answer || '').trim(),
     focus: normalizeCaseFocus(raw.focus, CASE_STUDY_FOCUS_ORDER.indexOf(focus)),
-    ...(refs.length ? { references: refs } : {}),
   };
 }
 
-function normalizeCaseSession(
-  topic: string,
-  data: CaseStudySession,
-  sessionBookRefs: MedicalReference[] = [],
-): CaseStudySession {
+function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudySession {
   const rawQuestions = [...(data.questions || [])].slice(0, 3);
   while (rawQuestions.length < 3) {
     const focus = CASE_STUDY_FOCUS_ORDER[rawQuestions.length];
@@ -643,26 +624,16 @@ function normalizeCaseSession(
         "(5) bemor xavfsizligi hamda keyingi kuzatuv rejasi.",
       ].join(' ');
       const focus = normalizeCaseFocus((q as CaseStudyQuestion).focus, i);
-      const existingRefs = normalizeMedicalReferences(q.references, `${topic} ${focus}`);
-      const refs = mergeReferences(existingRefs, sessionBookRefs);
       return {
         scenario: scenario.length >= 120 ? scenario : fallbackScenario,
         answer: answer.length >= 120 ? answer : fallbackAnswer,
         focus,
-        ...(refs.length ? { references: refs } : {}),
       };
     });
-
-  const sessionRefs = mergeReferences(
-    sessionBookRefs,
-    normalizeMedicalReferences(data.references, topic),
-    ...cleanedQuestions.map((q) => q.references || []),
-  );
-
   return {
     topic: (data.topic || topic || '').trim() || topic,
     questions: cleanedQuestions,
-    ...(sessionRefs.length ? { references: sessionRefs } : {}),
+    references: [],
   };
 }
 
@@ -728,50 +699,6 @@ function normalizeTestSession(
     questions,
     references: sessionRefs,
   };
-}
-
-async function attachCaseBookReferences(
-  session: CaseStudySession,
-  subjectCode?: string,
-): Promise<CaseStudySession> {
-  const code = (subjectCode || '').trim();
-  const questions = session.questions || [];
-  if (!code || !questions.length) return session;
-  try {
-    await ensureBackendAccessToken();
-    const token = getBackendAccessToken();
-    if (!token) return session;
-    const data = await httpJson<{ results?: MedicalReference[][] }>(
-      `${(import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL?.trim() || '/api'}/v1/education-ai/book-references/`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          subject_code: code,
-          queries: questions.map((q) => `${q.scenario || ''} ${q.answer || ''}`.slice(0, 800)),
-          top_k: 3,
-        }),
-      },
-    );
-    const results = Array.isArray(data.results) ? data.results : [];
-    if (!results.length) return session;
-    const nextQuestions = questions.map((q, i) => {
-      const bookRefs = Array.isArray(results[i]) ? results[i] : [];
-      const refs = mergeReferences(q.references || [], bookRefs);
-      return refs.length ? { ...q, references: refs } : q;
-    });
-    return normalizeCaseSession(session.topic || '', {
-      ...session,
-      questions: nextQuestions,
-      references: mergeReferences(session.references || [], ...nextQuestions.map((q) => q.references || [])),
-    });
-  } catch (err) {
-    console.warn('Case book references failed, keeping external refs', err);
-    return session;
-  }
 }
 
 async function attachPerQuestionBookReferences(
@@ -1264,23 +1191,15 @@ export const aiService = {
 
       const requestBatch = async (strict: boolean): Promise<CaseStudySession> => {
         const structure = buildCaseStructurePrompt(topic);
-        let bookRefs: MedicalReference[] = [];
-        const parsed = await openaiJson({
+        return openaiJson({
           model: OPENAI_CHAT,
-          system:
-            `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: ` +
-            `{topic, references:[{title,url,year}], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[{title,url}]}]}. ` +
-            `Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Til: ${outLang}. ${CASE_EXTERNAL_REFS_JSON_RULE}`,
-          user: `${structure}${keywordFocus}${avoid}\n\nHar scenario 2-4 paragraf. Har answer fokusga mos. Har keys uchun kamida 2 tashqi manba. ${strict ? 'Maksimal sifat, faqat valid JSON.' : ''}`,
+          system: `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} 3 ta klinik case JSON: {topic, references:[], questions:[{focus:"profilaktika"|"davolash"|"tashxis", scenario, answer, references:[]}]}. Aynan 3 ta: 1-profilaktika, 2-davolash, 3-tashxis. Manba konteksti berilgan bo'lsa, "answer" matni ichida "(Manba: kitob nomi, sahifa-bet)" deb ko'rsating — JSON'dan tashqariga chiqarmang. Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
+          user: `${structure}${keywordFocus}${avoid}\n\nHar scenario 2-4 paragraf. Har answer fokusga mos. ${strict ? 'Maksimal sifat, faqat valid JSON.' : ''}`,
           maxTokens: 8192,
           temperature: strict ? 0.45 : 0.6,
           parse: (t) => parseJSONSafe<CaseStudySession>(t),
           bookContext,
-          onBookReferences: (refs) => {
-            bookRefs = refs;
-          },
         });
-        return normalizeCaseSession(topic, parsed, bookRefs);
       };
 
       let questions: CaseStudyQuestion[];
@@ -1307,10 +1226,9 @@ export const aiService = {
       const data: CaseStudySession = {
         topic,
         questions,
-        references: mergeReferences(...questions.map((q) => q.references || [])),
+        references: [],
       };
-      let normalized = normalizeCaseSession(topic, data);
-      normalized = await attachCaseBookReferences(normalized, subjectCode);
+      const normalized = normalizeCaseSession(topic, data);
       return keywords.length ? { ...normalized, keywords } : normalized;
     } catch (error) {
       console.error("Case study generation failed:", error);
