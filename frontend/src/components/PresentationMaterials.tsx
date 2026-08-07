@@ -407,6 +407,9 @@ export default function PresentationMaterials() {
     setError(null);
     setAiProgress('');
     try {
+      // Enhance FAQAT o'qituvchi yuklagan PDF manba bo'lsa.
+      // Avvalgi AI PPTX borligi enhance qilmasin — aks holda eski bullet-uslub
+      // qayta ishlanib "yangi" taqdimot ham eski ko'rinishda chiqardi.
       let sourceText = '';
       const pdfItem = items.find((i) => i.kind === 'pdf');
       if (pdfItem) {
@@ -418,6 +421,7 @@ export default function PresentationMaterials() {
           /* PDF matn ixtiyoriy */
         }
       }
+      const useEnhance = Boolean(pdfItem && sourceText.trim());
       const deck = await aiService.generatePresentationDeck({
         topicTitle: globalTopic.title,
         topicId: globalTopic.id,
@@ -426,9 +430,9 @@ export default function PresentationMaterials() {
         variantLabel: globalTopic.variantLabel,
         // Foydalanuvchi UI'da tanlagan til ustuvor (lekin bilan bir xil qoida).
         language,
-        mode: items.length > 0 ? 'enhance' : 'generate',
-        sourceFileName: items[0]?.file_name,
-        sourceText,
+        mode: useEnhance ? 'enhance' : 'generate',
+        sourceFileName: useEnhance ? pdfItem?.file_name : undefined,
+        sourceText: useEnhance ? sourceText : undefined,
         subjectCode: globalTopic.subjectCode,
         onProgress: (textSoFar) => setAiProgress(textSoFar),
       });
