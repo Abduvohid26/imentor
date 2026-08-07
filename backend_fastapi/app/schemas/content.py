@@ -29,3 +29,7 @@ class AssignCourseSelectionRequest(BaseModel):
     phone_digits: str
     syllabus_id: int
     variant_labels: list[str] = []
+
+
+class SetMyTeachingSubjectsRequest(BaseModel):
+    syllabus_ids: list[int]

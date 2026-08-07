@@ -4,7 +4,7 @@ import datetime as dt
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
@@ -14,6 +14,7 @@ from app.models.user import User
 from app.schemas.content import (
     AdminStaffCourseSelectionOut,
     AssignCourseSelectionRequest,
+    SetMyTeachingSubjectsRequest,
     StaffCourseSelectionOut,
 )
 from app.schemas.course_syllabus import CourseSyllabusFullOut, CourseSyllabusUpsertRequest
@@ -114,21 +115,56 @@ def syllabus_catalog(
     return paginate(out, request, default_page_size=200, max_page_size=1000)
 
 
+def _topic_count(obj: CourseSyllabus) -> int:
+    topic_count = sum(len((v or {}).get("topics") or []) for v in (obj.variants or []))
+    if not topic_count and obj.topics:
+        topic_count = len(obj.topics)
+    return topic_count
+
+
+def _staff_profile(db: Session, owner_key: str):
+    from app.models.staff_location import StaffProfile
+
+    return db.execute(
+        select(StaffProfile).where(StaffProfile.owner_key == owner_key)
+    ).scalar_one_or_none()
+
+
+@router.get("/course-syllabuses/department/")
+def department_course_syllabuses(
+    request: Request,
+    db: Session = Depends(get_db),
+    auth=Depends(require_roles("hodim")),
+) -> dict:
+    """Xodim kafedrasidagi faol fanlar (birinchi kirish / profile tanlash uchun)."""
+    profile = _staff_profile(db, auth.user.username)
+    if profile is None or not profile.department_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Kafedra biriktirilmagan. Administrator bilan bog'laning.",
+        )
+
+    rows = (
+        db.execute(
+            select(CourseSyllabus)
+            .where(
+                CourseSyllabus.is_active.is_(True),
+                CourseSyllabus.department_id == profile.department_id,
+            )
+            .order_by(CourseSyllabus.sort_order, CourseSyllabus.subject_name)
+        )
+        .scalars()
+        .all()
+    )
+    out = [_full_out(obj).model_dump() for obj in rows if _topic_count(obj) > 0]
+    return paginate(out, request, default_page_size=200, max_page_size=1000)
+
+
 @router.get("/course-syllabuses/my/", response_model=list[StaffCourseSelectionOut])
 def my_course_selections(
     db: Session = Depends(get_db),
     auth=Depends(require_roles("hodim")),
 ) -> list[StaffCourseSelectionOut]:
-    from app.models.staff_location import StaffProfile
-    from app.services import staff_department as staff_dept
-
-    profile = db.execute(
-        select(StaffProfile).where(StaffProfile.owner_key == auth.user.username)
-    ).scalar_one_or_none()
-    if profile is not None and profile.department_id:
-        staff_dept.ensure_department_course_selections(db, auth.user.username, profile.department_id)
-        db.commit()
-
     rows = (
         db.execute(
             select(StaffCourseSelection)
@@ -145,16 +181,87 @@ def my_course_selections(
     return [_selection_out(r) for r in rows]
 
 
+@router.put("/course-syllabuses/my/", response_model=list[StaffCourseSelectionOut])
+def set_my_teaching_subjects(
+    payload: SetMyTeachingSubjectsRequest,
+    db: Session = Depends(get_db),
+    auth=Depends(require_roles("hodim")),
+) -> list[StaffCourseSelectionOut]:
+    """Kafedra fanlaridan o'qitadigan fanlar to'plamini almashtiradi (kamida 1 ta)."""
+    ids = sorted({int(x) for x in payload.syllabus_ids})
+    if not ids:
+        raise HTTPException(status_code=400, detail="Kamida bitta fan tanlang.")
+
+    profile = _staff_profile(db, auth.user.username)
+    if profile is None or not profile.department_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Kafedra biriktirilmagan. Administrator bilan bog'laning.",
+        )
+
+    fans = (
+        db.execute(
+            select(CourseSyllabus).where(
+                CourseSyllabus.id.in_(ids),
+                CourseSyllabus.is_active.is_(True),
+                CourseSyllabus.department_id == profile.department_id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found = {f.id for f in fans}
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="Faqat o'z kafedrangizdagi faol fanlarni tanlash mumkin.",
+        )
+
+    owner = auth.user.username
+    db.execute(delete(StaffCourseSelection).where(StaffCourseSelection.owner_key == owner))
+    now = dt.datetime.now(dt.timezone.utc)
+    for sid in ids:
+        db.add(
+            StaffCourseSelection(
+                owner_key=owner,
+                syllabus_id=sid,
+                variant_label="",
+                selected_at=now,
+            )
+        )
+    db.commit()
+
+    rows = (
+        db.execute(
+            select(StaffCourseSelection)
+            .join(CourseSyllabus)
+            .where(
+                StaffCourseSelection.owner_key == owner,
+                CourseSyllabus.is_active.is_(True),
+            )
+            .order_by(StaffCourseSelection.selected_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return [_selection_out(r) for r in rows]
+
+
 @router.post("/course-syllabuses/my/")
 def my_course_selections_create_forbidden(auth=Depends(require_roles("hodim"))) -> None:
     raise HTTPException(
-        status_code=403, detail="Fanni faqat administrator biriktiradi. Administrator bilan bog'laning."
+        status_code=405,
+        detail="Fanni saqlash uchun PUT /course-syllabuses/my/ ishlating.",
     )
 
 
 @router.delete("/course-syllabuses/my/{syllabus_id}/")
 def my_course_selection_delete_forbidden(syllabus_id: int, auth=Depends(require_roles("hodim"))) -> None:
-    raise HTTPException(status_code=403, detail="Fanni faqat administrator olib tashlaydi.")
+    raise HTTPException(
+        status_code=405,
+        detail="Fanni o'zgartirish uchun PUT /course-syllabuses/my/ ishlating.",
+    )
 
 
 @router.get("/admin/staff-course-selections/")

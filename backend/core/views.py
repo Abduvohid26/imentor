@@ -706,12 +706,14 @@ class LiveTestPublicRetrieveView(APIView):
             if isinstance(raw_questions, list)
             else []
         )
+        closed_ms = int(obj.closed_at.timestamp() * 1000) if obj.closed_at else None
         return Response(
             {
                 'topic': p.get('topic', ''),
                 'questions': questions,
                 'created_at_ms': created_ms,
                 'is_closed': bool(obj.is_closed),
+                'closed_at_ms': closed_ms,
             }
         )
 
@@ -867,10 +869,12 @@ class LiveTestFinalizeView(APIView):
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         auto_count = finalize_live_test_session(obj)
         obj.refresh_from_db()
+        closed_ms = int(obj.closed_at.timestamp() * 1000) if obj.closed_at else None
         return Response(
             {
                 'ok': True,
                 'is_closed': obj.is_closed,
+                'closed_at_ms': closed_ms,
                 'auto_submitted': auto_count,
                 'submissions': _live_test_submissions_payload(obj),
             },

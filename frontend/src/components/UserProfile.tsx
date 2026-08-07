@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { 
+import {
   User, 
   Mail, 
   Phone, 
@@ -11,8 +11,12 @@ import {
   Loader2,
   Camera,
   LogOut,
-  Save
+  Save,
+  GraduationCap,
+  Pencil,
 } from 'lucide-react';
+import StaffTeachingSubjectsPicker from './staff/StaffTeachingSubjectsPicker';
+import { fetchMyCourseSelections } from '../utils/syllabusApi';
 import {
   getCurrentLocalUser,
   logoutLocalStaff,
@@ -53,8 +57,32 @@ export default function UserProfile() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarMessage, setAvatarMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [editingSubjects, setEditingSubjects] = useState(false);
+  const [subjectNames, setSubjectNames] = useState<string[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
 
   const isGoogleAuth = false;
+  const isHodim = Boolean(user && normalizeUserRole(user) === 'hodim');
+
+  const reloadSubjects = async () => {
+    if (!isHodim) return;
+    setSubjectsLoading(true);
+    try {
+      const rows = await fetchMyCourseSelections();
+      const seen = new Set<number>();
+      const names: string[] = [];
+      for (const row of rows) {
+        if (seen.has(row.syllabus.id)) continue;
+        seen.add(row.syllabus.id);
+        names.push(row.syllabus.subject_name);
+      }
+      setSubjectNames(names);
+    } catch {
+      setSubjectNames([]);
+    } finally {
+      setSubjectsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -64,6 +92,12 @@ export default function UserProfile() {
   }, [user]);
 
   useEffect(() => subscribeLocalAuth(() => setUser(getCurrentLocalUser())), []);
+
+  useEffect(() => {
+    if (!isHodim) return;
+    void reloadSubjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on role/user change
+  }, [user?.uid, isHodim]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -355,6 +389,72 @@ export default function UserProfile() {
                     </button>
                 </form>
             </div>
+
+            {isHodim && (
+              <div className="ios-glass p-6 sm:p-8 rounded-[2rem] shadow-sm border border-white/60">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                  <h3 className="text-xl font-bold text-black/80 flex items-center gap-2">
+                    <GraduationCap size={22} className="text-blue-500" />
+                    {t('teachingSubjects.profileTitle')}
+                  </h3>
+                  {!editingSubjects && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingSubjects(true)}
+                      className={`${staffBtnSecondary} px-3 py-2 text-sm`}
+                    >
+                      <Pencil size={16} />
+                      {t('teachingSubjects.edit')}
+                    </button>
+                  )}
+                </div>
+                {editingSubjects ? (
+                  <StaffTeachingSubjectsPicker
+                    variant="profile"
+                    showHeader={false}
+                    onSaved={() => {
+                      setEditingSubjects(false);
+                      void reloadSubjects();
+                    }}
+                  />
+                ) : subjectsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-black/50 py-4">
+                    <Loader2 size={18} className="animate-spin" />
+                    {t('teachingSubjects.loading')}
+                  </div>
+                ) : subjectNames.length === 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                      {t('syllabus.noAssignedCoursesHint')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setEditingSubjects(true)}
+                      className={`${staffBtnPrimary} px-4 py-2.5 text-sm`}
+                    >
+                      <Pencil size={16} />
+                      {t('teachingSubjects.edit')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-black/45">
+                      {t('teachingSubjects.selectedCount', { count: subjectNames.length })}
+                    </p>
+                    <ul className="flex flex-wrap gap-2">
+                      {subjectNames.map((name) => (
+                        <li
+                          key={name}
+                          className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-slate-800"
+                        >
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
          </div>
 
          {/* Change Password Form */}

@@ -30,6 +30,7 @@ import {
   GraduationCap,
   Youtube,
   Monitor,
+  Loader2,
   type LucideIcon,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -69,6 +70,8 @@ import PresentationBuilder from './components/PresentationBuilder';
 import CaseStudies from './components/CaseStudies';
 import UserProfile from './components/UserProfile';
 import SyllabusView from './components/SyllabusView';
+import StaffTeachingSubjectsPicker from './components/staff/StaffTeachingSubjectsPicker';
+import { fetchMyCourseSelections } from './utils/syllabusApi';
 import TestQuestions from './components/TestQuestions';
 import StudentMyTests from './components/StudentMyTests';
 import LectureNotes from './components/LectureNotes';
@@ -265,6 +268,8 @@ export default function App() {
   /** Kompyuterda login modal holati: 'talaba' — standart (Talaba ID+parol),
    * 'qr' — hodim uchun QR, 'admin' — faqat administrator uchun telefon+parol. */
   const [desktopAuthView, setDesktopAuthView] = useState<'talaba' | 'qr' | 'admin'>('talaba');
+  /** null = tekshirilmoqda; false = birinchi kirish fan tanlash; true = tayyor */
+  const [teachingSubjectsReady, setTeachingSubjectsReady] = useState<boolean | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<SyllabusTopicContext | null>(() =>
     loadPersistedSelectedTopic(),
   );
@@ -429,6 +434,25 @@ export default function App() {
     () => (userRole ? navItemsForRole(userRole, language) : []),
     [userRole, language],
   );
+
+  useEffect(() => {
+    if (!user || userRole !== 'hodim') {
+      setTeachingSubjectsReady(true);
+      return;
+    }
+    let cancelled = false;
+    setTeachingSubjectsReady(null);
+    void fetchMyCourseSelections()
+      .then((rows) => {
+        if (!cancelled) setTeachingSubjectsReady(rows.length > 0);
+      })
+      .catch(() => {
+        if (!cancelled) setTeachingSubjectsReady(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, userRole]);
 
   /** Hodim GPS faqat HodimMobileCompanion ichida (telefon) */
   useStaffLocationTracking(false);
@@ -629,6 +653,20 @@ export default function App() {
               logoutLocalStaff();
             }}
           />
+        </div>
+      ) : userRole === 'hodim' && teachingSubjectsReady === null ? (
+        <div className="min-h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#eef6ff] via-[#f5f8ff] to-[#f3f0ff] text-slate-500">
+          <Loader2 size={40} className="animate-spin text-blue-500" />
+          <p className="text-sm font-medium">{translate(language, 'teachingSubjects.loading')}</p>
+        </div>
+      ) : userRole === 'hodim' && teachingSubjectsReady === false ? (
+        <div className="min-h-[100dvh] w-full flex items-center justify-center bg-gradient-to-br from-[#eef6ff] via-[#f5f8ff] to-[#f3f0ff] p-4 sm:p-8 overflow-y-auto">
+          <div className="w-full max-w-3xl ios-glass rounded-[2rem] border border-white/60 shadow-xl p-6 sm:p-10">
+            <StaffTeachingSubjectsPicker
+              variant="onboarding"
+              onSaved={() => setTeachingSubjectsReady(true)}
+            />
+          </div>
         </div>
       ) : (
       <>

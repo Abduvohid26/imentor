@@ -235,25 +235,41 @@ export async function fetchMyCourseSelections(): Promise<StaffCourseSelectionRow
   return Array.isArray(rows) ? rows : [];
 }
 
-export async function selectCourseSyllabus(syllabusId: number): Promise<StaffCourseSelectionRow> {
+/** Xodim kafedrasidagi fanlar (onboarding / profile tanlash). */
+export async function fetchDepartmentCourseSyllabuses(): Promise<CourseSyllabusRow[]> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
-  return httpJson<StaffCourseSelectionRow>(`${apiBaseUrl()}/v1/course-syllabuses/my/`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: { syllabus_id: syllabusId },
-    timeoutMs: 20000,
-  });
+  const data = await httpJson<CourseSyllabusRow[] | PagedResponse<CourseSyllabusRow>>(
+    `${apiBaseUrl()}/v1/course-syllabuses/department/?page_size=1000`,
+    {
+      headers: authHeaders(token),
+      timeoutMs: 60000,
+    },
+  );
+  return unwrapPagedResults(data);
 }
 
-export async function unselectCourseSyllabus(syllabusId: number): Promise<void> {
+/** O'qitadigan fanlar to'plamini almashtirish (kamida 1 ta). */
+export async function setMyTeachingSubjects(syllabusIds: number[]): Promise<StaffCourseSelectionRow[]> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
-  await httpJson<unknown>(`${apiBaseUrl()}/v1/course-syllabuses/my/${syllabusId}/`, {
-    method: 'DELETE',
+  const rows = await httpJson<StaffCourseSelectionRow[]>(`${apiBaseUrl()}/v1/course-syllabuses/my/`, {
+    method: 'PUT',
     headers: authHeaders(token),
-    timeoutMs: 20000,
+    body: { syllabus_ids: syllabusIds },
+    timeoutMs: 30000,
   });
+  return Array.isArray(rows) ? rows : [];
+}
+
+export async function selectCourseSyllabus(syllabusId: number): Promise<StaffCourseSelectionRow> {
+  const rows = await setMyTeachingSubjects([syllabusId]);
+  if (!rows[0]) throw new Error('select-failed');
+  return rows[0];
+}
+
+export async function unselectCourseSyllabus(_syllabusId: number): Promise<void> {
+  throw new Error('Use setMyTeachingSubjects to update teaching subjects.');
 }
 
 export function isSyncUnavailable(err: unknown): boolean {

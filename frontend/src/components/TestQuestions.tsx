@@ -114,6 +114,17 @@ function writeStoredTeacherSid(topic: string, sid: string): void {
   }
 }
 
+function clearStoredTeacherSid(topic: string): void {
+  try {
+    sessionStorage.removeItem(teacherSidStorageKey(topic));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Yopilgan test paneli teacher sahifasidan shuncha vaqtdan keyin avto yo'qoladi. */
+const TEACHER_SESSION_AUTO_HIDE_MS = 60 * 60 * 1000;
+
 function tryReuseTeacherSessionId(data: TestSession): string | null {
   const stored = readStoredTeacherSid(data.topic);
   if (!stored) return null;
@@ -229,6 +240,7 @@ export default function TestQuestions() {
     saveLocalSubmissions(sid, []);
     setTeacherSessionId(sid);
     setSessionClosed(false);
+    setClosedAtMs(null);
     setJoinUrl(
       `${window.location.origin}${window.location.pathname}?mode=student&sid=${encodeURIComponent(sid)}`
     );
@@ -247,6 +259,7 @@ export default function TestQuestions() {
   const [downloadingKeyPdf, setDownloadingKeyPdf] = useState(false);
   const [downloadingResultsPdf, setDownloadingResultsPdf] = useState(false);
   const [sessionClosed, setSessionClosed] = useState(false);
+  const [closedAtMs, setClosedAtMs] = useState<number | null>(null);
   const [finalizing, setFinalizing] = useState(false);
 
   const [studentFirstName, setStudentFirstName] = useState('');
@@ -284,7 +297,10 @@ export default function TestQuestions() {
     if (!sessionKey) return;
     try {
       const remote = await fetchLiveTestSessionFromServer(sessionKey);
-      if (remote) setSessionClosed(Boolean(remote.isClosed));
+      if (remote) {
+        setSessionClosed(Boolean(remote.isClosed));
+        setClosedAtMs(remote.closedAtMs ?? null);
+      }
     } catch {
       /* ignore */
     }
@@ -416,6 +432,33 @@ export default function TestQuestions() {
     void refreshSessionClosedFromServer(teacherSessionId);
   }, [isStudentMode, teacherSessionId, refreshSessionClosedFromServer]);
 
+  /**
+   * Yopilgan (finalize qilingan) test paneli teacher sahifasida 60 daqiqa
+   * ko'rinib turadi (natijalarni tahlil qilish uchun), so'ng avto yo'qoladi —
+   * sahifa "yangi test yaratish" boshlang'ich holatiga qaytadi.
+   */
+  useEffect(() => {
+    if (isStudentMode || !sessionClosed || !closedAtMs) return;
+    const elapsed = Date.now() - closedAtMs;
+    const remaining = TEACHER_SESSION_AUTO_HIDE_MS - elapsed;
+    const resetPanel = () => {
+      clearStoredTeacherSid(topic);
+      setTestSession(null);
+      setTeacherSessionId('');
+      setJoinUrl('');
+      setSubmissions([]);
+      setSessionClosed(false);
+      setClosedAtMs(null);
+      setActiveVersionId(null);
+    };
+    if (remaining <= 0) {
+      resetPanel();
+      return;
+    }
+    const timer = window.setTimeout(resetPanel, remaining);
+    return () => window.clearTimeout(timer);
+  }, [isStudentMode, sessionClosed, closedAtMs, topic]);
+
   useEffect(() => {
     refreshVersions();
   }, [refreshVersions]);
@@ -511,6 +554,7 @@ export default function TestQuestions() {
     try {
       const result = await finalizeLiveTestSessionOnServer(teacherSessionId);
       setSessionClosed(result.isClosed);
+      setClosedAtMs(result.closedAtMs ?? Date.now());
       setSubmissions(mapServerSubmissions(result.submissions));
       return true;
     } catch (err) {

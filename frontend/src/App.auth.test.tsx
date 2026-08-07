@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 const { getCurrentLocalUserMock, subscribeLocalAuthMock, isPublicStudentTestUrlMock } = vi.hoisted(() => ({
   getCurrentLocalUserMock: vi.fn(),
@@ -59,6 +59,14 @@ vi.mock('./utils/backendAuth', () => ({
   syncStaffPhotoFromServer: vi.fn(),
 }));
 
+vi.mock('./utils/syllabusApi', () => ({
+  fetchMyCourseSelections: vi.fn().mockResolvedValue([{ id: 1, syllabus: { id: 1 }, variant_label: '', selected_at: '' }]),
+}));
+
+vi.mock('./components/staff/StaffTeachingSubjectsPicker', () => ({
+  default: () => <div data-testid="teaching-subjects-picker">PICKER</div>,
+}));
+
 vi.mock('./components/public/PublicLandingPage', () => ({
   default: () => <div data-testid="public-landing">PUBLIC_LANDING</div>,
 }));
@@ -108,7 +116,7 @@ describe('App auth shell', () => {
     expect(screen.getByTestId('public-landing')).toBeInTheDocument();
   });
 
-  it('renders main syllabus shell for signed-in hodim', () => {
+  it('renders main syllabus shell for signed-in hodim', async () => {
     getCurrentLocalUserMock.mockReturnValue({
       uid: 'u1',
       displayName: 'Hodim',
@@ -126,7 +134,9 @@ describe('App auth shell', () => {
     });
 
     render(<App />);
-    expect(screen.getByTestId('syllabus-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('syllabus-view')).toBeInTheDocument();
+    });
     expect(screen.queryByTestId('public-landing')).not.toBeInTheDocument();
   });
 

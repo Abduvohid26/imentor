@@ -10,6 +10,7 @@ export type LiveTestSessionPayload = {
   questions: TestQuestion[];
   createdAt: number;
   isClosed?: boolean;
+  closedAtMs?: number | null;
 };
 
 export type StudentLiveTestSessionPayload = Omit<LiveTestSessionPayload, 'questions'> & {
@@ -36,6 +37,7 @@ export type LiveTestSubmissionRow = {
 
 export type LiveTestFinalizeResult = {
   isClosed: boolean;
+  closedAtMs: number | null;
   autoSubmitted: number;
   submissions: LiveTestSubmissionRow[];
 };
@@ -148,6 +150,7 @@ export async function fetchLiveTestSessionFromServer(
       questions: TestQuestion[];
       created_at_ms: number;
       is_closed?: boolean;
+      closed_at_ms?: number | null;
     }>(`${apiBaseUrl()}/v1/live-tests/${encodeURIComponent(sessionKey)}/`, {
       timeoutMs: 30000,
     });
@@ -157,6 +160,7 @@ export async function fetchLiveTestSessionFromServer(
       questions: stripQuestionsForStudent(data.questions),
       createdAt: data.created_at_ms,
       isClosed: Boolean(data.is_closed),
+      closedAtMs: data.closed_at_ms ?? null,
     };
   } catch (e) {
     if (e instanceof HttpError && e.status === 404) return null;
@@ -258,6 +262,7 @@ export async function finalizeLiveTestSessionOnServer(sessionKey: string): Promi
   if (!token) throw new Error('no-backend-token');
   const data = await httpJson<{
     is_closed: boolean;
+    closed_at_ms?: number | null;
     auto_submitted: number;
     submissions: Array<{
       first_name: string;
@@ -272,6 +277,7 @@ export async function finalizeLiveTestSessionOnServer(sessionKey: string): Promi
   });
   return {
     isClosed: Boolean(data.is_closed),
+    closedAtMs: data.closed_at_ms ?? null,
     autoSubmitted: data.auto_submitted ?? 0,
     submissions: mapSubmissionRows(Array.isArray(data.submissions) ? data.submissions : []),
   };
