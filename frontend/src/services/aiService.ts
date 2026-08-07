@@ -414,17 +414,22 @@ async function generateSingleCaseQuestion(
         `${structure}${keywordFocus}${avoid}\n\n` +
         `Generate ONE clinical case with focus="${focus}" (${CASE_FOCUS_HINTS[focus]}). ` +
         'QATTIQ QOIDALAR:\n' +
-        '1. "scenario" — kamida 150-200 so\'z: bemor yoshi/jinsi, anamnez, shikoyatlar, klinik ko\'rinish ' +
-        'tafsilotlari, tekshiruv natijalari, ijtimoiy/oilaviy kontekst — real bemor tarixiga o\'xshash to\'liq klinik rasm.\n' +
-        '2. "answer" — kamida 400-600 so\'z, quyidagi tuzilishda (mos sarlavhalar bilan, focus\'ga qarab moslashtiring):\n' +
-        '   a) Dastlabki (taxminiy) tashxis va uning asoslanishi\n' +
-        '   b) Differensial tashxis (kamida 2-3 muqobil tashxis va nega ular rad etilgani)\n' +
-        '   c) Tavsiya etilgan qo\'shimcha tekshiruvlar\n' +
-        '   d) Davolash/profilaktika taktikasi, bosqichma-bosqich\n' +
-        '   e) Amaliy tavsiyalar (bemorga/ota-onaga)\n' +
+        '1. "scenario" — KENGAYTIRILGAN, kamida 400-600 so\'z (oldingi hajmdan 2-3 hissa ko\'p): bemor ' +
+        'yoshi/jinsi/kasbi, batafsil anamnez (o\'tgan kasalliklar, oilaviy tarix, ijtimoiy holat, hayot tarzi), ' +
+        'shikoyatlarning rivojlanish tarixi (qachon boshlangan, qanday kuchaygan), to\'liq klinik ko\'rik ' +
+        'topilmalari (tizim-tizim bo\'yicha), laborator/instrumental tekshiruv natijalari (aniq raqamlar bilan), ' +
+        'ijtimoiy/oilaviy/psixologik kontekst — real, batafsil bemor tarixiga (case report) o\'xshash TO\'LIQ ' +
+        'klinik rasm chizing, qisqartirmang.\n' +
+        '2. "answer" — KENGAYTIRILGAN, kamida 700-900 so\'z (oldingi hajmdan 50% ko\'p), quyidagi tuzilishda ' +
+        '(mos sarlavhalar bilan, focus\'ga qarab moslashtiring, har bo\'lim batafsil, yuzaki emas):\n' +
+        '   a) Dastlabki (taxminiy) tashxis va uning to\'liq klinik asoslanishi\n' +
+        '   b) Differensial tashxis (kamida 3-4 muqobil tashxis, har biri uchun nega tanlangani/rad etilgani batafsil)\n' +
+        '   c) Tavsiya etilgan qo\'shimcha tekshiruvlar (har biri uchun nima uchun kerakligi tushuntirilsin)\n' +
+        '   d) Davolash/profilaktika taktikasi, bosqichma-bosqich (dozalar, muqobil variantlar, kuzatuv rejasi)\n' +
+        '   e) Amaliy tavsiyalar (bemorga/ota-onaga) va uzoq muddatli prognoz/kuzatuv\n' +
         (hasContext ? `\nMANBALAR:\n${contextText}\n` : '') +
         (strict ? '\nStrict valid JSON only.' : ''),
-      maxTokens: 4096,
+      maxTokens: 7168,
       temperature: strict ? 0.4 : 0.58,
       parse: (t) => parseJSONSafe(t),
     });
