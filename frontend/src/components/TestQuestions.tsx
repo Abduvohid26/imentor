@@ -269,6 +269,7 @@ export default function TestQuestions() {
   const [sessionLoading, setSessionLoading] = useState(isStudentMode && !!studentSessionId);
   const serverSessionSyncedRef = useRef<string | null>(null);
   const participantKeyRef = useRef('');
+  const enrichTokenRef = useRef<symbol | null>(null);
 
   const mapServerSubmissions = React.useCallback(
     (rows: Array<{ firstName: string; lastName: string; answers: number[]; submittedAt: number }>) =>
@@ -573,22 +574,49 @@ export default function TestQuestions() {
 
     setLoading(true);
     setError(null);
+    const enrichToken = Symbol('test-enrich');
+    enrichTokenRef.current = enrichToken;
     try {
       const count = Math.min(30, Math.max(10, questionCount));
-      const contentLanguage = globalTopic.instructionLanguage ?? language;
+      // Asosiy til = UI tili (header dagi uz/ru/en). Qolgan 2 til — fonda tarjima.
+      const contentLanguage = language;
       const data = await aiService.generateTests(topic, count, contentLanguage, globalTopic.subjectCode);
-      await savePreparedContent('test', topic, data, buildPreparedContentMeta(globalTopic));
-      const list = await listPreparedForTopicSynced('test', globalTopic ?? topic);
-      setVersions(list);
-      const sid = await setupTeacherLiveSession(data);
       setTestSession(data);
       setViewLang(data.primaryLanguage || contentLanguage);
-      setActiveVersionId(list[0]?.id ?? null);
+      const sid = await setupTeacherLiveSession(data);
       if (!sid) throw new Error('live-session-missing');
+      setLoading(false);
+
+      void (async () => {
+        const meta = buildPreparedContentMeta(globalTopic);
+        try {
+          // Fonda: qolgan 2 tilga tarjima + kitob manbalari → bazaga yozish
+          const enriched = await aiService.enrichTestSession(
+            data,
+            contentLanguage,
+            globalTopic.subjectCode,
+          );
+          if (enrichTokenRef.current !== enrichToken) return;
+          setTestSession(enriched);
+          await savePreparedContent('test', topic, enriched, meta);
+          await setupTeacherLiveSession(enriched, sid);
+        } catch (enrichErr) {
+          console.warn('Test enrich failed — saving primary-language test as fallback', enrichErr);
+          if (enrichTokenRef.current !== enrichToken) return;
+          try {
+            await savePreparedContent('test', topic, data, meta);
+          } catch (saveErr) {
+            console.warn('Fallback test save failed', saveErr);
+          }
+        }
+        if (enrichTokenRef.current !== enrichToken) return;
+        const nextList = await listPreparedForTopicSynced('test', globalTopic ?? topic);
+        setVersions(nextList);
+        setActiveVersionId(nextList[0]?.id ?? null);
+      })();
     } catch (err) {
       console.error('Test generation error:', err);
       setError(messageFromAiError(err, t('test.errorGenerate'), language));
-    } finally {
       setLoading(false);
     }
   };

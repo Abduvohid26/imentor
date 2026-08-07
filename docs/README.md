@@ -9,7 +9,7 @@
 | **API hujjatlari** | `/api/docs/` (Swagger UI) |
 | **Admin panel** | `/admin/` (telefon raqam orqali kirish) |
 | **Admin qo‘llanmasi (SPA)** | [docs/ADMIN_README.md](docs/ADMIN_README.md) — to‘liq flow, modullar, test checklist |
-| **Tashqi API (partner)** | [docs/EXTERNAL_TESTS_API.txt](docs/EXTERNAL_TESTS_API.txt) — katalog + testlar, X-Api-Key |
+| **Tashqi API (partner)** | [docs/EXTERNAL_TESTS_API.md](EXTERNAL_TESTS_API.md) — katalog + testlar, X-Api-Key |
 | **To'liq oqim + integratsiya** | [docs/FULL_PLATFORM_FLOW.txt](docs/FULL_PLATFORM_FLOW.txt) — kafedra→fan→test→tashqi API |
 
 ---
@@ -422,7 +422,7 @@ Barcha endpointlar `/api/` prefiksi ostida. Versiyalangan API: `/api/v1/...`
 
 ### Tashqi API (hamkor servislar)
 
-JWT emas — `X-Api-Key` header. To'liq hujjat: [docs/EXTERNAL_TESTS_API.txt](EXTERNAL_TESTS_API.txt)
+JWT emas — `X-Api-Key` header. To'liq hujjat: [EXTERNAL_TESTS_API.md](EXTERNAL_TESTS_API.md)
 
 **Katalog** (kafedra/fan nomlari, mavzular — savolsiz):
 
@@ -440,7 +440,8 @@ JWT emas — `X-Api-Key` header. To'liq hujjat: [docs/EXTERNAL_TESTS_API.txt](EX
 |---|---|---|---|
 | GET | `/api/v1/external/tests/stats/` | X-Api-Key | Test bazasi statistikasi |
 | GET | `/api/v1/external/tests/` | X-Api-Key | E'lon qilingan testlar ro'yxati |
-| GET | `/api/v1/external/tests/<id>/` | X-Api-Key | Test + savollar (`?question_limit=10..30`) |
+| GET | `/api/v1/external/tests/<id>/` | X-Api-Key | Test + savollar (`?question_limit=10..30&language=uz\|ru\|en`) |
+| GET | `/api/v1/external/questions/sample/` | X-Api-Key | Unique bank; har savol `languages.uz/ru/en` (til param shart emas) |
 
 Server `.env`: `IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2`
 

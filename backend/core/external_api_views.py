@@ -9,14 +9,18 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .content_catalog_service import (
+    SUPPORTED_TEST_LANGUAGES,
     TEST_QUESTION_LIMIT_MAX,
     TEST_QUESTION_LIMIT_MIN,
+    available_test_languages,
     build_catalog_stats,
     catalog_item_summary,
     collect_unique_questions_from_tests,
     filter_by_stored_question_count,
     filter_catalog_queryset,
+    parse_test_language,
     parse_test_question_limit,
+    project_test_payload_language,
     published_catalog_queryset,
     slice_test_payload,
 )
@@ -91,16 +95,25 @@ class ExternalTestsDetailView(APIView):
         limit, err = parse_test_question_limit(raw_limit)
         if err:
             return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+        lang, err = parse_test_language(
+            request.query_params.get('language') or request.query_params.get('lang')
+        )
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
 
         item = published_catalog_queryset().filter(pk=pk, kind=PreparedContent.KIND_TEST).first()
         if not item:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         payload_raw = item.payload if isinstance(item.payload, dict) else {}
-        payload, available, returned = slice_test_payload(payload_raw, limit)
+        available_langs = available_test_languages(payload_raw)
+        projected, used_lang = project_test_payload_language(payload_raw, lang)
+        payload, available, returned = slice_test_payload(projected, limit)
 
         data = catalog_item_summary(item, include_verification=True)
         data['payload'] = payload
+        data['language'] = used_lang
+        data['available_languages'] = available_langs
         data['question_count_available'] = available
         data['question_count_returned'] = returned
         data['question_limit_bounds'] = {
@@ -158,6 +171,7 @@ class ExternalQuestionsSampleView(APIView):
                 'variant_label': (params.get('variant_label') or '').strip(),
                 'topic_code': (params.get('topic_code') or '').strip().lower(),
                 'syllabus_id': (params.get('syllabus_id') or '').strip(),
+                'available_languages': list(SUPPORTED_TEST_LANGUAGES),
                 'count_requested': count,
                 'count_available': available,
                 'count_returned': len(questions),

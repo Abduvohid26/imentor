@@ -381,12 +381,15 @@ GET /api/v1/external/catalog/subjects/<subject_code>/
 ```
 GET /api/v1/external/tests/stats/
 GET /api/v1/external/tests/
-GET /api/v1/external/tests/<id>/?question_limit=20
+GET /api/v1/external/tests/<id>/?question_limit=20&language=ru
+GET /api/v1/external/questions/sample/?subject_code=...&count=20
 ```
 
 - Kafedra va fan **nomlari** (`department_name`, `subject_name`) barcha javoblarda
 - Savollar soni: **10–30** (platforma bilan bir xil)
-- Faqat **1 soatdan keyin e’lon** qilingan testlar
+- Sample: har savol avtomatik `languages.uz` / `.ru` / `.en` (til param shart emas)
+- Detail: ixtiyoriy `?language=uz|ru|en`
+- Yangi testlar darhol e’lon qilinadi (`PUBLISH_DELAY=0`)
 
 Server `.env`:
 
@@ -394,7 +397,7 @@ Server `.env`:
 IMENTOR_EXTERNAL_API_KEYS=hamkor-kalit-1,hamkor-kalit-2
 ```
 
-To‘liq partner hujjati: [docs/EXTERNAL_TESTS_API.txt](EXTERNAL_TESTS_API.txt)
+To‘liq partner hujjati: [EXTERNAL_TESTS_API.md](EXTERNAL_TESTS_API.md)
 
 ---
 

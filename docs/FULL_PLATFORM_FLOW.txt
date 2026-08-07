@@ -109,6 +109,6 @@ tashqi API integratsiyasini bir joyda tushuntiradi.
 7. Bog'liq hujjatlar
 --------------------
 
-  docs/EXTERNAL_TESTS_API.txt   — tashqi API to'liq reference
+  docs/EXTERNAL_TESTS_API.md    — tashqi API to'liq reference
   docs/ADMIN_README.md          — administrator qo'llanmasi
   manba/README.txt              — katalog import

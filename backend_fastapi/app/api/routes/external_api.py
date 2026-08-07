@@ -61,6 +61,9 @@ def external_test_detail(pk: int, request: Request, db: Session = Depends(get_db
     limit, err = cc.parse_test_question_limit(raw_limit)
     if err:
         raise HTTPException(status_code=400, detail=err)
+    lang, err = cc.parse_test_language(params.get("language") or params.get("lang"))
+    if err:
+        raise HTTPException(status_code=400, detail=err)
 
     item = db.execute(
         cc.published_catalog_stmt().where(PreparedContent.id == pk, PreparedContent.kind == "test")
@@ -69,10 +72,14 @@ def external_test_detail(pk: int, request: Request, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Not found.")
 
     payload_raw = item.payload if isinstance(item.payload, dict) else {}
-    payload, available, returned = cc.slice_test_payload(payload_raw, limit)
+    available_langs = cc.available_test_languages(payload_raw)
+    projected, used_lang = cc.project_test_payload_language(payload_raw, lang)
+    payload, available, returned = cc.slice_test_payload(projected, limit)
 
     data = cc.catalog_item_summary(item, include_verification=True)
     data["payload"] = payload
+    data["language"] = used_lang
+    data["available_languages"] = available_langs
     data["question_count_available"] = available
     data["question_count_returned"] = returned
     data["question_limit_bounds"] = QL_BOUNDS
@@ -93,10 +100,13 @@ def external_questions_sample(request: Request, db: Session = Depends(get_db)) -
     count, err = cc.parse_test_question_limit(raw_count, param_name="count")
     if err:
         raise HTTPException(status_code=400, detail=err)
+    # language ixtiyoriy — berilmasa har savol languages.uz/ru/en bilan qaytadi
 
     stmt = cc.filter_catalog_stmt(cc.published_catalog_stmt().where(PreparedContent.kind == "test"), params)
     items = db.execute(stmt).scalars().all()
-    questions, available, tests_scanned = cc.collect_unique_questions_from_tests(items, shuffle=True, count=count)
+    questions, available, tests_scanned = cc.collect_unique_questions_from_tests(
+        items, shuffle=True, count=count
+    )
 
     return {
         "subject_code": subject_code,
@@ -104,6 +114,7 @@ def external_questions_sample(request: Request, db: Session = Depends(get_db)) -
         "variant_label": (params.get("variant_label") or "").strip(),
         "topic_code": (params.get("topic_code") or "").strip().lower(),
         "syllabus_id": (params.get("syllabus_id") or "").strip(),
+        "available_languages": list(cc.SUPPORTED_TEST_LANGUAGES),
         "count_requested": count,
         "count_available": available,
         "count_returned": len(questions),

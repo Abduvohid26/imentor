@@ -210,9 +210,13 @@ def education_ai_case_context(
     if api_key:
         keywords = _english_search_keywords(api_key, settings.openai_fast_model, topic)
 
-    pubmed = extlit.search_pubmed(keywords, retmax=4)
-    scholar = extlit.search_semantic_scholar(keywords, limit=4)
-    external = extlit.dedupe_external_sources(pubmed + scholar)
+    # Kitob (ichki) manbalar bilan bir qatorda tashqi internetdan ham (PubMed,
+    # Semantic Scholar, Wikipedia) REAL manbalar yig'iladi — foydalanuvchi
+    # so'roviga ko'ra endi faqat "ichki adabiyot" bilan cheklanmaydi.
+    pubmed = extlit.search_pubmed(keywords, retmax=5)
+    scholar = extlit.search_semantic_scholar(keywords, limit=5)
+    wikipedia = extlit.search_wikipedia(keywords, limit=3)
+    external = extlit.dedupe_external_sources(pubmed + scholar + wikipedia)
 
     for e in external:
         if e["type"] == "pubmed":
@@ -236,9 +240,12 @@ def education_ai_case_context(
     for i, s in enumerate(sources, start=1):
         idx_source = {**s, "index": i}
         numbered.append(idx_source)
-        kind_label = {"book": "Darslik", "pubmed": "PubMed maqola", "scholar": "Ilmiy maqola"}.get(
-            s["type"], "Manba"
-        )
+        kind_label = {
+            "book": "Darslik",
+            "pubmed": "PubMed maqola",
+            "scholar": "Ilmiy maqola",
+            "wikipedia": "Wikipedia",
+        }.get(s["type"], "Manba")
         head = f"[{i}] ({kind_label}) {s.get('title', '')}"
         if s.get("authors"):
             head += f" — {s['authors']}"

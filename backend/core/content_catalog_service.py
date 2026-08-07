@@ -112,6 +112,118 @@ def parse_test_question_limit(value: str | None, *, param_name: str = 'question_
     return parsed, None
 
 
+SUPPORTED_TEST_LANGUAGES = ('uz', 'ru', 'en')
+
+
+def parse_test_language(value: str | None, *, param_name: str = 'language') -> tuple[str | None, str | None]:
+    """Ixtiyoriy til: uz|ru|en. Bo'sh → None (primary til)."""
+    if value is None or not str(value).strip():
+        return None, None
+    lang = str(value).strip().lower()
+    if lang not in SUPPORTED_TEST_LANGUAGES:
+        return None, f"{param_name} must be one of: {', '.join(SUPPORTED_TEST_LANGUAGES)}."
+    return lang, None
+
+
+def primary_test_language(payload: dict | None) -> str:
+    if not isinstance(payload, dict):
+        return 'uz'
+    raw = payload.get('primaryLanguage') or payload.get('primary_language') or 'uz'
+    lang = str(raw or 'uz').strip().lower()
+    return lang if lang in SUPPORTED_TEST_LANGUAGES else 'uz'
+
+
+def available_test_languages(payload: dict | None) -> list[str]:
+    if not isinstance(payload, dict):
+        return ['uz']
+    primary = primary_test_language(payload)
+    langs = [primary]
+    tr = payload.get('translations')
+    primary_qs = payload.get('questions') if isinstance(payload.get('questions'), list) else []
+    if isinstance(tr, dict):
+        for code in SUPPORTED_TEST_LANGUAGES:
+            if code in langs:
+                continue
+            block = tr.get(code)
+            if not isinstance(block, dict):
+                continue
+            qs = block.get('questions')
+            if not isinstance(qs, list) or not qs:
+                continue
+            usable = 0
+            for i, tq in enumerate(qs):
+                pq = primary_qs[i] if i < len(primary_qs) and isinstance(primary_qs[i], dict) else None
+                if _is_usable_translation_block(
+                    lang=code,
+                    primary=primary,
+                    primary_q=pq,
+                    translated_q=tq if isinstance(tq, dict) else None,
+                ):
+                    usable += 1
+            if usable >= max(1, int(len(qs) * 0.6)):
+                langs.append(code)
+    return langs
+
+
+def project_test_payload_language(payload: dict | None, language: str | None) -> tuple[dict, str]:
+    """Top-level topic/questions ni so'ralgan tilga chiqaradi. Qaytadi: (payload, actual_language)."""
+    base = dict(payload) if isinstance(payload, dict) else {}
+    primary = primary_test_language(base)
+    wanted = (language or primary).strip().lower()
+    if wanted not in SUPPORTED_TEST_LANGUAGES:
+        wanted = primary
+
+    if wanted == primary:
+        out = dict(base)
+        if 'primaryLanguage' not in out:
+            out['primaryLanguage'] = primary
+        return out, primary
+
+    tr = base.get('translations')
+    block = tr.get(wanted) if isinstance(tr, dict) else None
+    if not isinstance(block, dict) or not isinstance(block.get('questions'), list) or not block['questions']:
+        out = dict(base)
+        if 'primaryLanguage' not in out:
+            out['primaryLanguage'] = primary
+        return out, primary
+
+    primary_qs = base.get('questions') if isinstance(base.get('questions'), list) else []
+    usable = 0
+    for i, tq in enumerate(block['questions']):
+        pq = primary_qs[i] if i < len(primary_qs) and isinstance(primary_qs[i], dict) else None
+        if _is_usable_translation_block(
+            lang=wanted,
+            primary=primary,
+            primary_q=pq,
+            translated_q=tq if isinstance(tq, dict) else None,
+        ):
+            usable += 1
+    if usable < max(1, int(len(block['questions']) * 0.6)):
+        out = dict(base)
+        if 'primaryLanguage' not in out:
+            out['primaryLanguage'] = primary
+        return out, primary
+
+    out = dict(base)
+    out['topic'] = block.get('topic') or base.get('topic')
+    out['questions'] = list(block['questions'])
+    if isinstance(block.get('references'), list):
+        out['references'] = list(block['references'])
+    translations = dict(tr) if isinstance(tr, dict) else {}
+    if primary not in translations and isinstance(base.get('questions'), list):
+        primary_block = {
+            'topic': base.get('topic'),
+            'questions': list(base['questions']),
+        }
+        if isinstance(base.get('references'), list):
+            primary_block['references'] = list(base['references'])
+        translations[primary] = primary_block
+    out['translations'] = translations
+    if 'primaryLanguage' not in out:
+        out['primaryLanguage'] = primary
+    return out, wanted
+
+
 def slice_test_payload(payload: dict | None, limit: int | None) -> tuple[dict, int, int]:
     """
     payload.questions ni limit bo'yicha qisqartiradi.
@@ -127,6 +239,18 @@ def slice_test_payload(payload: dict | None, limit: int | None) -> tuple[dict, i
         return base, available, available
     taken = questions[:limit]
     base['questions'] = taken
+    tr = base.get('translations')
+    if isinstance(tr, dict):
+        next_tr = {}
+        for lang, block in tr.items():
+            if not isinstance(block, dict):
+                continue
+            qs = block.get('questions')
+            if isinstance(qs, list):
+                next_tr[lang] = {**block, 'questions': qs[:limit]}
+            else:
+                next_tr[lang] = block
+        base['translations'] = next_tr
     return base, available, len(taken)
 
 
@@ -140,50 +264,172 @@ def _payload_level_references(payload: dict) -> list:
     return list(refs) if isinstance(refs, list) and refs else []
 
 
+_UZ_MARKERS = (
+    'bemor',
+    'yoshli',
+    'qaysi',
+    'ushbu',
+    'hisoblanadi',
+    'murojaat',
+    'aniqlanadi',
+    'tavsiya',
+    "bo'lib",
+    'shifokorga',
+    'davosida',
+)
+
+
+def _looks_like_uzbek(text: str) -> bool:
+    s = (text or '').lower()
+    return sum(1 for m in _UZ_MARKERS if m in s) >= 2
+
+
+def _cyrillic_count(text: str) -> int:
+    return sum(1 for ch in (text or '') if '\u0400' <= ch <= '\u04FF')
+
+
+def _question_text_block(q: dict) -> dict | None:
+    text = str(q.get('question') or q.get('text') or '').strip()
+    if not text:
+        return None
+    options = q.get('options')
+    block = {
+        'question': text,
+        'options': list(options) if isinstance(options, list) else [],
+        'explanation': str(q.get('explanation') or '').strip(),
+    }
+    opt_expl = q.get('optionExplanations')
+    if isinstance(opt_expl, list) and any(str(x or '').strip() for x in opt_expl):
+        block['optionExplanations'] = [str(x or '').strip() for x in opt_expl[:5]]
+    return block
+
+
+def _is_usable_translation_block(
+    *,
+    lang: str,
+    primary: str,
+    primary_q: dict | None,
+    translated_q: dict | None,
+) -> bool:
+    if lang == primary:
+        return True
+    if not isinstance(translated_q, dict):
+        return False
+    text = str(translated_q.get('question') or translated_q.get('text') or '').strip()
+    if not text:
+        return False
+    src = ''
+    if isinstance(primary_q, dict):
+        src = str(primary_q.get('question') or primary_q.get('text') or '').strip()
+    if src and normalize_question_text_key(text) == normalize_question_text_key(src):
+        return False
+    if lang == 'ru':
+        if _cyrillic_count(text) < 8:
+            return False
+        if _looks_like_uzbek(text):
+            return False
+    if lang == 'en' and _looks_like_uzbek(text):
+        return False
+    return True
+
+
+def _questions_lists_by_language(payload: dict) -> dict[str, list]:
+    by_lang: dict[str, list] = {}
+    primary = primary_test_language(payload)
+    primary_qs = payload.get('questions')
+    if isinstance(primary_qs, list):
+        by_lang[primary] = primary_qs
+    tr = payload.get('translations')
+    if isinstance(tr, dict):
+        for code in SUPPORTED_TEST_LANGUAGES:
+            block = tr.get(code)
+            if not isinstance(block, dict):
+                continue
+            qs = block.get('questions')
+            if isinstance(qs, list) and qs:
+                by_lang[code] = qs
+    return by_lang
+
+
 def collect_unique_questions_from_tests(
     items,
     *,
     shuffle: bool = True,
     count: int | None = None,
     rng=None,
+    language: str | None = None,
 ) -> tuple[list[dict], int, int]:
     """
-    Bir nechta e'lon qilingan testdan unique savollar pooli.
-
-    Unique = savol matni (question/text) normalize qilingan kalit.
-    Savolda references bo'lmasa — shu testning payload.references olinadi.
-    Qaytadi: (savollar, available_unique, tests_scanned).
+    Unique savollar pooli — har bir savol `languages` (uz/ru/en) bilan.
+    Unique = primary til matni. Savolda references yo'q bo'lsa — payload.references.
     """
     import random as _random
 
     seen: set[str] = set()
     pool: list[dict] = []
     tests_scanned = 0
+    only_lang = (language or '').strip().lower() or None
+    if only_lang and only_lang not in SUPPORTED_TEST_LANGUAGES:
+        only_lang = None
 
     for item in items:
         tests_scanned += 1
-        payload = item.payload if isinstance(getattr(item, 'payload', None), dict) else {}
-        if not isinstance(payload, dict):
-            payload = {}
-        payload_refs = _payload_level_references(payload)
-        raw_qs = payload.get('questions')
-        if not isinstance(raw_qs, list):
+        raw_payload = item.payload if isinstance(getattr(item, 'payload', None), dict) else {}
+        if not isinstance(raw_payload, dict):
+            raw_payload = {}
+        payload_refs = _payload_level_references(raw_payload)
+        by_lang = _questions_lists_by_language(raw_payload)
+        primary = primary_test_language(raw_payload)
+        primary_qs = by_lang.get(primary) or next(iter(by_lang.values()), None)
+        if not isinstance(primary_qs, list):
             continue
         source_id = int(getattr(item, 'pk', 0) or 0)
-        for q in raw_qs:
+
+        for i, q in enumerate(primary_qs):
             if not isinstance(q, dict):
                 continue
-            text = str(q.get('question') or q.get('text') or '').strip()
-            if not text:
+            languages: dict[str, dict] = {}
+            primary_q = primary_qs[i] if isinstance(primary_qs[i], dict) else None
+            for code in SUPPORTED_TEST_LANGUAGES:
+                qs = by_lang.get(code)
+                if not isinstance(qs, list) or i >= len(qs) or not isinstance(qs[i], dict):
+                    continue
+                if not _is_usable_translation_block(
+                    lang=code,
+                    primary=primary,
+                    primary_q=primary_q,
+                    translated_q=qs[i],
+                ):
+                    continue
+                block = _question_text_block(qs[i])
+                if block:
+                    languages[code] = block
+            if not languages:
                 continue
-            key = normalize_question_text_key(text)
+            if only_lang:
+                if only_lang not in languages:
+                    continue
+                languages = {only_lang: languages[only_lang]}
+
+            key_src = languages.get(primary) or next(iter(languages.values()))
+            key = normalize_question_text_key(key_src.get('question') or '')
             if not key or key in seen:
                 continue
             seen.add(key)
-            row = dict(q)
-            refs = row.get('references')
-            if not (isinstance(refs, list) and refs) and payload_refs:
-                row['references'] = list(payload_refs)
+
+            correct = q.get('correctOptionIndex')
+            if not isinstance(correct, int):
+                correct = 0
+            refs = q.get('references')
+            if not (isinstance(refs, list) and refs):
+                refs = payload_refs
+            row = {
+                'correctOptionIndex': correct,
+                'available_languages': list(languages.keys()),
+                'languages': languages,
+            }
+            if isinstance(refs, list) and refs:
+                row['references'] = list(refs)
             if source_id > 0:
                 row['source_test_id'] = source_id
             pool.append(row)

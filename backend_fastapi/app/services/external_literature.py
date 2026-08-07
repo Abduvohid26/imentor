@@ -10,6 +10,7 @@ yuqoriroq bo'ladi, lekin key'siz ham ishlaydi).
 from __future__ import annotations
 
 import logging
+import re
 import xml.etree.ElementTree as ET
 
 import requests
@@ -20,8 +21,64 @@ _PUBMED_ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 _PUBMED_ESUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 _PUBMED_EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 _SEMANTIC_SCHOLAR = "https://api.semanticscholar.org/graph/v1/paper/search"
+_WIKIPEDIA_SEARCH = "https://en.wikipedia.org/w/api.php"
 
 _TIMEOUT = 8.0
+
+
+def search_wikipedia(query: str, limit: int = 3) -> list[dict]:
+    """Wikipedia'dan (inglizcha) mavzuga oid maqolalarni topadi — umumiy
+    tushuntirish/kontekst uchun foydali, real va doim ochiladigan havola
+    bilan (https://en.wikipedia.org/wiki/...). Key talab qilmaydi. Xato
+    bo'lsa bo'sh ro'yxat qaytadi."""
+    query = (query or "").strip()
+    if not query:
+        return []
+    try:
+        resp = requests.get(
+            _WIKIPEDIA_SEARCH,
+            params={
+                "action": "query",
+                "list": "search",
+                "srsearch": query,
+                "srlimit": max(1, min(limit, 6)),
+                "format": "json",
+                "srprop": "snippet",
+            },
+            headers={"User-Agent": "iMentor-education-ai/1.0"},
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        results = ((resp.json().get("query") or {}).get("search")) or []
+        out: list[dict] = []
+        for item in results:
+            title = str(item.get("title") or "").strip()
+            if not title:
+                continue
+            snippet = re_sub_html(str(item.get("snippet") or ""))
+            page_slug = title.replace(" ", "_")
+            out.append(
+                {
+                    "type": "wikipedia",
+                    "title": title,
+                    "authors": "",
+                    "year": "",
+                    "abstract": snippet[:800],
+                    "url": f"https://en.wikipedia.org/wiki/{page_slug}",
+                }
+            )
+        return out
+    except Exception:
+        logger.warning("Wikipedia qidiruv xato (query=%r)", query, exc_info=True)
+        return []
+
+
+def re_sub_html(text: str) -> str:
+    """Wikipedia snippet'idagi <span class="searchmatch">...</span> kabi
+    HTML teglarini tozalaydi."""
+    import re as _re
+
+    return _re.sub(r"<[^>]+>", "", text)
 
 
 def search_pubmed(query: str, retmax: int = 5) -> list[dict]:

@@ -383,6 +383,25 @@ const CASE_FOCUS_HINTS: Record<CaseStudyFocus, string> = {
   tashxis: 'differensial tashxis, qo\'shimcha tekshiruvlar, klinik mantiq, tashxisni asoslash',
 };
 
+/** Har fokus uchun MAJBURIY, bir-biriga o'xshamaydigan bemor profili — 3 ta
+ * vaziyat parallel generatsiya qilingani uchun (bir-biridan xabarsiz), aynan
+ * shu qat'iy demografik farq bo'lmasa, model ko'pincha bir xil ism/yosh/kasb
+ * tanlaydi (masalan hammasi "Anvar"). */
+const CASE_PERSONA_HINTS: Record<CaseStudyFocus, string> = {
+  profilaktika:
+    'Bemor: YOSH (20-35 yosh) AYOL, aniq kasbi bo\'lsin (masalan talaba, sotuvchi, muhandis). ' +
+    'Ism — kam uchraydigan, o\'ziga xos o\'zbekcha ism tanlang (Anvar/Nigora/Shirin/Gulnora kabi ' +
+    'juda keng tarqalgan ismlardan QOCHING).',
+  davolash:
+    'Bemor: O\'RTA YOSHLI (40-55 yosh) ERKAK, aniq kasbi bo\'lsin (masalan haydovchi, dehqon, ' +
+    'tadbirkor). Ism — kam uchraydigan, o\'ziga xos o\'zbekcha ism tanlang (Anvar/Nigora/Shirin/' +
+    'Gulnora kabi juda keng tarqalgan ismlardan QOCHING).',
+  tashxis:
+    'Bemor: KEKSA (60-75 yosh), jinsi ixtiyoriy, nafaqaga chiqqan yoki hali ishlaydigan bo\'lishi ' +
+    'mumkin. Ism — kam uchraydigan, o\'ziga xos o\'zbekcha ism tanlang (Anvar/Nigora/Shirin/Gulnora ' +
+    'kabi juda keng tarqalgan ismlardan QOCHING).',
+};
+
 async function generateSingleCaseQuestion(
   topic: string,
   focus: CaseStudyFocus,
@@ -413,24 +432,30 @@ async function generateSingleCaseQuestion(
       user:
         `${structure}${keywordFocus}${avoid}\n\n` +
         `Generate ONE clinical case with focus="${focus}" (${CASE_FOCUS_HINTS[focus]}). ` +
+        `${CASE_PERSONA_HINTS[focus]}\n` +
         'QATTIQ QOIDALAR:\n' +
-        '1. "scenario" — KENGAYTIRILGAN, kamida 400-600 so\'z (oldingi hajmdan 2-3 hissa ko\'p): bemor ' +
-        'yoshi/jinsi/kasbi, batafsil anamnez (o\'tgan kasalliklar, oilaviy tarix, ijtimoiy holat, hayot tarzi), ' +
-        'shikoyatlarning rivojlanish tarixi (qachon boshlangan, qanday kuchaygan), to\'liq klinik ko\'rik ' +
-        'topilmalari (tizim-tizim bo\'yicha), laborator/instrumental tekshiruv natijalari (aniq raqamlar bilan), ' +
-        'ijtimoiy/oilaviy/psixologik kontekst — real, batafsil bemor tarixiga (case report) o\'xshash TO\'LIQ ' +
-        'klinik rasm chizing, qisqartirmang.\n' +
-        '2. "answer" — KENGAYTIRILGAN, kamida 700-900 so\'z (oldingi hajmdan 50% ko\'p), quyidagi tuzilishda ' +
-        '(mos sarlavhalar bilan, focus\'ga qarab moslashtiring, har bo\'lim batafsil, yuzaki emas):\n' +
+        '1. "scenario" — KENGAYTIRILGAN, kamida 700-800 so\'z: bemor ismi/yoshi/jinsi/kasbi, batafsil ' +
+        'anamnez (o\'tgan kasalliklar, oilaviy tarix, ijtimoiy holat, hayot tarzi), shikoyatlarning ' +
+        'rivojlanish tarixi (qachon boshlangan, qanday kuchaygan, nima yaxshilaydi/yomonlashtiradi), ' +
+        'to\'liq klinik ko\'rik topilmalari (tizim-tizim bo\'yicha: yurak-qon tomir, nafas, asab va h.k.), ' +
+        'laborator/instrumental tekshiruv natijalari (aniq raqamlar bilan), ijtimoiy/oilaviy/psixologik ' +
+        'kontekst — real, batafsil bemor tarixiga (case report) o\'xshash TO\'LIQ klinik rasm chizing, ' +
+        'qisqartirmang.\n' +
+        '2. "answer" — KENGAYTIRILGAN, kamida 1000-1200 so\'z, quyidagi tuzilishda (mos sarlavhalar ' +
+        'bilan, focus\'ga qarab moslashtiring, har bo\'lim chuqur va batafsil, yuzaki emas):\n' +
         '   a) Dastlabki (taxminiy) tashxis va uning to\'liq klinik asoslanishi\n' +
         '   b) Differensial tashxis (kamida 3-4 muqobil tashxis, har biri uchun nega tanlangani/rad etilgani batafsil)\n' +
         '   c) Tavsiya etilgan qo\'shimcha tekshiruvlar (har biri uchun nima uchun kerakligi tushuntirilsin)\n' +
         '   d) Davolash/profilaktika taktikasi, bosqichma-bosqich (dozalar, muqobil variantlar, kuzatuv rejasi)\n' +
         '   e) Amaliy tavsiyalar (bemorga/ota-onaga) va uzoq muddatli prognoz/kuzatuv\n' +
+        '3. Bu 3 ta vaziyatdan FAQAT BITTASI — qolgan ikkitasi boshqa bemor, boshqa ism, boshqa yosh/kasb ' +
+        'bilan alohida generatsiya qilinmoqda. O\'zingizning vaziyatingiz ularnikidan butunlay farq qilishi ' +
+        'shart: umumiy ismlardan (Anvar, Nigora, Shirin, Gulnora, Madina, Iskandar, Odil, Otabek kabi juda ' +
+        'ko\'p ishlatiladigan ismlardan) qoching, o\'ziga xos ism tanlang.\n' +
         (hasContext ? `\nMANBALAR:\n${contextText}\n` : '') +
         (strict ? '\nStrict valid JSON only.' : ''),
-      maxTokens: 7168,
-      temperature: strict ? 0.4 : 0.58,
+      maxTokens: 11000,
+      temperature: strict ? 0.45 : 0.65,
       parse: (t) => parseJSONSafe(t),
     });
 
@@ -492,19 +517,6 @@ function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudyS
     questions: cleanedQuestions,
     references: [],
   };
-}
-
-function isWeakTestSession(data: TestSession | null | undefined, requestedCount: number): boolean {
-  if (!data || !Array.isArray(data.questions)) return true;
-  if (data.questions.length < Math.min(requestedCount, 6)) return true;
-  const badQuestions = data.questions.filter((q) => {
-    const qLen = (q.question || '').trim().length;
-    const expLen = (q.explanation || '').trim().length;
-    const opts = Array.isArray(q.options) ? q.options : [];
-    const badOptions = opts.length !== 5 || opts.some((o) => (o || '').trim().length < 8);
-    return qLen < 80 || expLen < 120 || badOptions;
-  });
-  return badQuestions.length > Math.max(1, Math.floor(data.questions.length * 0.4));
 }
 
 function normalizeTestSession(
@@ -603,12 +615,14 @@ async function attachPerQuestionBookReferences(
 }
 
 /** Keys (klinik vaziyat) uchun RAG manba — backend'dan REAL retrieval orqali
- * keladi (kitob chunk'i yoki PubMed/Semantic Scholar maqolasi). LLM bu
- * ro'yxatni o'zi to'ldirmaydi — faqat shu manbalarni raqami bilan
- * iqtibos qiladi ([1], [2], ...). */
+ * keladi (kitob chunk'i, PubMed/Semantic Scholar maqolasi yoki Wikipedia
+ * maqolasi — ichki VA tashqi internet manbalari). LLM bu ro'yxatni o'zi
+ * to'ldirmaydi — faqat shu manbalarni raqami bilan iqtibos qiladi
+ * ([1], [2], ...), havolalar esa dasturiy ravishda, real API javobidan
+ * biriktiriladi (Vikipediyadagi kabi ishonchli tashqi link'lar). */
 export interface CaseSource {
   index: number;
-  type: 'book' | 'pubmed' | 'scholar';
+  type: 'book' | 'pubmed' | 'scholar' | 'wikipedia';
   title: string;
   authors?: string;
   meta?: string;
@@ -657,7 +671,7 @@ function buildReferencesSection(sources: CaseSource[]): string {
     if (s.type === 'book') {
       return `[${s.index}] ${s.title}${s.meta ? `, ${s.meta}` : ''}`;
     }
-    const kind = s.type === 'pubmed' ? 'PubMed' : 'Semantic Scholar';
+    const kind = s.type === 'pubmed' ? 'PubMed' : s.type === 'wikipedia' ? 'Wikipedia' : 'Semantic Scholar';
     const authorBit = s.authors ? `${s.authors}. ` : '';
     const metaBit = s.meta ? ` (${s.meta})` : '';
     return `[${s.index}] ${authorBit}${s.title}${metaBit}. ${kind}: ${s.url || ''}`.trim();
@@ -665,11 +679,18 @@ function buildReferencesSection(sources: CaseSource[]): string {
   return `\n\nFOYDALANILGAN ADABIYOTLAR:\n${lines.join('\n')}`;
 }
 
+function sourcePublisherLabel(type: CaseSource['type']): string {
+  if (type === 'book') return 'Darslik';
+  if (type === 'pubmed') return 'PubMed';
+  if (type === 'wikipedia') return 'Wikipedia';
+  return 'Semantic Scholar';
+}
+
 function sourcesToMedicalReferences(sources: CaseSource[]): MedicalReference[] {
   return sources.map((s) => ({
     title: s.title,
     ...(s.authors ? { authors: s.authors } : {}),
-    publisher: s.type === 'book' ? 'Darslik' : s.type === 'pubmed' ? 'PubMed' : 'Semantic Scholar',
+    publisher: sourcePublisherLabel(s.type),
     ...(s.url ? { url: s.url } : {}),
     ...(s.type === 'book' && s.meta ? { pages: s.meta.replace(/-bet$/, '') } : {}),
   }));
@@ -677,12 +698,85 @@ function sourcesToMedicalReferences(sources: CaseSource[]): MedicalReference[] {
 
 const ALL_TEST_LANGUAGES: AppLanguage[] = ['uz', 'ru', 'en'];
 
+const UZ_TEXT_MARKERS = [
+  'bemor',
+  'yoshli',
+  'qaysi',
+  'ushbu',
+  'hisoblanadi',
+  'murojaat',
+  'aniqlanadi',
+  'tavsiya',
+  "bo'lib",
+  'shifokorga',
+  'davosida',
+  'maqbul',
+];
+
+function looksLikeUzbekText(text: string): boolean {
+  const s = (text || '').toLowerCase();
+  return UZ_TEXT_MARKERS.reduce((n, m) => n + (s.includes(m) ? 1 : 0), 0) >= 2;
+}
+
+function cyrillicCharCount(text: string): number {
+  let n = 0;
+  for (const ch of text || '') {
+    const code = ch.charCodeAt(0);
+    if (code >= 0x0400 && code <= 0x04ff) n += 1;
+  }
+  return n;
+}
+
 function toTestSessionContent(session: TestSessionContent): TestSessionContent {
   return {
     topic: session.topic,
     questions: session.questions,
     ...(session.references?.length ? { references: session.references } : {}),
   };
+}
+
+/**
+ * Tarjima sifatini tekshiradi.
+ * Eski bug: model yinish/bo'sh qaytarganda original (uz) matn `ru` deb saqlanardi.
+ */
+function isTestTranslationAcceptable(
+  original: TestSessionContent,
+  translated: TestSessionContent,
+  targetLang: AppLanguage,
+): boolean {
+  const srcQs = original.questions || [];
+  const dstQs = translated.questions || [];
+  if (!srcQs.length || dstQs.length !== srcQs.length) return false;
+
+  let identical = 0;
+  let uzLooking = 0;
+  let cyrillicQs = 0;
+  let empty = 0;
+
+  for (let i = 0; i < srcQs.length; i++) {
+    const src = (srcQs[i]?.question || '').trim();
+    const dst = (dstQs[i]?.question || '').trim();
+    const opts = dstQs[i]?.options || [];
+    if (!dst || opts.length !== (srcQs[i]?.options || []).length) {
+      empty += 1;
+      continue;
+    }
+    if (src && dst === src) identical += 1;
+    if (looksLikeUzbekText(dst)) uzLooking += 1;
+    if (cyrillicCharCount(dst) >= 8) cyrillicQs += 1;
+  }
+
+  const n = srcQs.length;
+  if (empty > 0) return false;
+  // 30%+ bir xil matn = tarjima amalda bo'lmagan
+  if (identical > Math.max(1, Math.floor(n * 0.3))) return false;
+  if (targetLang === 'ru') {
+    if (cyrillicQs < Math.ceil(n * 0.6)) return false;
+    if (uzLooking > Math.floor(n * 0.2)) return false;
+  }
+  if (targetLang === 'en' && uzLooking > Math.floor(n * 0.2)) return false;
+  if (targetLang === 'uz' && cyrillicQs > Math.floor(n * 0.2)) return false;
+  return true;
 }
 
 /** Tayyor testni boshqa tilga tarjima qiladi — faktlar/to'g'ri javob o'zgarmaydi, faqat matn. */
@@ -710,6 +804,7 @@ async function translateTestSession(
       '(topic, question, options, explanation, optionExplanations) naturally, including any ' +
       'inline citation phrase like "(Manba: kitob, sahifa-bet)" — translate the label word too ' +
       `("Manba" → "Источник" for Russian, "Source" for English), keeping the book title and page number unchanged. ` +
+      `CRITICAL: Output MUST be entirely in ${outLang}. Do NOT leave any Uzbek/source-language sentences. ` +
       'Return ONLY valid JSON, no markdown fences.',
     user: JSON.stringify(source),
     maxTokens: 8192,
@@ -717,15 +812,23 @@ async function translateTestSession(
     parse: (t) => parseJSONSafe(t),
   });
 
+  if (!Array.isArray(translated.questions) || translated.questions.length !== content.questions.length) {
+    throw new Error(`Translation to ${targetLang} returned incomplete questions`);
+  }
+
   const questions: TestQuestion[] = content.questions.map((original, i) => {
     const t = translated.questions?.[i];
+    const question = (t?.question || '').trim();
+    const options = (t?.options || []).map((o) => (o || '').trim());
+    const explanation = (t?.explanation || '').trim();
+    if (!question || options.length !== original.options.length) {
+      throw new Error(`Translation to ${targetLang} missing fields at question ${i + 1}`);
+    }
     return {
-      question: (t?.question || original.question).trim(),
-      options: (t?.options?.length === original.options.length ? t.options : original.options).map((o) =>
-        (o || '').trim(),
-      ),
+      question,
+      options,
       correctOptionIndex: original.correctOptionIndex,
-      explanation: (t?.explanation || original.explanation || '').trim(),
+      explanation,
       ...(original.optionExplanations
         ? {
             optionExplanations: (
@@ -739,11 +842,15 @@ async function translateTestSession(
     };
   });
 
-  return {
-    topic: (translated.topic || content.topic).trim(),
+  const result: TestSessionContent = {
+    topic: (translated.topic || '').trim() || content.topic,
     questions,
     references: content.references,
   };
+  if (!isTestTranslationAcceptable(content, result, targetLang)) {
+    throw new Error(`Translation to ${targetLang} failed quality check (still source language)`);
+  }
+  return result;
 }
 
 async function translateTestSessionWithRetry(
@@ -956,63 +1063,71 @@ export const aiService = {
     }
   },
 
+  /**
+   * Tez yo‘l: faqat asosiy tilda 1 ta AI so‘rov.
+   * Tarjima + kitob manbalari — `enrichTestSession` (fonda, UI kutmaydi).
+   */
   async generateTests(
     topic: string,
     count: number = 10,
     language: AppLanguage = 'uz',
-    subjectCode?: string,
+    _subjectCode?: string,
   ): Promise<TestSession> {
     assertOpenAiApiKey();
     const safeCount = Math.min(30, Math.max(10, Math.round(count) || 10));
     const outLang = languageName(language);
-    const avoid = await previousTestAvoidBlock(topic);
-    const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
-    const generate = async (requestedCount: number, shortMode: boolean, strict: boolean): Promise<TestSession> => {
+    // Avoid-list ixtiyoriy — timeout bilan, generate’ni ushlab turmasin
+    const avoid = await Promise.race([
+      previousTestAvoidBlock(topic),
+      new Promise<string>((resolve) => setTimeout(() => resolve(''), 800)),
+    ]);
+
+    const generate = async (requestedCount: number): Promise<TestSession> => {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
-      let bookRefs: MedicalReference[] = [];
+      // Tezlik: bookContext/RAG yo‘q (fon enrich’da); optionExplanations yo‘q (token).
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
         system:
           `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: ` +
-          `{topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, optionExplanations[5], references:[]}]}. ` +
-          `explanation — ${shortMode ? '3–5' : '4–6'} to'liq gap (klinik asos, nega to'g'ri). ` +
-          'optionExplanations — HAR variant uchun 1–2 gap. Manba/havola YOZMANG. ' +
-          `Til: ${outLang}. ${jsonReferencesRule(Boolean(bookContext))}`,
+          `{topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, references:[]}]}. ` +
+          'explanation — 1–2 qisqa gap (nega to\'g\'ri). optionExplanations YOZMANG. ' +
+          'Manba/havola YOZMANG. ' +
+          `Til: ${outLang}.`,
         user:
-          `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 2–4 gap, 5 ta variant. ` +
-          `explanation ${shortMode ? '3–5' : '4–6'} gap; optionExplanations qisqa va aniq. ` +
-          `${strict ? 'Faqat valid JSON.' : ''}`,
-        maxTokens: shortMode ? 8192 : 10240,
-        temperature: strict ? 0.4 : 0.55,
+          `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 1–2 gap, 5 ta variant. ` +
+          'explanation qisqa. Faqat valid JSON.',
+        maxTokens: 6144,
+        temperature: 0.45,
         parse: (t) => parseJSONSafe<TestSession>(t),
-        bookContext,
-        onBookReferences: (refs) => {
-          bookRefs = refs;
-        },
       });
-      return normalizeTestSession(topic, parsed, requestedCount, bookRefs);
+      return normalizeTestSession(topic, parsed, requestedCount);
     };
 
-    const base = await (async (): Promise<TestSession> => {
-      try {
-        // Tez yo'l: bitta so'rov (qisqa izohlar) — kerak bo'lsa 1 marta qayta urinish
-        let data = await generate(safeCount, true, false);
-        if (isWeakTestSession(data, safeCount)) {
-          data = await generate(Math.min(safeCount, 12), true, true);
-        }
-        return normalizeTestSession(topic, data, safeCount);
-      } catch (error) {
-        console.warn('Test generation first pass failed, retrying compact…', error);
-        return generate(Math.min(safeCount, 10), true, true);
+    try {
+      let data = await generate(safeCount);
+      // Faqat juda buzilgan bo‘lsa qayta urin (kam savol) — weak sifat uchun ikkinchi to‘liq generate yo‘q
+      if (!data.questions?.length || data.questions.length < Math.min(6, safeCount)) {
+        data = await generate(Math.min(safeCount, 10));
       }
-    })();
+      return { ...normalizeTestSession(topic, data, safeCount), primaryLanguage: language };
+    } catch (error) {
+      console.warn('Test generation failed, compact retry…', error);
+      const data = await generate(Math.min(safeCount, 10));
+      return { ...normalizeTestSession(topic, data, safeCount), primaryLanguage: language };
+    }
+  },
 
-    // Manba biriktirish + 2 til tarjimasi parallel — umumiy kutishni qisqartiradi
+  /** Tarjima (ru/en) + kitob manbalari — generate’dan KEYIN fonda. */
+  async enrichTestSession(
+    session: TestSession,
+    language: AppLanguage = 'uz',
+    subjectCode?: string,
+  ): Promise<TestSession> {
+    const primary = session.primaryLanguage || language;
     const [withRefs, translated] = await Promise.all([
-      attachPerQuestionBookReferences(base, subjectCode),
-      attachTestTranslations(base, language),
+      attachPerQuestionBookReferences(session, subjectCode),
+      attachTestTranslations(session, primary),
     ]);
-
     const translations = translated.translations
       ? Object.fromEntries(
           Object.entries(translated.translations).map(([lang, content]) => [
@@ -1033,7 +1148,7 @@ export const aiService = {
 
     return {
       ...withRefs,
-      primaryLanguage: language,
+      primaryLanguage: primary,
       ...(translations && Object.keys(translations).length
         ? { translations: translations as TestSession['translations'] }
         : {}),

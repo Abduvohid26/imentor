@@ -12,11 +12,17 @@ from core.content_catalog_service import (
 )
 
 
-def _item(pk: int, questions: list, *, references=None) -> SimpleNamespace:
-    payload = {'questions': questions}
+def _item(pk: int, questions: list, *, references=None, translations=None) -> SimpleNamespace:
+    payload = {'questions': questions, 'primaryLanguage': 'uz'}
     if references is not None:
         payload['references'] = references
+    if translations is not None:
+        payload['translations'] = translations
     return SimpleNamespace(pk=pk, payload=payload)
+
+
+def _uz_text(q: dict) -> str:
+    return q['languages']['uz']['question']
 
 
 class CollectUniqueQuestionsTests(TestCase):
@@ -44,11 +50,24 @@ class CollectUniqueQuestionsTests(TestCase):
                     },
                 ],
                 references=[{'title': 'Payload Kitob', 'pages': '99'}],
+                translations={
+                    'ru': {
+                        'questions': [
+                            {'question': 'Вопрос A', 'options': ['1', '2'], 'explanation': ''},
+                            {'question': 'Вопрос B', 'options': ['1', '2'], 'explanation': ''},
+                        ]
+                    },
+                    'en': {
+                        'questions': [
+                            {'question': 'Question A', 'options': ['1', '2'], 'explanation': ''},
+                            {'question': 'Question B', 'options': ['1', '2'], 'explanation': ''},
+                        ]
+                    },
+                },
             ),
             _item(
                 2,
                 [
-                    # dublikat (normalize)
                     {
                         'question': '  savol   a ',
                         'options': ['x', 'y'],
@@ -70,13 +89,14 @@ class CollectUniqueQuestionsTests(TestCase):
         self.assertEqual(scanned, 2)
         self.assertEqual(available, 3)
         self.assertEqual(len(qs), 3)
-        texts = [q['question'] for q in qs]
+        texts = [_uz_text(q) for q in qs]
         self.assertEqual(texts[0], 'Savol A')
+        self.assertEqual(qs[0]['languages']['ru']['question'], 'Вопрос A')
+        self.assertEqual(qs[0]['languages']['en']['question'], 'Question A')
         self.assertEqual(qs[0]['references'][0]['title'], 'Kitob A')
-        # Savol B — payload refs
         self.assertEqual(qs[1]['references'][0]['title'], 'Payload Kitob')
         self.assertEqual(qs[1]['source_test_id'], 1)
-        self.assertEqual(qs[2]['question'], 'Savol C')
+        self.assertEqual(_uz_text(qs[2]), 'Savol C')
         self.assertEqual(qs[2]['source_test_id'], 2)
 
     def test_count_and_shuffle(self):
@@ -98,5 +118,4 @@ class CollectUniqueQuestionsTests(TestCase):
         )
         self.assertEqual(available, 5)
         self.assertEqual(len(qs), 3)
-        # deterministic shuffle with seed
-        self.assertNotEqual([q['question'] for q in qs], ['Q0', 'Q1', 'Q2'])
+        self.assertNotEqual([_uz_text(q) for q in qs], ['Q0', 'Q1', 'Q2'])

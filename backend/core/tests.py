@@ -599,7 +599,11 @@ class PreparedContentApiTests(TestCase):
         self.assertEqual(body['count_available'], 19)
         self.assertEqual(body['count_returned'], 10)
         self.assertEqual(len(body['questions']), 10)
-        keys = [' '.join(q['question'].lower().split()) for q in body['questions']]
+        self.assertIn('available_languages', body)
+        keys = [
+            ' '.join(q['languages']['uz']['question'].lower().split())
+            for q in body['questions']
+        ]
         self.assertEqual(len(keys), len(set(keys)))
 
         all_qs = self.client.get(
@@ -613,13 +617,13 @@ class PreparedContentApiTests(TestCase):
         one = next(
             q
             for q in all_body['questions']
-            if ' '.join(q['question'].lower().split()) == 'unique one'
+            if ' '.join(q['languages']['uz']['question'].lower().split()) == 'unique one'
         )
         self.assertEqual(one['references'][0]['title'], 'PerQ Book')
         shared = next(
             q
             for q in all_body['questions']
-            if ' '.join(q['question'].lower().split()) == 'shared dup'
+            if ' '.join(q['languages']['uz']['question'].lower().split()) == 'shared dup'
         )
         self.assertEqual(shared['references'][0]['title'], 'Payload Book')
         self.assertIn(shared['source_test_id'], (pk1, pk2))
