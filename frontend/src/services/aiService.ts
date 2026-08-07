@@ -4,6 +4,7 @@ import type { PresentationContent } from '../utils/presentationContentSchema';
 import {
   PRESENTATION_JSON_SCHEMA,
   normalizePresentationContent,
+  withPresentationReferences,
 } from '../utils/presentationContentSchema';
 import { qaPresentationContent } from '../utils/presentationQa';
 import { resolvePresentationImages } from '../utils/presentationImages';
@@ -923,11 +924,12 @@ async function requestPresentationDeckFromAi(params: {
     'Har slaydda MAX 5 bullet. HAR bullet MINIMUM 15, MAXIMUM 36 so\'z: ' +
     'faqat atama emas — nima ekanligi, qanday ishlashi yoki klinik ahamiyati tushuntirilsin. ' +
     'Qisqa 2–4 so\'zli tezislar TAQIQLANGAN. ' +
-    '8–12 slayd; slide_type: title, agenda, content_bullets (2–3), statistics, ' +
+    '8–11 slayd; slide_type: title, agenda, content_bullets (2–3), statistics, ' +
     'comparison_table yoki process_flow, case_study, image_focus, summary — aralashtir, ketma-ket bir xil bo\'lmasin. ' +
     'content_bullets / image_focus / case_study / two_column uchun image_query MAJBURIY ' +
     '(inglizcha tibbiy anatomiya/diagramma kalit so\'zi, masalan "human skin layers epidermis dermis diagram"). ' +
     'summary bulletlari "Sarlavha: tushuntirish" formatida bo\'lsin. ' +
+    'references / "Foydalanilgan manbalar" slaydini YOZMA — tizim oxirida haqiqiy ichki/tashqi manbalarni qo\'shadi. ' +
     `Til: ${outLang}. ` +
     (bookContext
       ? 'Darslik parchalariga tayan; o\'ylab topilgan manba yozma.'
@@ -978,10 +980,72 @@ async function requestPresentationDeckFromAi(params: {
     subject: params.subjectName,
     author: 'iMentor',
   });
+  // AI references slaydini olib tashlaymiz — keyin haqiqiy manbalar qo‘shiladi.
+  content = {
+    ...content,
+    slides: content.slides.filter((s) => s.slide_type !== 'references'),
+  };
   qaPresentationContent(content);
   params.onProgress?.('Rasmlar…');
   content = await resolvePresentationImages(content);
+
+  params.onProgress?.('Manbalar…');
+  content = await attachPresentationReferences(content, {
+    topicTitle: params.topicTitle,
+    subjectCode: params.subjectCode,
+    language: params.language,
+  });
   return content;
+}
+
+function presentationReferencesTitle(language: AppLanguage): string {
+  if (language === 'ru') return 'Использованные источники';
+  if (language === 'en') return 'References';
+  return 'Foydalanilgan manbalar';
+}
+
+function dedupePresentationRefs(refs: MedicalReference[]): MedicalReference[] {
+  const out: MedicalReference[] = [];
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    if (!ref?.title?.trim()) continue;
+    const key = `${ref.title.trim().toLowerCase()}|${ref.pages || ''}|${ref.url || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out.slice(0, 12);
+}
+
+/** Ichki (kitob+bet) + tashqi (PubMed/Scholar/Wikipedia) + rasm kreditlari. */
+async function attachPresentationReferences(
+  content: PresentationContent,
+  opts: { topicTitle: string; subjectCode?: string; language: AppLanguage },
+): Promise<PresentationContent> {
+  const { sources } = await fetchCaseContext(opts.topicTitle, opts.subjectCode);
+  const fromRag = sourcesToMedicalReferences(sources);
+
+  const imageRefs: MedicalReference[] = [];
+  const seenCredits = new Set<string>();
+  for (const slide of content.slides) {
+    const credit = (slide.imageCredit || '').trim();
+    if (!credit || seenCredits.has(credit)) continue;
+    seenCredits.add(credit);
+    imageRefs.push({
+      title: credit,
+      publisher: 'Wikimedia Commons',
+      url: 'https://commons.wikimedia.org/',
+      note: 'Slayd rasmi',
+    });
+  }
+
+  const refs = dedupePresentationRefs([...fromRag, ...imageRefs]);
+  if (!refs.length) return content;
+  return withPresentationReferences(
+    content,
+    refs,
+    presentationReferencesTitle(opts.language),
+  );
 }
 
 export const aiService = {

@@ -1,4 +1,5 @@
 /** Content Layer — LLM structured output (dizayndan mustaqil). */
+import type { MedicalReference } from './medicalReferences';
 
 export const SLIDE_TYPES = [
   'title',
@@ -46,6 +47,8 @@ export type PresentationContent = {
   subject_area: string;
   author: string;
   slides: ContentSlide[];
+  /** Dasturiy biriktirilgan ichki/tashqi manbalar (oxirgi slayd). */
+  references?: MedicalReference[];
 };
 
 /** Eski saqlangan deck: { title, slides: [{ title, bullets, notes }] } */
@@ -55,6 +58,9 @@ export type LegacyPresentationDeck = {
 };
 
 export const MAX_BULLETS = 5;
+/** Manbalar slaydi — ko‘proq qator va uzunroq (kitob+bet / URL). */
+export const MAX_REFERENCE_BULLETS = 12;
+export const MAX_REFERENCE_WORDS = 48;
 /** Qisqa atama emas — har bullet tushuntirish bilan (15–36 so‘z). */
 export const MIN_WORDS_PER_BULLET = 15;
 export const MAX_WORDS_PER_BULLET = 36;
@@ -84,6 +90,14 @@ function normalizeBullets(raw: unknown): string[] {
     .slice(0, MAX_BULLETS);
 }
 
+function normalizeReferenceBullets(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((b) => clipWords(String(b || '').trim(), MAX_REFERENCE_WORDS))
+    .filter((b) => b.length >= 3)
+    .slice(0, MAX_REFERENCE_BULLETS);
+}
+
 function defaultImageQuery(title: string, subject: string): string {
   const t = title.replace(/\s+/g, ' ').trim().slice(0, 60);
   const s = subject.replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -101,7 +115,8 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
   const b = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const body: SlideBody = {};
 
-  body.bullets = normalizeBullets(b.bullets);
+  body.bullets =
+    slideType === 'references' ? normalizeReferenceBullets(b.bullets) : normalizeBullets(b.bullets);
 
   if (b.key_stat && typeof b.key_stat === 'object') {
     const ks = b.key_stat as Record<string, unknown>;
@@ -117,8 +132,8 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
       .map((row) => {
         const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
         return {
-          number: String(r.number || '').trim().slice(0, 24),
-          label: clipWords(String(r.label || ''), 10),
+          number: String(r.number || r.value || '').trim().slice(0, 24),
+          label: clipWords(String(r.label || ''), 16),
         };
       })
       .filter((x) => x.number || x.label);
@@ -131,7 +146,7 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
       const c = col && typeof col === 'object' ? (col as Record<string, unknown>) : {};
       return {
         heading: clipWords(String(c.heading || ''), 8),
-        points: normalizeBullets(c.points),
+        points: normalizeBullets(c.points ?? c.bullets),
       };
     });
   }
@@ -140,9 +155,9 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
     body.comparison_rows = b.comparison_rows.slice(0, 6).map((row) => {
       const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
       return {
-        criteria: clipWords(String(r.criteria || ''), 8),
-        left: clipWords(String(r.left || ''), 10),
-        right: clipWords(String(r.right || ''), 10),
+        criteria: clipWords(String(r.criteria || r.criterion || ''), 12),
+        left: clipWords(String(r.left || ''), 14),
+        right: clipWords(String(r.right || ''), 14),
       };
     });
   }
@@ -152,8 +167,8 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
       const s = step && typeof step === 'object' ? (step as Record<string, unknown>) : {};
       return {
         step_number: Number(s.step_number) || i + 1,
-        label: clipWords(String(s.label || ''), 6),
-        description: clipWords(String(s.description || ''), 24),
+        label: clipWords(String(s.label || s.title || ''), 10),
+        description: clipWords(String(s.description || s.detail || ''), 28),
       };
     });
   }
@@ -164,14 +179,15 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
   return body;
 }
 
+/** Faqat bullet/rasm tip larini almashtir — statistics/agenda ga majburan o'tkazma. */
 function diversifyTypes(slides: ContentSlide[]): ContentSlide[] {
   if (slides.length < 2) return slides;
+  const swappable: SlideType[] = ['content_bullets', 'image_focus', 'two_column', 'case_study'];
   const out = [...slides];
   for (let i = 1; i < out.length; i++) {
     if (out[i].slide_type !== out[i - 1].slide_type) continue;
-    const alt = SLIDE_TYPES.find(
-      (t) => t !== out[i].slide_type && t !== out[i - 1].slide_type && t !== 'title',
-    );
+    if (!swappable.includes(out[i].slide_type)) continue;
+    const alt = swappable.find((t) => t !== out[i].slide_type);
     if (alt) out[i] = { ...out[i], slide_type: alt };
   }
   return out;
@@ -460,9 +476,75 @@ export function normalizePresentationContent(
     slides[0] = { ...slides[0], slide_type: 'title' };
   }
 
-  slides = diversifyTypes(slides).slice(0, MAX_SLIDES);
+  const refSlides = slides.filter((s) => s.slide_type === 'references');
+  const mainSlides = diversifyTypes(slides.filter((s) => s.slide_type !== 'references')).slice(
+    0,
+    MAX_SLIDES,
+  );
+  slides = refSlides.length ? [...mainSlides, refSlides[refSlides.length - 1]] : mainSlides;
 
-  return { presentation_title, subject_area, author, slides };
+  const topRefs = Array.isArray((raw as { references?: unknown } | null)?.references)
+    ? ((raw as { references: MedicalReference[] }).references || []).filter(
+        (r) => r && typeof r === 'object' && String(r.title || '').trim(),
+      )
+    : undefined;
+
+  return {
+    presentation_title,
+    subject_area,
+    author,
+    slides,
+    ...(topRefs?.length ? { references: topRefs.slice(0, MAX_REFERENCE_BULLETS) } : {}),
+  };
+}
+
+/** Ichki: kitob + bet; tashqi: nom + havola. */
+export function formatPresentationReferenceLine(ref: MedicalReference): string {
+  const title = String(ref.title || '').trim();
+  if (!title) return '';
+  const pages = String(ref.pages || '')
+    .replace(/-bet$/i, '')
+    .trim();
+  if (pages) return `${title} — ${pages}-bet`;
+  const url = String(ref.url || '').trim();
+  if (url) return `${title} — ${url}`;
+  return title;
+}
+
+export function buildPresentationReferencesSlide(params: {
+  title: string;
+  references: MedicalReference[];
+}): ContentSlide | null {
+  const bullets = params.references
+    .map(formatPresentationReferenceLine)
+    .filter(Boolean)
+    .slice(0, MAX_REFERENCE_BULLETS);
+  if (!bullets.length) return null;
+  return {
+    slide_type: 'references',
+    title: params.title,
+    subtitle: '',
+    body: { bullets },
+    speaker_notes: '',
+  };
+}
+
+/** Oxiriga manbalar slaydini qo‘yadi (AI o‘rniga tizim). */
+export function withPresentationReferences(
+  content: PresentationContent,
+  references: MedicalReference[],
+  title = 'Foydalanilgan manbalar',
+): PresentationContent {
+  const cleaned = references
+    .filter((r) => r && String(r.title || '').trim())
+    .slice(0, MAX_REFERENCE_BULLETS);
+  const slide = buildPresentationReferencesSlide({ title, references: cleaned });
+  const main = content.slides.filter((s) => s.slide_type !== 'references');
+  return {
+    ...content,
+    slides: slide ? [...main, slide] : main,
+    ...(cleaned.length ? { references: cleaned } : {}),
+  };
 }
 
 /** Eski deck → yangi content (tarix mosligi). */
@@ -475,7 +557,11 @@ export function coercePresentationContent(
   }
   const obj = raw as Record<string, unknown>;
   if (Array.isArray(obj.slides) && typeof obj.presentation_title === 'string') {
-    return normalizePresentationContent(obj as Partial<PresentationContent>, defaults);
+    const normalized = normalizePresentationContent(obj as Partial<PresentationContent>, defaults);
+    if (Array.isArray(obj.references) && obj.references.length && !normalized.references?.length) {
+      return { ...normalized, references: obj.references as MedicalReference[] };
+    }
+    return normalized;
   }
   // legacy
   const legacy = obj as LegacyPresentationDeck;

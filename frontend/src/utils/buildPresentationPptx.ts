@@ -840,6 +840,60 @@ function layoutSummary(
   addFooter(s, deckTitle, page, total);
 }
 
+function layoutReferences(
+  s: PptxSlide,
+  slide: ContentSlide,
+  meta: PresentationBuildMeta,
+  deckTitle: string,
+  page: number,
+  total: number,
+): void {
+  s.background = { color: C.bgLight };
+  addHeaderBadge(s, meta);
+  s.addText(slide.title || 'Foydalanilgan manbalar', {
+    x: M,
+    y: 0.7,
+    w: 12.2,
+    h: 0.45,
+    fontSize: 24,
+    bold: true,
+    color: C.primary,
+    fontFace: F.heading,
+  });
+  const bullets = slidePreviewBullets(slide).slice(0, 12);
+  const rowH = Math.min(0.52, 5.6 / Math.max(bullets.length, 1));
+  const fontSize = autofitFontSize(bullets.join(' '), {
+    base: 13,
+    min: 10,
+    softMaxChars: 700,
+  });
+  bullets.forEach((b, i) => {
+    const y = 1.3 + i * rowH;
+    s.addText(`${i + 1}.`, {
+      x: M,
+      y,
+      w: 0.4,
+      h: rowH,
+      fontSize,
+      bold: true,
+      color: C.accent,
+      fontFace: F.body,
+      valign: 'top',
+    });
+    s.addText(b, {
+      x: M + 0.45,
+      y,
+      w: 11.7,
+      h: rowH,
+      fontSize,
+      color: C.textDark,
+      fontFace: F.body,
+      valign: 'top',
+    });
+  });
+  addFooter(s, deckTitle, page, total);
+}
+
 function renderSlide(
   s: PptxSlide,
   slide: ContentSlide,
@@ -880,8 +934,10 @@ function renderSlide(
       layoutCaseStudy(s, slide, meta, deckTitle, page, total);
       break;
     case 'summary':
-    case 'references':
       layoutSummary(s, slide, meta, deckTitle, page, total);
+      break;
+    case 'references':
+      layoutReferences(s, slide, meta, deckTitle, page, total);
       break;
     default:
       layoutContentBullets(s, slide, meta, deckTitle, page, total);
