@@ -654,20 +654,6 @@ export default function App() {
             }}
           />
         </div>
-      ) : userRole === 'hodim' && teachingSubjectsReady === null ? (
-        <div className="min-h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#eef6ff] via-[#f5f8ff] to-[#f3f0ff] text-slate-500">
-          <Loader2 size={40} className="animate-spin text-blue-500" />
-          <p className="text-sm font-medium">{translate(language, 'teachingSubjects.loading')}</p>
-        </div>
-      ) : userRole === 'hodim' && teachingSubjectsReady === false ? (
-        <div className="min-h-[100dvh] w-full flex items-center justify-center bg-gradient-to-br from-[#eef6ff] via-[#f5f8ff] to-[#f3f0ff] p-4 sm:p-8 overflow-y-auto">
-          <div className="w-full max-w-3xl ios-glass rounded-[2rem] border border-white/60 shadow-xl p-6 sm:p-10">
-            <StaffTeachingSubjectsPicker
-              variant="onboarding"
-              onSaved={() => setTeachingSubjectsReady(true)}
-            />
-          </div>
-        </div>
       ) : (
       <>
       <div className="flex flex-col h-[100dvh] min-h-0 w-full relative overflow-hidden bg-gradient-to-br from-[#eef6ff] via-[#f5f8ff] to-[#f3f0ff] text-[#1c1c1e] selection:bg-sky-500/30">
@@ -864,20 +850,36 @@ export default function App() {
 
           {/* Main View Port — extra bottom padding on phones for tab bar */}
           <div className="flex-1 overflow-y-auto scrollbar-hide rounded-2xl sm:rounded-[2rem] min-h-0 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-0">
-            {mountedViews.map((view) => {
-              const isActive = activeView === view;
-              return (
-                <motion.div
-                  key={view}
-                  initial={isActive ? { opacity: 0, scale: 0.98, y: 10 } : false}
-                  animate={isActive ? { opacity: 1, scale: 1, y: 0 } : false}
-                  transition={isActive ? { duration: 0.25, ease: [0.22, 1, 0.36, 1] } : undefined}
-                  className={isActive ? 'min-h-0' : 'hidden'}
-                >
-                  {renderContent(view)}
-                </motion.div>
-              );
-            })}
+            {userRole === 'hodim' && teachingSubjectsReady === null ? (
+              <div className="h-full min-h-[50vh] flex flex-col items-center justify-center gap-3 text-slate-500">
+                <Loader2 size={40} className="animate-spin text-blue-500" />
+                <p className="text-sm font-medium">{translate(language, 'teachingSubjects.loading')}</p>
+              </div>
+            ) : userRole === 'hodim' && teachingSubjectsReady === false ? (
+              <div className="w-full h-full min-h-[50vh] p-3 sm:p-5 lg:p-6">
+                <div className="ios-glass rounded-[2rem] border border-white/60 shadow-sm p-5 sm:p-8 max-w-4xl">
+                  <StaffTeachingSubjectsPicker
+                    variant="onboarding"
+                    onSaved={() => setTeachingSubjectsReady(true)}
+                  />
+                </div>
+              </div>
+            ) : (
+              mountedViews.map((view) => {
+                const isActive = activeView === view;
+                return (
+                  <motion.div
+                    key={view}
+                    initial={isActive ? { opacity: 0, scale: 0.98, y: 10 } : false}
+                    animate={isActive ? { opacity: 1, scale: 1, y: 0 } : false}
+                    transition={isActive ? { duration: 0.25, ease: [0.22, 1, 0.36, 1] } : undefined}
+                    className={isActive ? 'min-h-0' : 'hidden'}
+                  >
+                    {renderContent(view)}
+                  </motion.div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>

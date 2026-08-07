@@ -29,6 +29,10 @@ type Props = {
   questionCountMin?: number;
   questionCountMax?: number;
   questionCountLabel?: string;
+  /** Panelda allaqachon faol kontent ko'rsatilayotgan bo'lsa (masalan yangi yaratilgan test/QR),
+   *  "Hali saqlangan variant yo'q" degan chalkashtiruvchi maslahat ko'rsatilmaydi —
+   *  fon saqlash jarayoni tugamagan bo'lishi mumkin, lekin kontent allaqachon foydalanuvchiga ko'rinadi. */
+  hasUnsavedActiveContent?: boolean;
 };
 
 function formatWhen(ts: number, locale: string): string {
@@ -57,6 +61,7 @@ export default function ContentTopicToolbar({
   onDeleteVersion,
   versionsTitle,
   lockTopicFromSyllabus = false,
+  hasUnsavedActiveContent = false,
   extra,
   questionCount,
   onQuestionCountChange,
@@ -175,7 +180,7 @@ export default function ContentTopicToolbar({
           </div>
         )}
 
-        {!loading && versions.length === 0 && topicValue.trim() && (
+        {!loading && versions.length === 0 && topicValue.trim() && !hasUnsavedActiveContent && (
           <p className="text-[12px] text-black/45">{t('toolbar.noVersions', { action: createLabel })}</p>
         )}
       </div>

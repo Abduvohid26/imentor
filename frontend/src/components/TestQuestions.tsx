@@ -245,7 +245,7 @@ export default function TestQuestions() {
       `${window.location.origin}${window.location.pathname}?mode=student&sid=${encodeURIComponent(sid)}`
     );
     setSubmissions([]);
-    setShowAnalysis(true);
+    setShowAnalysis(false);
     writeStoredTeacherSid(data.topic, sid);
     return sid;
   };
@@ -255,7 +255,7 @@ export default function TestQuestions() {
   const [joinUrl, setJoinUrl] = useState('');
   const [joinQrDataUrl, setJoinQrDataUrl] = useState('');
   const [submissions, setSubmissions] = useState<TestSubmissionDoc[]>([]);
-  const [showAnalysis, setShowAnalysis] = useState(true);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const [downloadingKeyPdf, setDownloadingKeyPdf] = useState(false);
   const [downloadingResultsPdf, setDownloadingResultsPdf] = useState(false);
   const [sessionClosed, setSessionClosed] = useState(false);
@@ -593,7 +593,7 @@ export default function TestQuestions() {
       const reused = tryReuseTeacherSessionId(data);
       void setupTeacherLiveSession(data, reused ?? undefined);
       setActiveVersionId(id);
-      setShowAnalysis(true);
+      setShowAnalysis(false);
       setError(null);
     })();
   };
@@ -961,6 +961,7 @@ export default function TestQuestions() {
         activeVersionId={activeVersionId}
         onSelectVersion={handleSelectVersion}
         versionsTitle={t('test.savedVersions')}
+        hasUnsavedActiveContent={Boolean(testSession)}
       />
 
       {error && <StaffErrorAlert message={error} />}
