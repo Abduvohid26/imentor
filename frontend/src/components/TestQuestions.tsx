@@ -7,11 +7,10 @@ import {
   Copy,
   Users,
   Send,
-  BarChart3,
   Download,
-  FileText,
   KeyRound,
   Lock,
+  ArrowLeft,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { aiService, TestSession, TestQuestion } from '../services/aiService';
@@ -53,7 +52,6 @@ import { LIVE_SESSION_PREFIX, LIVE_SUBMISSIONS_PREFIX } from '../utils/liveTestS
 import MedicalReferencesList from './staff/MedicalReferencesList';
 import {
   downloadTestAnswerKeyPdf,
-  downloadTestQuestionsPdf,
   downloadTestResultsPdf,
 } from '../utils/buildTestPdf';
 import { gradeBadgeClass, scoreToGrade } from '../utils/testGrading';
@@ -235,18 +233,14 @@ export default function TestQuestions() {
       `${window.location.origin}${window.location.pathname}?mode=student&sid=${encodeURIComponent(sid)}`
     );
     setSubmissions([]);
-    setShowAnalysis(false);
-    writeStoredTeacherSid(data.topic, sid);
-    return sid;
-  };
+    setShowAnalysis(true);
 
   const [error, setError] = useState<string | null>(null);
   const [teacherSessionId, setTeacherSessionId] = useState<string>('');
   const [joinUrl, setJoinUrl] = useState('');
   const [joinQrDataUrl, setJoinQrDataUrl] = useState('');
   const [submissions, setSubmissions] = useState<TestSubmissionDoc[]>([]);
-  const [showAnalysis, setShowAnalysis] = useState(false);
-  const [downloadingTestPdf, setDownloadingTestPdf] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(true);
   const [downloadingKeyPdf, setDownloadingKeyPdf] = useState(false);
   const [downloadingResultsPdf, setDownloadingResultsPdf] = useState(false);
   const [sessionClosed, setSessionClosed] = useState(false);
@@ -525,19 +519,12 @@ export default function TestQuestions() {
     }
   };
 
-  const handleViewAnalysis = async () => {
-    if (!sessionClosed) {
-      const ok = await handleFinalizeSession();
-      if (!ok) return;
-    }
-    setShowAnalysis(true);
+  const handleViewResults = () => {
+    setShowAnalysis(false);
   };
 
-  const handleViewResults = async () => {
-    if (!sessionClosed) {
-      await handleFinalizeSession();
-    }
-    setShowAnalysis(false);
+  const handleBackToQuestions = () => {
+    setShowAnalysis(true);
   };
 
   useEffect(() => {
@@ -552,7 +539,7 @@ export default function TestQuestions() {
       const reused = tryReuseTeacherSessionId(data);
       void setupTeacherLiveSession(data, reused ?? undefined);
       setActiveVersionId(id);
-      setShowAnalysis(false);
+      setShowAnalysis(true);
       setError(null);
     })();
   };
@@ -630,19 +617,6 @@ export default function TestQuestions() {
 
   const calculateScore = (answers: number[], questions: TestQuestion[]) => {
     return answers.filter((a, i) => a === questions[i].correctOptionIndex).length;
-  };
-
-  const handleDownloadTestPdf = async () => {
-    if (!testSession) return;
-    setDownloadingTestPdf(true);
-    try {
-      await downloadTestQuestionsPdf(testSession, language);
-    } catch (err) {
-      console.error('Test PDF error:', err);
-      setError(t('test.errorPdf'));
-    } finally {
-      setDownloadingTestPdf(false);
-    }
   };
 
   const handleDownloadKeyPdf = async () => {
@@ -964,10 +938,6 @@ export default function TestQuestions() {
                       ))}
                     </div>
                   )}
-                  <StaffToolbarButton onClick={() => void handleDownloadTestPdf()} disabled={downloadingTestPdf}>
-                    {downloadingTestPdf ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                    {t('test.downloadTestPdf')}
-                  </StaffToolbarButton>
                   <StaffToolbarButton onClick={() => void handleDownloadKeyPdf()} disabled={downloadingKeyPdf}>
                     {downloadingKeyPdf ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
                     {t('test.downloadKeyPdf')}
@@ -981,9 +951,6 @@ export default function TestQuestions() {
                   </StaffToolbarButton>
                 </div>
               </div>
-              {displayedTest.references && displayedTest.references.length > 0 && (
-                <MedicalReferencesList references={displayedTest.references} />
-              )}
 
               {sessionClosed && (
                 <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
@@ -1023,6 +990,7 @@ export default function TestQuestions() {
                         className="flex-1 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-xs"
                       />
                       <button
+                        type="button"
                         onClick={async () => {
                           await navigator.clipboard.writeText(joinUrl);
                         }}
@@ -1031,37 +999,31 @@ export default function TestQuestions() {
                         <Copy size={16} /> {t('common.link')}
                       </button>
                     </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => void handleViewResults()}
-                        disabled={finalizing}
-                        className={`px-4 py-2 rounded-xl font-semibold ${!showAnalysis ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-                      >
-                        {finalizing ? <Loader2 size={16} className="inline mr-1 animate-spin" /> : <Users size={16} className="inline mr-1" />}
-                        {t('test.viewResults')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleViewAnalysis()}
-                        disabled={finalizing}
-                        className={`px-4 py-2 rounded-xl font-semibold ${showAnalysis ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-                      >
-                        <BarChart3 size={16} className="inline mr-1" /> {t('test.viewAnalysis')}
-                      </button>
-                      {!sessionClosed && (
-                        <button
-                          type="button"
-                          onClick={() => void handleFinalizeSession()}
-                          disabled={finalizing}
-                          className="px-4 py-2 rounded-xl font-semibold bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50"
-                        >
-                          {finalizing ? <Loader2 size={16} className="inline mr-1 animate-spin" /> : <Lock size={16} className="inline mr-1" />}
-                          {t('test.finalizeSession')}
-                        </button>
-                      )}
-                    </div>
                   </div>
+                </div>
+              )}
+
+              {(joinUrl || teacherSessionId) && (
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleViewResults}
+                    className={`px-4 py-2 rounded-xl font-semibold ${!showAnalysis ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  >
+                    <Users size={16} className="inline mr-1" />
+                    {t('test.viewResults')}
+                  </button>
+                  {!sessionClosed && (
+                    <button
+                      type="button"
+                      onClick={() => void handleFinalizeSession()}
+                      disabled={finalizing}
+                      className="px-4 py-2 rounded-xl font-semibold bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
+                    >
+                      {finalizing ? <Loader2 size={16} className="inline mr-1 animate-spin" /> : <Lock size={16} className="inline mr-1" />}
+                      {t('test.finalizeSession')}
+                    </button>
+                  )}
                 </div>
               )}
             </StaffPanel>
@@ -1069,7 +1031,17 @@ export default function TestQuestions() {
             {!showAnalysis ? (
               <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
                 <div className="px-4 py-3 border-b bg-gray-50 font-semibold text-gray-700 flex items-center justify-between gap-3 flex-wrap">
-                  <span>{t('test.resultsTitle')} ({submissions.length})</span>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleBackToQuestions}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      <ArrowLeft size={16} />
+                      {t('test.backToQuestions')}
+                    </button>
+                    <span>{t('test.resultsTitle')} ({submissions.length})</span>
+                  </div>
                   {sessionClosed && (
                     <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
                       {t('test.sessionFinalized')}
@@ -1171,6 +1143,9 @@ export default function TestQuestions() {
                     </div>
                   </div>
                 ))}
+                {displayedTest.references && displayedTest.references.length > 0 && (
+                  <MedicalReferencesList references={displayedTest.references} />
+                )}
               </div>
             )}
 
