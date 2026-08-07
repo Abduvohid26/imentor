@@ -81,6 +81,7 @@ from .views import (
     AdminCampusBuildingListCreateView,
     AdminLiveTeachingStatusView,
     AdminLiveTestStatsView,
+    AdminLiveTestSubmissionsView,
     AdminStaffLocationAlertsView,
     AdminStaffLocationPingsView,
     AdminStaffScheduleBulkView,
@@ -232,4 +233,5 @@ urlpatterns = [
     path('v1/admin/staff-location-alerts/', AdminStaffLocationAlertsView.as_view(), name='admin-staff-location-alerts'),
     path('v1/admin/live-teaching-status/', AdminLiveTeachingStatusView.as_view(), name='admin-live-teaching-status'),
     path('v1/admin/live-test-stats/', AdminLiveTestStatsView.as_view(), name='admin-live-test-stats'),
+    path('v1/admin/live-test-submissions/', AdminLiveTestSubmissionsView.as_view(), name='admin-live-test-submissions'),
 ]

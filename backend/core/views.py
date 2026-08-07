@@ -1371,3 +1371,42 @@ class AdminLiveTestStatsView(APIView):
                 }
             )
         return Response({'results': data})
+
+
+class AdminLiveTestSubmissionsView(APIView):
+    """Har bir talabaning jonli test (QR) topshirig'i — sahifalangan, fan bo'yicha filtrlanadi."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request):
+        subject_code = (request.query_params.get('subject_code') or '').strip()
+        qs = LiveTestSubmission.objects.select_related('session').order_by('-submitted_at')
+        if subject_code:
+            qs = qs.filter(session__subject_code=subject_code)
+
+        codes = set(qs.values_list('session__subject_code', flat=True))
+        subjects = dict(
+            CourseSyllabus.objects.filter(subject_code__in=codes).values_list('subject_code', 'subject_name')
+        )
+
+        def _map(sub: LiveTestSubmission) -> dict:
+            payload = sub.session.payload if isinstance(sub.session.payload, dict) else {}
+            questions = payload.get('questions', [])
+            correct, total = _score_submission(questions if isinstance(questions, list) else [], sub.answers)
+            code = sub.session.subject_code or ''
+            return {
+                'id': sub.id,
+                'session_key': sub.session.session_key,
+                'topic': str(payload.get('topic') or ''),
+                'subject_code': code,
+                'subject_name': subjects.get(code, ''),
+                'student_id': sub.student_id or '',
+                'first_name': sub.first_name,
+                'last_name': sub.last_name,
+                'score': correct,
+                'total': total,
+                'submitted_at': sub.submitted_at.isoformat(),
+            }
+
+        return paginated_response(qs, request, default_page_size=50, max_page_size=200, mapper=_map)

@@ -359,3 +359,72 @@ export async function fetchAdminLiveTestStats(): Promise<AdminLiveTestStatRow[]>
     avgScorePct: r.avg_score_pct,
   }));
 }
+
+export type AdminLiveTestSubmissionRow = {
+  id: number;
+  sessionKey: string;
+  topic: string;
+  subjectCode: string;
+  subjectName: string;
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  score: number;
+  total: number;
+  submittedAt: number;
+};
+
+/** Admin: har bir talabaning jonli test (QR) topshirig'i — sahifalangan, fan bo'yicha filtrlanadi. */
+export async function fetchAdminLiveTestSubmissions(params?: {
+  subjectCode?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ results: AdminLiveTestSubmissionRow[]; count: number; page: number; pageSize: number }> {
+  const token = await getBackendAccessToken();
+  if (!token) return { results: [], count: 0, page: 1, pageSize: 50 };
+  const query = new URLSearchParams();
+  if (params?.subjectCode) query.set('subject_code', params.subjectCode);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.pageSize) query.set('page_size', String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const data = await httpJson<{
+    count: number;
+    page: number;
+    page_size: number;
+    results: Array<{
+      id: number;
+      session_key: string;
+      topic: string;
+      subject_code: string;
+      subject_name: string;
+      student_id: string;
+      first_name: string;
+      last_name: string;
+      score: number;
+      total: number;
+      submitted_at: string;
+    }>;
+  }>(`${apiBaseUrl()}/v1/admin/live-test-submissions/${suffix}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeoutMs: 30000,
+  });
+  const results = Array.isArray(data.results) ? data.results : [];
+  return {
+    count: data.count ?? 0,
+    page: data.page ?? 1,
+    pageSize: data.page_size ?? 50,
+    results: results.map((r) => ({
+      id: r.id,
+      sessionKey: r.session_key,
+      topic: r.topic || '',
+      subjectCode: r.subject_code || '',
+      subjectName: r.subject_name || '',
+      studentId: r.student_id || '',
+      firstName: r.first_name,
+      lastName: r.last_name,
+      score: r.score,
+      total: r.total,
+      submittedAt: Date.parse(r.submitted_at),
+    })),
+  };
+}

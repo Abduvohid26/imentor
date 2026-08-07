@@ -20,6 +20,7 @@ import {
   type CatalogStats,
 } from '../../utils/contentCatalogApi';
 import { useUiText } from '../../i18n/useUiText';
+import AdminLiveTestResultsTab from './AdminLiveTestResultsTab';
 
 function StatChip({ label, value }: { label: string; value: number | string }) {
   return (
@@ -38,6 +39,7 @@ export default function AdminTestsLibrary() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [fanFilter, setFanFilter] = useState('');
+  const [tab, setTab] = useState<'bank' | 'results'>('bank');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,6 +123,31 @@ export default function AdminTestsLibrary() {
         </button>
       </div>
 
+      <div className="flex gap-2 border-b border-black/5 pb-1">
+        <button
+          type="button"
+          onClick={() => setTab('bank')}
+          className={`px-4 py-2 rounded-t-xl text-[13px] font-semibold ${
+            tab === 'bank' ? 'bg-white text-indigo-700 shadow-sm' : 'text-black/50 hover:text-black/70'
+          }`}
+        >
+          {t('admin.testsLibraryTitle')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('results')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-t-xl text-[13px] font-semibold ${
+            tab === 'results' ? 'bg-white text-indigo-700 shadow-sm' : 'text-black/50 hover:text-black/70'
+          }`}
+        >
+          <Users size={14} /> {t('admin.liveTestResultsTab')}
+        </button>
+      </div>
+
+      {tab === 'results' ? (
+        <AdminLiveTestResultsTab />
+      ) : (
+        <>
       {error && <p className="text-[13px] text-rose-600 font-medium">{error}</p>}
 
       {totals && (
@@ -279,6 +306,8 @@ export default function AdminTestsLibrary() {
           ))
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
