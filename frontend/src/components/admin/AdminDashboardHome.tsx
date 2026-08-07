@@ -18,6 +18,7 @@ import { motion } from 'motion/react';
 import { fetchAdminCatalogStats, type CatalogStats } from '../../utils/contentCatalogApi';
 import { fetchStaffDirectory } from '../../utils/staffDirectoryApi';
 import { fetchAdminSyllabusCatalogStats, type SyllabusCatalogStats } from '../../utils/syllabusApi';
+import { fetchAdminLiveTestStats, type AdminLiveTestStatRow } from '../../utils/liveTestApi';
 import { useUiText } from '../../i18n/useUiText';
 import {
   DonutChart,
@@ -82,19 +83,22 @@ export default function AdminDashboardHome() {
   const [todayLogins, setTodayLogins] = useState(0);
   const [stats, setStats] = useState<CatalogStats | null>(null);
   const [catalogStats, setCatalogStats] = useState<SyllabusCatalogStats | null>(null);
+  const [liveTestStats, setLiveTestStats] = useState<AdminLiveTestStatRow[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [staff, catalogContentStats, syllabusStats] = await Promise.all([
+      const [staff, catalogContentStats, syllabusStats, testStats] = await Promise.all([
         fetchStaffDirectory().catch(() => []),
         fetchAdminCatalogStats().catch(() => null),
         fetchAdminSyllabusCatalogStats().catch(() => null),
+        fetchAdminLiveTestStats().catch(() => []),
       ]);
       setStaffCount(staff.length);
       setTodayLogins(staff.filter((s) => isToday(s.last_login)).length);
       setStats(catalogContentStats);
       setCatalogStats(syllabusStats);
+      setLiveTestStats(testStats);
     } finally {
       setLoading(false);
     }
@@ -137,6 +141,19 @@ export default function AdminDashboardHome() {
         sublabel: `${row.questions_total} ${t('admin.statsQuestions').toLowerCase()}`,
       })),
     [stats?.by_author, t],
+  );
+
+  const liveTestBars = useMemo(
+    () =>
+      liveTestStats.map((row) => ({
+        key: row.subjectCode,
+        label: row.subjectName || row.subjectCode,
+        value: row.submissionCount,
+        sublabel:
+          `${row.studentCount} ${t('admin.dashboardLiveTestStudents').toLowerCase()}` +
+          (row.avgScorePct != null ? ` · ${row.avgScorePct}%` : ''),
+      })),
+    [liveTestStats, t],
   );
 
   const locale = language === 'ru' ? 'ru-RU' : language === 'en' ? 'en-US' : 'uz-UZ';
@@ -356,6 +373,21 @@ export default function AdminDashboardHome() {
             <h2 className="font-bold text-[15px] text-slate-900">{t('admin.dashboardByDepartment')}</h2>
           </div>
           <HorizontalBarChart items={deptBars} maxItems={10} barColor="#0284c7" />
+        </motion.div>
+      ) : null}
+
+      {liveTestBars.length > 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.32 }}
+          className="ios-glass rounded-2xl border border-white/70 p-5 shadow-sm"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <ClipboardList size={18} className="text-violet-600" />
+            <h2 className="font-bold text-[15px] text-slate-900">{t('admin.dashboardLiveTestTitle')}</h2>
+          </div>
+          <HorizontalBarChart items={liveTestBars} maxItems={10} barColor="#7c3aed" />
         </motion.div>
       ) : null}
 

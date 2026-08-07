@@ -80,6 +80,7 @@ from .views import (
     AdminCampusBuildingDetailView,
     AdminCampusBuildingListCreateView,
     AdminLiveTeachingStatusView,
+    AdminLiveTestStatsView,
     AdminStaffLocationAlertsView,
     AdminStaffLocationPingsView,
     AdminStaffScheduleBulkView,
@@ -230,4 +231,5 @@ urlpatterns = [
     path('v1/admin/staff-location-pings/', AdminStaffLocationPingsView.as_view(), name='admin-staff-location-pings'),
     path('v1/admin/staff-location-alerts/', AdminStaffLocationAlertsView.as_view(), name='admin-staff-location-alerts'),
     path('v1/admin/live-teaching-status/', AdminLiveTeachingStatusView.as_view(), name='admin-live-teaching-status'),
+    path('v1/admin/live-test-stats/', AdminLiveTestStatsView.as_view(), name='admin-live-test-stats'),
 ]

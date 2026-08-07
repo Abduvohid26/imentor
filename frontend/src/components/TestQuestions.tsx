@@ -222,18 +222,21 @@ export default function TestQuestions() {
       questions,
       createdAt: Date.now(),
     };
+    const subjectCode = globalTopic?.subjectCode || '';
     const sid =
       reuseSid ||
       (await createLiveTestSessionOnServer({
         topic: doc.topic,
         questions,
         createdAt: doc.createdAt,
+        subjectCode,
       }));
     if (reuseSid) {
       await syncLiveTestSessionToServer(sid, {
         topic: doc.topic,
         questions,
         createdAt: doc.createdAt,
+        subjectCode,
       });
     }
     saveLocalSession(sid, doc);
@@ -618,7 +621,7 @@ export default function TestQuestions() {
     const enrichToken = Symbol('test-enrich');
     enrichTokenRef.current = enrichToken;
     try {
-      const count = Math.min(30, Math.max(10, questionCount));
+      const count = Math.min(90, Math.max(10, questionCount));
       // Asosiy til = UI tili (header dagi uz/ru/en). Qolgan 2 til — fonda tarjima.
       const contentLanguage = language;
       const data = await aiService.generateTests(topic, count, contentLanguage, globalTopic.subjectCode);
@@ -956,7 +959,7 @@ export default function TestQuestions() {
         questionCount={questionCount}
         onQuestionCountChange={setQuestionCount}
         questionCountMin={10}
-        questionCountMax={30}
+        questionCountMax={90}
         versions={versions}
         activeVersionId={activeVersionId}
         onSelectVersion={handleSelectVersion}

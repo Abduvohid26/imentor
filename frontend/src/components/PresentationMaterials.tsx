@@ -187,7 +187,13 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
           ) : previewUrl ? (
             <iframe
               title={item.file_name}
-              src={previewUrl}
+              // Brauzer o'zining ichki PDF asboblar panelini (sarlavha, sahifalar
+              // ro'yxati, zoom, print) ko'rsatmasin — bu ilova o'z headerida
+              // allaqachon oldinga/orqaga, yuklab olish, yopish tugmalarini
+              // beradi; ikkita panel bir-ustiga chiqishi dars o'tishga xalaqit
+              // berardi. `#toolbar=0&navpanes=0` PDF open-parameter'lari
+              // Chrome/Edge'ning ichki PDF ko'ruvchisida qo'llab-quvvatlanadi.
+              src={`${previewUrl}#toolbar=0&navpanes=0&statusbar=0`}
               className="w-full h-full min-h-[50vh] rounded-lg bg-white"
             />
           ) : (

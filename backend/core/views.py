@@ -664,6 +664,9 @@ class LiveTestUpsertView(APIView):
             'createdAt': created_ms,
         }
         defaults = {'owner_key': owner, 'payload': payload}
+        subject_code = (d.get('subject_code') or '').strip()
+        if subject_code or existing is None:
+            defaults['subject_code'] = subject_code
         if existing is None:
             defaults['is_closed'] = False
             defaults['closed_at'] = None
@@ -785,8 +788,22 @@ class LiveTestSubmissionView(APIView):
         return Response({'ok': True}, status=status.HTTP_201_CREATED)
 
 
+def _score_submission(questions: list, answers: list) -> tuple[int, int]:
+    """To'g'ri javoblar sonini hisoblaydi (savol.correctOptionIndex bilan solishtirib)."""
+    total = len(questions) if isinstance(questions, list) else 0
+    if not total or not isinstance(answers, list):
+        return 0, total
+    correct = 0
+    for i, q in enumerate(questions):
+        if i >= len(answers) or not isinstance(q, dict):
+            continue
+        if int(q.get('correctOptionIndex', -1)) == int(answers[i]):
+            correct += 1
+    return correct, total
+
+
 class LiveTestMySubmissionsView(APIView):
-    """Talaba: o'zi topshirgan dars testlari."""
+    """Talaba: o'zi topshirgan dars testlari — fan kesimida, ball bilan."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsStudentRole]
@@ -800,17 +817,28 @@ class LiveTestMySubmissionsView(APIView):
             .select_related('session')
             .order_by('-submitted_at')[:100]
         )
+        codes = {r.session.subject_code for r in rows if r.session.subject_code}
+        subject_names = dict(
+            CourseSyllabus.objects.filter(subject_code__in=codes).values_list('subject_code', 'subject_name')
+        )
         data = []
         for s in rows:
             payload = s.session.payload if isinstance(s.session.payload, dict) else {}
+            questions = payload.get('questions', [])
+            correct, total = _score_submission(questions if isinstance(questions, list) else [], s.answers)
+            subject_code = s.session.subject_code or ''
             data.append(
                 {
                     'id': s.id,
                     'session_key': s.session.session_key,
                     'topic': str(payload.get('topic') or ''),
+                    'subject_code': subject_code,
+                    'subject_name': subject_names.get(subject_code, ''),
                     'first_name': s.first_name,
                     'last_name': s.last_name,
                     'answers': s.answers,
+                    'score': correct,
+                    'total': total,
                     'submitted_at': s.submitted_at.isoformat(),
                     'is_closed': bool(s.session.is_closed),
                 }
@@ -1296,3 +1324,50 @@ class AdminLiveTeachingStatusView(APIView):
         from .location_service import get_live_teaching_status
 
         return Response(get_live_teaching_status())
+
+
+class AdminLiveTestStatsView(APIView):
+    """Fan (va kafedra) kesimida — kim qancha jonli test yechgani statistikasi."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request):
+        from django.db.models import Avg, Count
+
+        rows = list(
+            LiveTestSubmission.objects.exclude(session__subject_code='')
+            .values('session__subject_code')
+            .annotate(submission_count=Count('id'), student_count=Count('student_id', distinct=True))
+            .order_by('-submission_count')
+        )
+        codes = [r['session__subject_code'] for r in rows]
+        subjects = {
+            s.subject_code: {'subject_name': s.subject_name, 'department': s.department.name if s.department else ''}
+            for s in CourseSyllabus.objects.filter(subject_code__in=codes).select_related('department')
+        }
+        # Har bir fan uchun o'rtacha ball (%) — submission bo'yicha alohida hisoblanadi (JSON payload).
+        avg_scores: dict[str, list[float]] = {}
+        for sub in LiveTestSubmission.objects.exclude(session__subject_code='').select_related('session'):
+            payload = sub.session.payload if isinstance(sub.session.payload, dict) else {}
+            questions = payload.get('questions', [])
+            correct, total = _score_submission(questions if isinstance(questions, list) else [], sub.answers)
+            if total:
+                avg_scores.setdefault(sub.session.subject_code, []).append(correct / total * 100)
+
+        data = []
+        for r in rows:
+            code = r['session__subject_code']
+            meta = subjects.get(code, {'subject_name': '', 'department': ''})
+            scores = avg_scores.get(code, [])
+            data.append(
+                {
+                    'subject_code': code,
+                    'subject_name': meta['subject_name'],
+                    'department': meta['department'],
+                    'submission_count': r['submission_count'],
+                    'student_count': r['student_count'],
+                    'avg_score_pct': round(sum(scores) / len(scores), 1) if scores else None,
+                }
+            )
+        return Response({'results': data})

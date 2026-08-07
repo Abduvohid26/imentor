@@ -855,15 +855,6 @@ export default function App() {
                 <Loader2 size={40} className="animate-spin text-blue-500" />
                 <p className="text-sm font-medium">{translate(language, 'teachingSubjects.loading')}</p>
               </div>
-            ) : userRole === 'hodim' && teachingSubjectsReady === false ? (
-              <div className="w-full h-full min-h-[50vh] p-3 sm:p-5 lg:p-6">
-                <div className="ios-glass rounded-[2rem] border border-white/60 shadow-sm p-5 sm:p-8 max-w-4xl">
-                  <StaffTeachingSubjectsPicker
-                    variant="onboarding"
-                    onSaved={() => setTeachingSubjectsReady(true)}
-                  />
-                </div>
-              </div>
             ) : (
               mountedViews.map((view) => {
                 const isActive = activeView === view;
@@ -883,6 +874,26 @@ export default function App() {
           </div>
         </div>
       </div>
+      {userRole === 'hodim' && teachingSubjectsReady === false && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-900/45 backdrop-blur-[2px] print:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="teaching-subjects-modal-title"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="w-full max-w-2xl max-h-[min(88dvh,720px)] overflow-y-auto rounded-[1.75rem] bg-white shadow-2xl border border-black/5 p-5 sm:p-8"
+          >
+            <StaffTeachingSubjectsPicker
+              variant="onboarding"
+              onSaved={() => setTeachingSubjectsReady(true)}
+            />
+          </motion.div>
+        </div>
+      )}
       <div className="hidden md:block print:hidden">{platformCredit}</div>
 
       {/* Mobile: native-style bottom tabs + compact credit strip */}

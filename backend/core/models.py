@@ -196,6 +196,8 @@ class LiveTestSession(models.Model):
     session_key = models.CharField(max_length=160, unique=True, db_index=True)
     owner_key = models.CharField(max_length=128, db_index=True)
     payload = models.JSONField()
+    # Fan kesimida natijalar/statistika uchun — bo'sh bo'lishi mumkin (eski yozuvlar).
+    subject_code = models.CharField(max_length=200, blank=True, default='', db_index=True)
     is_closed = models.BooleanField(default=False, db_index=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

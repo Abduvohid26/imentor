@@ -152,6 +152,18 @@ export default function SyllabusView({
   const step1Done = mySelections.length > 0 && activeSyllabus != null;
   const step2Done = selectedTopic != null;
 
+  /**
+   * Hodim birinchi marta kirganda hech qanday mavzu tanlanmagan bo'ladi —
+   * "Test yaratish"/"Taqdimotlar" kabi sahifalar bo'sh/chalkash ko'rinadi.
+   * Fan ro'yxati keldi-yu, mavzu hali tanlanmagan bo'lsa — birinchi mavzuni
+   * avtomatik tanlab qo'yamiz (foydalanuvchi istasa keyin o'zi almashtiradi).
+   */
+  useEffect(() => {
+    if (loading || selectedTopic || !activeSyllabus || activeTopics.length === 0) return;
+    pickTopic(activeTopics[0], activeSyllabus, activeLabel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- faqat birinchi bo'sh holatda ishga tushsin
+  }, [loading, selectedTopic, activeSyllabus, activeTopics, activeLabel]);
+
   if (loading) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-500">

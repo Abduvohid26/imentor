@@ -122,8 +122,9 @@ export default function StaffTeachingSubjectsPicker({
       {showHeader && (
         <div className="space-y-1">
           <h2
+            id={isOnboarding ? 'teaching-subjects-modal-title' : undefined}
             className={`font-bold tracking-tight text-slate-900 flex items-center gap-2 ${
-              isOnboarding ? 'text-2xl sm:text-3xl' : 'text-xl'
+              isOnboarding ? 'text-xl sm:text-2xl' : 'text-xl'
             }`}
           >
             <GraduationCap className="text-[#083047] shrink-0" size={isOnboarding ? 28 : 22} />

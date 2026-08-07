@@ -808,7 +808,9 @@ async function translateTestSession(
       `CRITICAL: Output MUST be entirely in ${outLang}. Do NOT leave any Uzbek/source-language sentences. ` +
       'Return ONLY valid JSON, no markdown fences.',
     user: JSON.stringify(source),
-    maxTokens: 8192,
+    // ~273 token/savol (30 ta uchun 8192 asosida o'lchangan) — gpt-4o-mini
+    // max output (16000) dan oshmasin, katta partiyalarda (90 tagacha) tarjima kesilmasin.
+    maxTokens: Math.min(16000, Math.ceil(content.questions.length * 273) + 500),
     temperature: 0.1,
     parse: (t) => parseJSONSafe(t),
   });
@@ -1135,11 +1137,14 @@ export const aiService = {
     topic: string,
     count: number = 10,
     language: AppLanguage = 'uz',
-    _subjectCode?: string,
+    subjectCode?: string,
   ): Promise<TestSession> {
     assertOpenAiApiKey();
-    const safeCount = Math.min(30, Math.max(10, Math.round(count) || 10));
+    const safeCount = Math.min(90, Math.max(10, Math.round(count) || 10));
     const outLang = languageName(language);
+    const bookContext: BookContext | undefined = subjectCode?.trim()
+      ? { subjectCode: subjectCode.trim(), topicQuery: topic }
+      : undefined;
     // Avoid-list ixtiyoriy — timeout bilan, generate’ni ushlab turmasin
     const avoid = await Promise.race([
       previousTestAvoidBlock(topic),
@@ -1148,23 +1153,32 @@ export const aiService = {
 
     const generate = async (requestedCount: number): Promise<TestSession> => {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
-      // Tezlik: bookContext/RAG yo‘q (fon enrich’da); optionExplanations yo‘q (token).
+      // ~210 token/savol (30 ta uchun 6144 asosida o'lchangan) — gpt-4o max
+      // output (16000) dan oshmasin, katta partiyalar (masalan 90 ta) kesilib
+      // qolmasin deb mos ravishda kengaytiramiz.
+      const scaledMaxTokens = Math.min(16000, Math.ceil(requestedCount * 210) + 500);
+      // OpenAI + server RAG: book_references completion javobidan olinadi.
+      let bookReferences: MedicalReference[] = [];
       const parsed = await openaiJson({
         model: OPENAI_CHAT,
         system:
-          `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${requestedCount} ta test JSON: ` +
+          `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${jsonReferencesRule(Boolean(bookContext))} ` +
+          `${requestedCount} ta test JSON: ` +
           `{topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, references:[]}]}. ` +
           'explanation — 1–2 qisqa gap (nega to\'g\'ri). optionExplanations YOZMANG. ' +
-          'Manba/havola YOZMANG. ' +
           `Til: ${outLang}.`,
         user:
           `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 1–2 gap, 5 ta variant. ` +
           'explanation qisqa. Faqat valid JSON.',
-        maxTokens: 6144,
+        maxTokens: scaledMaxTokens,
         temperature: 0.45,
+        bookContext,
+        onBookReferences: (refs) => {
+          bookReferences = refs;
+        },
         parse: (t) => parseJSONSafe<TestSession>(t),
       });
-      return normalizeTestSession(topic, parsed, requestedCount);
+      return normalizeTestSession(topic, parsed, requestedCount, bookReferences);
     };
 
     try {

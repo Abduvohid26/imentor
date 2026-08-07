@@ -96,7 +96,7 @@ class EducationAiBookReferencesSerializer(serializers.Serializer):
     queries = serializers.ListField(
         child=serializers.CharField(allow_blank=True, max_length=4000),
         allow_empty=False,
-        max_length=40,
+        max_length=90,
     )
     top_k = serializers.IntegerField(required=False, default=3, min_value=1, max_value=8)
 
@@ -117,7 +117,7 @@ class EducationAiBookReferencesView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         subject_code = (data.get("subject_code") or "").strip()
-        queries = [str(q or "") for q in (data.get("queries") or [])][:40]
+        queries = [str(q or "") for q in (data.get("queries") or [])][:90]
         top_k = int(data.get("top_k") or 3)
         results = retrieve_references_for_queries(subject_code, queries, top_k=top_k)
         return Response({"subject_code": subject_code, "results": results})

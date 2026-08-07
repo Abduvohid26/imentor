@@ -427,6 +427,7 @@ class LiveTestUpsertSerializer(serializers.Serializer):
     topic = serializers.CharField(max_length=1024)
     questions = serializers.ListField(child=serializers.DictField(), allow_empty=False, max_length=200)
     created_at_ms = serializers.IntegerField(required=False, min_value=0)
+    subject_code = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
 
 
 class LiveTestSubmissionCreateSerializer(serializers.Serializer):

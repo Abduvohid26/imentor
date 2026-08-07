@@ -11,6 +11,8 @@ export type LiveTestSessionPayload = {
   createdAt: number;
   isClosed?: boolean;
   closedAtMs?: number | null;
+  /** Fan kesimida talaba natijalari/admin statistikasi uchun. */
+  subjectCode?: string;
 };
 
 export type StudentLiveTestSessionPayload = Omit<LiveTestSessionPayload, 'questions'> & {
@@ -99,6 +101,7 @@ export async function createLiveTestSessionOnServer(
       topic: payload.topic,
       questions: payload.questions,
       created_at_ms: payload.createdAt,
+      subject_code: payload.subjectCode || '',
     },
     timeoutMs: 60000,
   });
@@ -122,6 +125,7 @@ export async function upsertLiveTestSessionOnServer(
       topic: payload.topic,
       questions: payload.questions,
       created_at_ms: payload.createdAt,
+      subject_code: payload.subjectCode || '',
     },
     timeoutMs: 60000,
   });
@@ -217,14 +221,18 @@ export type StudentMySubmissionRow = {
   id: number;
   sessionKey: string;
   topic: string;
+  subjectCode: string;
+  subjectName: string;
   firstName: string;
   lastName: string;
   answers: number[];
+  score: number;
+  total: number;
   submittedAt: number;
   isClosed: boolean;
 };
 
-/** Talaba: o'zi topshirgan dars testlari. */
+/** Talaba: o'zi topshirgan dars testlari — fan kesimida, ball bilan. */
 export async function fetchMyLiveTestSubmissions(): Promise<StudentMySubmissionRow[]> {
   const token = await getBackendAccessToken();
   if (!token) return [];
@@ -233,9 +241,13 @@ export async function fetchMyLiveTestSubmissions(): Promise<StudentMySubmissionR
       id: number;
       session_key: string;
       topic: string;
+      subject_code?: string;
+      subject_name?: string;
       first_name: string;
       last_name: string;
       answers: number[];
+      score?: number;
+      total?: number;
       submitted_at: string;
       is_closed: boolean;
     }>
@@ -248,9 +260,13 @@ export async function fetchMyLiveTestSubmissions(): Promise<StudentMySubmissionR
     id: r.id,
     sessionKey: r.session_key,
     topic: r.topic || '',
+    subjectCode: r.subject_code || '',
+    subjectName: r.subject_name || '',
     firstName: r.first_name,
     lastName: r.last_name,
     answers: Array.isArray(r.answers) ? r.answers : [],
+    score: r.score ?? 0,
+    total: r.total ?? 0,
     submittedAt: Date.parse(r.submitted_at),
     isClosed: Boolean(r.is_closed),
   }));
@@ -305,4 +321,41 @@ export async function fetchLiveTestSubmissionsFromServer(sessionKey: string): Pr
     if (e instanceof HttpError && e.status === 404) return [];
     throw e;
   }
+}
+
+export type AdminLiveTestStatRow = {
+  subjectCode: string;
+  subjectName: string;
+  department: string;
+  submissionCount: number;
+  studentCount: number;
+  avgScorePct: number | null;
+};
+
+/** Admin: fan (va kafedra) kesimida — kim qancha jonli test yechgani. */
+export async function fetchAdminLiveTestStats(): Promise<AdminLiveTestStatRow[]> {
+  const token = await getBackendAccessToken();
+  if (!token) return [];
+  const data = await httpJson<{
+    results: Array<{
+      subject_code: string;
+      subject_name: string;
+      department: string;
+      submission_count: number;
+      student_count: number;
+      avg_score_pct: number | null;
+    }>;
+  }>(`${apiBaseUrl()}/v1/admin/live-test-stats/`, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeoutMs: 30000,
+  });
+  const results = Array.isArray(data.results) ? data.results : [];
+  return results.map((r) => ({
+    subjectCode: r.subject_code,
+    subjectName: r.subject_name,
+    department: r.department,
+    submissionCount: r.submission_count,
+    studentCount: r.student_count,
+    avgScorePct: r.avg_score_pct,
+  }));
 }
