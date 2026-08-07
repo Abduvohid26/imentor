@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ClipboardList, Loader2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   fetchAdminLiveTestSubmissions,
   fetchAdminLiveTestStats,
@@ -17,7 +17,7 @@ function formatWhen(ms: number): string {
   }
 }
 
-export default function AdminLiveTestResultsTab() {
+export default function AdminLiveTestResultsPage() {
   const { t } = useUiText();
   const [rows, setRows] = useState<AdminLiveTestSubmissionRow[]>([]);
   const [subjects, setSubjects] = useState<AdminLiveTestStatRow[]>([]);
@@ -34,12 +34,12 @@ export default function AdminLiveTestResultsTab() {
     try {
       const [subs, stats] = await Promise.all([
         fetchAdminLiveTestSubmissions({ subjectCode: subjectFilter || undefined, page }),
-        subjects.length ? Promise.resolve(subjects) : fetchAdminLiveTestStats(),
+        fetchAdminLiveTestStats(),
       ]);
       setRows(subs.results);
       setCount(subs.count);
       setPageSize(subs.pageSize);
-      if (!subjects.length) setSubjects(stats);
+      setSubjects(stats);
     } catch {
       setError(t('admin.error.loadFailed'));
     } finally {
@@ -55,7 +55,26 @@ export default function AdminLiveTestResultsTab() {
   const totalPages = useMemo(() => Math.max(1, Math.ceil(count / Math.max(1, pageSize))), [count, pageSize]);
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-6 pb-16 px-3 sm:px-5 lg:px-6 py-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-violet-600 text-white flex items-center justify-center">
+            <ClipboardList size={24} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-black/90">{t('admin.liveTestResultsTab')}</h1>
+            <p className="text-[12px] text-black/50">{t('admin.liveTestResultsSubtitle')}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-black/10 bg-white text-[13px] font-semibold"
+        >
+          <RefreshCw size={16} /> {t('admin.refresh')}
+        </button>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <select
           value={subjectFilter}

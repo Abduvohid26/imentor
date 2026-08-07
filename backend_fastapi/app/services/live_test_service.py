@@ -5,7 +5,36 @@ import datetime as dt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.content import CourseSyllabus
 from app.models.live_test import LiveTestDraft, LiveTestSession, LiveTestSubmission
+
+
+def score_submission(questions: list, answers: list) -> tuple[int, int]:
+    """To'g'ri javoblar sonini hisoblaydi (savol.correctOptionIndex bilan solishtirib)."""
+    total = len(questions) if isinstance(questions, list) else 0
+    if not total or not isinstance(answers, list):
+        return 0, total
+    correct = 0
+    for i, q in enumerate(questions):
+        if i >= len(answers) or not isinstance(q, dict):
+            continue
+        try:
+            if int(q.get("correctOptionIndex", -1)) == int(answers[i]):
+                correct += 1
+        except (TypeError, ValueError):
+            continue
+    return correct, total
+
+
+def subject_names_for_codes(db: Session, codes: set[str]) -> dict[str, str]:
+    if not codes:
+        return {}
+    rows = db.execute(
+        select(CourseSyllabus.subject_code, CourseSyllabus.subject_name).where(
+            CourseSyllabus.subject_code.in_(codes)
+        )
+    ).all()
+    return {code: name for code, name in rows}
 
 
 def questions_of(session: LiveTestSession) -> list[dict]:

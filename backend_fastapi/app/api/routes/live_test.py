@@ -3,12 +3,13 @@ from __future__ import annotations
 import datetime as dt
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthContext, require_roles
 from app.core.db import get_db
+from app.models.content import CourseSyllabus
 from app.models.live_test import LiveTestDraft, LiveTestSession, LiveTestSubmission
 from app.schemas.live_test import (
     LiveTestDraftUpsertRequest,
@@ -17,6 +18,7 @@ from app.schemas.live_test import (
     LiveTestUpsertRequest,
 )
 from app.services import live_test_service as svc
+from app.services.pagination import paginate
 
 router = APIRouter()
 
@@ -60,12 +62,14 @@ def upsert_live_test(
         "questions": payload.questions,
         "createdAt": created_ms,
     }
+    subject_code = payload.subject_code.strip()
 
     if existing is None:
         existing = LiveTestSession(
             session_key=key,
             owner_key=owner,
             payload=body,
+            subject_code=subject_code,
             is_closed=False,
             closed_at=None,
             created_at=dt.datetime.now(dt.timezone.utc),
@@ -74,6 +78,9 @@ def upsert_live_test(
     else:
         existing.owner_key = owner
         existing.payload = body
+        # Bo'sh subject_code eskisini o'chirib yubormasin (masalan fon sync so'rovlarida).
+        if subject_code:
+            existing.subject_code = subject_code
 
     db.commit()
     db.refresh(existing)
@@ -98,17 +105,26 @@ def my_submissions(
         .scalars()
         .all()
     )
+    codes = {s.session.subject_code for s in rows if s.session.subject_code}
+    subject_names = svc.subject_names_for_codes(db, codes)
     out = []
     for s in rows:
         payload = s.session.payload if isinstance(s.session.payload, dict) else {}
+        questions = payload.get("questions", [])
+        correct, total = svc.score_submission(questions if isinstance(questions, list) else [], s.answers)
+        code = s.session.subject_code or ""
         out.append(
             {
                 "id": s.id,
                 "session_key": s.session.session_key,
                 "topic": str(payload.get("topic") or ""),
+                "subject_code": code,
+                "subject_name": subject_names.get(code, ""),
                 "first_name": s.first_name,
                 "last_name": s.last_name,
                 "answers": s.answers,
+                "score": correct,
+                "total": total,
                 "submitted_at": s.submitted_at.isoformat(),
                 "is_closed": bool(s.session.is_closed),
             }
@@ -127,11 +143,13 @@ def get_public_live_test(session_key: str, db: Session = Depends(get_db)) -> Liv
         created_ms = int(obj.created_at.timestamp() * 1000)
     raw_questions = payload.get("questions", [])
     questions = svc.strip_questions_for_student(raw_questions) if isinstance(raw_questions, list) else []
+    closed_ms = int(obj.closed_at.timestamp() * 1000) if obj.closed_at else None
     return LiveTestPublicOut(
         topic=payload.get("topic", ""),
         questions=questions,
         created_at_ms=created_ms,
         is_closed=bool(obj.is_closed),
+        closed_at_ms=closed_ms,
     )
 
 
@@ -262,9 +280,108 @@ def finalize(
     if obj is None:
         raise HTTPException(status_code=404, detail="Not found.")
     auto_count = svc.finalize_live_test_session(db, obj)
+    closed_ms = int(obj.closed_at.timestamp() * 1000) if obj.closed_at else None
     return {
         "ok": True,
         "is_closed": obj.is_closed,
+        "closed_at_ms": closed_ms,
         "auto_submitted": auto_count,
         "submissions": svc.submissions_payload(obj),
     }
+
+
+@router.get("/admin/live-test-stats/")
+def admin_live_test_stats(
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles("admin")),
+) -> dict:
+    """Fan (va kafedra) kesimida — kim qancha jonli test yechgani statistikasi."""
+    rows = (
+        db.execute(
+            select(
+                LiveTestSession.subject_code,
+                func.count(LiveTestSubmission.id).label("submission_count"),
+                func.count(func.distinct(LiveTestSubmission.student_id)).label("student_count"),
+            )
+            .join(LiveTestSubmission, LiveTestSubmission.session_id == LiveTestSession.id)
+            .where(LiveTestSession.subject_code != "")
+            .group_by(LiveTestSession.subject_code)
+            .order_by(func.count(LiveTestSubmission.id).desc())
+        )
+        .all()
+    )
+    codes = [r.subject_code for r in rows]
+    subjects = {
+        s.subject_code: {"subject_name": s.subject_name, "department": s.department.name if s.department else ""}
+        for s in db.execute(
+            select(CourseSyllabus).where(CourseSyllabus.subject_code.in_(codes))
+        ).scalars()
+    }
+
+    avg_scores: dict[str, list[float]] = {}
+    subs = db.execute(
+        select(LiveTestSubmission).join(LiveTestSession).where(LiveTestSession.subject_code != "")
+    ).scalars().all()
+    for sub in subs:
+        payload = sub.session.payload if isinstance(sub.session.payload, dict) else {}
+        questions = payload.get("questions", [])
+        correct, total = svc.score_submission(questions if isinstance(questions, list) else [], sub.answers)
+        if total:
+            avg_scores.setdefault(sub.session.subject_code, []).append(correct / total * 100)
+
+    data = []
+    for r in rows:
+        code = r.subject_code
+        meta = subjects.get(code, {"subject_name": "", "department": ""})
+        scores = avg_scores.get(code, [])
+        data.append(
+            {
+                "subject_code": code,
+                "subject_name": meta["subject_name"],
+                "department": meta["department"],
+                "submission_count": r.submission_count,
+                "student_count": r.student_count,
+                "avg_score_pct": round(sum(scores) / len(scores), 1) if scores else None,
+            }
+        )
+    return {"results": data}
+
+
+@router.get("/admin/live-test-submissions/")
+def admin_live_test_submissions(
+    request: Request,
+    subject_code: str = "",
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles("admin")),
+) -> dict:
+    """Har bir talabaning jonli test (QR) topshirig'i — sahifalangan, fan bo'yicha filtrlanadi."""
+    query = select(LiveTestSubmission).join(LiveTestSession).order_by(LiveTestSubmission.submitted_at.desc())
+    if subject_code:
+        query = query.where(LiveTestSession.subject_code == subject_code)
+    rows = db.execute(query).scalars().all()
+
+    codes = {s.session.subject_code for s in rows if s.session.subject_code}
+    subject_names = svc.subject_names_for_codes(db, codes)
+
+    def _map(sub: LiveTestSubmission) -> dict:
+        payload = sub.session.payload if isinstance(sub.session.payload, dict) else {}
+        questions = payload.get("questions", [])
+        correct, total = svc.score_submission(questions if isinstance(questions, list) else [], sub.answers)
+        code = sub.session.subject_code or ""
+        return {
+            "id": sub.id,
+            "session_key": sub.session.session_key,
+            "topic": str(payload.get("topic") or ""),
+            "subject_code": code,
+            "subject_name": subject_names.get(code, ""),
+            "student_id": sub.student_id or "",
+            "first_name": sub.first_name,
+            "last_name": sub.last_name,
+            "score": correct,
+            "total": total,
+            "submitted_at": sub.submitted_at.isoformat(),
+        }
+
+    page = paginate(rows, request, default_page_size=50, max_page_size=200)
+    page["results"] = [_map(r) for r in page["results"]]
+    return page

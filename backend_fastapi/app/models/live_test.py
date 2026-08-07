@@ -16,6 +16,8 @@ class LiveTestSession(Base):
     session_key: Mapped[str] = mapped_column(String(160), unique=True)
     owner_key: Mapped[str] = mapped_column(String(128))
     payload: Mapped[dict] = mapped_column(JSONB)
+    # Fan kesimida natijalar/statistika uchun — bo'sh bo'lishi mumkin (eski yozuvlar).
+    subject_code: Mapped[str] = mapped_column(String(200), default="")
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))

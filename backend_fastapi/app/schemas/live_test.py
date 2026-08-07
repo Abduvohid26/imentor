@@ -8,6 +8,7 @@ class LiveTestUpsertRequest(BaseModel):
     topic: str = Field(max_length=1024)
     questions: list[dict] = Field(min_length=1, max_length=200)
     created_at_ms: int | None = None
+    subject_code: str = ""
 
 
 class LiveTestPublicOut(BaseModel):
@@ -15,6 +16,7 @@ class LiveTestPublicOut(BaseModel):
     questions: list[dict]
     created_at_ms: int
     is_closed: bool
+    closed_at_ms: int | None = None
 
 
 class LiveTestSubmissionCreateRequest(BaseModel):
