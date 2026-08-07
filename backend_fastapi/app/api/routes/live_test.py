@@ -347,17 +347,56 @@ def admin_live_test_stats(
     return {"results": data}
 
 
-@router.get("/admin/live-test-submissions/")
-def admin_live_test_submissions(
-    request: Request,
+@router.get("/admin/live-test-sessions/")
+def admin_live_test_sessions(
     subject_code: str = "",
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_roles("admin")),
 ) -> dict:
-    """Har bir talabaning jonli test (QR) topshirig'i — sahifalangan, fan bo'yicha filtrlanadi."""
+    """Fan ichidagi har bir jonli test (mavzu + sana) — nechta talaba yechgani bilan."""
+    query = select(
+        LiveTestSession.session_key,
+        LiveTestSession.payload,
+        LiveTestSession.created_at,
+        LiveTestSession.is_closed,
+        func.count(LiveTestSubmission.id).label("submission_count"),
+    ).join(LiveTestSubmission, LiveTestSubmission.session_id == LiveTestSession.id)
+    if subject_code:
+        query = query.where(LiveTestSession.subject_code == subject_code)
+    query = query.group_by(
+        LiveTestSession.session_key, LiveTestSession.payload, LiveTestSession.created_at, LiveTestSession.is_closed
+    ).order_by(LiveTestSession.created_at.desc())
+    rows = db.execute(query).all()
+
+    data = []
+    for r in rows:
+        payload = r.payload if isinstance(r.payload, dict) else {}
+        data.append(
+            {
+                "session_key": r.session_key,
+                "topic": str(payload.get("topic") or ""),
+                "created_at_ms": int(r.created_at.timestamp() * 1000),
+                "is_closed": bool(r.is_closed),
+                "submission_count": r.submission_count,
+            }
+        )
+    return {"results": data}
+
+
+@router.get("/admin/live-test-submissions/")
+def admin_live_test_submissions(
+    request: Request,
+    subject_code: str = "",
+    session_key: str = "",
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles("admin")),
+) -> dict:
+    """Har bir talabaning jonli test (QR) topshirig'i — sahifalangan, fan/sessiya bo'yicha filtrlanadi."""
     query = select(LiveTestSubmission).join(LiveTestSession).order_by(LiveTestSubmission.submitted_at.desc())
     if subject_code:
         query = query.where(LiveTestSession.subject_code == subject_code)
+    if session_key:
+        query = query.where(LiveTestSession.session_key == session_key)
     rows = db.execute(query).scalars().all()
 
     codes = {s.session.subject_code for s in rows if s.session.subject_code}

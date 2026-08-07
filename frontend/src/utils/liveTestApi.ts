@@ -374,9 +374,10 @@ export type AdminLiveTestSubmissionRow = {
   submittedAt: number;
 };
 
-/** Admin: har bir talabaning jonli test (QR) topshirig'i — sahifalangan, fan bo'yicha filtrlanadi. */
+/** Admin: har bir talabaning jonli test (QR) topshirig'i — sahifalangan, fan/sessiya bo'yicha filtrlanadi. */
 export async function fetchAdminLiveTestSubmissions(params?: {
   subjectCode?: string;
+  sessionKey?: string;
   page?: number;
   pageSize?: number;
 }): Promise<{ results: AdminLiveTestSubmissionRow[]; count: number; page: number; pageSize: number }> {
@@ -384,6 +385,7 @@ export async function fetchAdminLiveTestSubmissions(params?: {
   if (!token) return { results: [], count: 0, page: 1, pageSize: 50 };
   const query = new URLSearchParams();
   if (params?.subjectCode) query.set('subject_code', params.subjectCode);
+  if (params?.sessionKey) query.set('session_key', params.sessionKey);
   if (params?.page) query.set('page', String(params.page));
   if (params?.pageSize) query.set('page_size', String(params.pageSize));
   const suffix = query.toString() ? `?${query.toString()}` : '';
@@ -427,4 +429,40 @@ export async function fetchAdminLiveTestSubmissions(params?: {
       submittedAt: Date.parse(r.submitted_at),
     })),
   };
+}
+
+export type AdminLiveTestSessionRow = {
+  sessionKey: string;
+  topic: string;
+  createdAtMs: number;
+  isClosed: boolean;
+  submissionCount: number;
+};
+
+/** Admin: fan ichidagi har bir jonli test (mavzu + sana) — nechta talaba yechgani bilan. */
+export async function fetchAdminLiveTestSessions(subjectCode: string): Promise<AdminLiveTestSessionRow[]> {
+  const token = await getBackendAccessToken();
+  if (!token) return [];
+  const query = new URLSearchParams();
+  if (subjectCode) query.set('subject_code', subjectCode);
+  const data = await httpJson<{
+    results: Array<{
+      session_key: string;
+      topic: string;
+      created_at_ms: number;
+      is_closed: boolean;
+      submission_count: number;
+    }>;
+  }>(`${apiBaseUrl()}/v1/admin/live-test-sessions/?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeoutMs: 30000,
+  });
+  const results = Array.isArray(data.results) ? data.results : [];
+  return results.map((r) => ({
+    sessionKey: r.session_key,
+    topic: r.topic || '',
+    createdAtMs: r.created_at_ms,
+    isClosed: Boolean(r.is_closed),
+    submissionCount: r.submission_count,
+  }));
 }
