@@ -22,15 +22,12 @@ import { aiService } from '../services/aiService';
 import { buildPresentationPptxFile } from '../utils/buildPresentationPptx';
 import {
   coercePresentationContent,
-  slidePreviewBullets,
-  type ContentSlide,
   type PresentationContent,
 } from '../utils/presentationContentSchema';
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
 import {
-  loadLatestPreparedContent,
   loadPreparedByIdSynced,
   listAllPreparedForKindSynced,
   savePreparedContent,
@@ -81,177 +78,16 @@ function PresentationPreview({ item, mode }: { item: TopicPresentationItem; mode
   );
 }
 
-const SLIDE_TYPE_LABEL: Record<string, string> = {
-  title: 'Title',
-  agenda: 'Agenda',
-  content_bullets: 'Content',
-  two_column: 'Two column',
-  image_focus: 'Image',
-  comparison_table: 'Comparison',
-  statistics: 'Statistics',
-  process_flow: 'Process',
-  quote: 'Quote',
-  case_study: 'Case study',
-  summary: 'Summary',
-  references: 'References',
-};
-
-/** Brauzer preview — slide_type bo‘yicha (faqat bullet emas). */
-function DeckSlidePreview({ slide }: { slide: ContentSlide }) {
-  const type = slide.slide_type;
-  const body = slide.body || {};
-  const typeLabel = SLIDE_TYPE_LABEL[type] || type;
-
-  return (
-    <div className="flex-1 min-h-0 rounded-3xl bg-white/95 backdrop-blur-xl shadow-2xl p-8 sm:p-12 flex flex-col overflow-y-auto">
-      <div className="mb-4 flex items-center gap-2">
-        <span className="inline-flex items-center rounded-md bg-[#0B6E99]/12 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#0B6E99]">
-          {typeLabel}
-        </span>
-        {slide.subtitle ? (
-          <span className="text-[12px] text-black/45 truncate">{slide.subtitle}</span>
-        ) : null}
-      </div>
-
-      {type === 'title' ? (
-        <div className="flex flex-1 flex-col justify-center gap-3">
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#083047] leading-tight">{slide.title}</h2>
-          {slide.subtitle ? <p className="text-lg text-black/55">{slide.subtitle}</p> : null}
-        </div>
-      ) : (
-        <h2 className="text-2xl sm:text-3xl font-bold text-[#083047] mb-6">{slide.title}</h2>
-      )}
-
-      {slide.imageUrl ? (
-        <img
-          src={slide.imageUrl}
-          alt=""
-          className="max-h-52 rounded-xl object-contain mb-4 mx-auto"
-        />
-      ) : null}
-
-      {type === 'statistics' && (body.stats?.length || body.key_stat) ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {(body.stats?.length ? body.stats : body.key_stat ? [body.key_stat] : []).map((st, i) => (
-            <div
-              key={i}
-              className="rounded-2xl border border-[#0B6E99]/15 bg-[#0B6E99]/5 px-5 py-4"
-            >
-              <div className="text-3xl font-bold text-[#0B6E99]">{st.number}</div>
-              <div className="mt-1 text-[14px] text-black/70 leading-snug">{st.label}</div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {type === 'comparison_table' && body.comparison_rows?.length ? (
-        <div className="overflow-x-auto rounded-xl border border-black/10">
-          <table className="w-full text-left text-[13px] sm:text-[14px]">
-            <thead className="bg-[#083047] text-white">
-              <tr>
-                <th className="px-3 py-2 font-semibold">Mezon</th>
-                <th className="px-3 py-2 font-semibold">Chap</th>
-                <th className="px-3 py-2 font-semibold">Oʻng</th>
-              </tr>
-            </thead>
-            <tbody>
-              {body.comparison_rows.map((row, i) => (
-                <tr key={i} className={i % 2 ? 'bg-black/[0.03]' : ''}>
-                  <td className="px-3 py-2 font-medium text-[#083047]">{row.criteria}</td>
-                  <td className="px-3 py-2 text-black/80">{row.left}</td>
-                  <td className="px-3 py-2 text-black/80">{row.right}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-
-      {type === 'process_flow' && body.process_steps?.length ? (
-        <ol className="space-y-3">
-          {body.process_steps.map((step) => (
-            <li key={step.step_number} className="flex gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B6E99] text-[13px] font-bold text-white">
-                {step.step_number}
-              </span>
-              <div>
-                <div className="font-semibold text-[#083047]">{step.label}</div>
-                {step.description ? (
-                  <div className="text-[13px] text-black/65 leading-snug">{step.description}</div>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-
-      {type === 'two_column' && body.columns?.length ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {body.columns.map((col, i) => (
-            <div key={i} className="rounded-xl border border-black/10 p-4">
-              <h3 className="mb-2 font-bold text-[#083047]">{col.heading}</h3>
-              <ul className="space-y-1.5 text-[13px] text-black/80">
-                {(col.points || []).map((p, j) => (
-                  <li key={j} className="flex gap-2">
-                    <span className="text-[#0B6E99]">•</span>
-                    <span>{p}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {type === 'quote' && body.quote_text ? (
-        <blockquote className="border-l-4 border-[#0B6E99] pl-4 text-lg italic text-black/80">
-          {body.quote_text}
-          {body.quote_author ? (
-            <footer className="mt-2 text-[13px] not-italic text-black/50">— {body.quote_author}</footer>
-          ) : null}
-        </blockquote>
-      ) : null}
-
-      {type === 'case_study' ? (
-        <div className="mb-3 inline-flex rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase text-amber-800">
-          Case study
-        </div>
-      ) : null}
-
-      {(type === 'agenda' ||
-        type === 'content_bullets' ||
-        type === 'image_focus' ||
-        type === 'case_study' ||
-        type === 'summary' ||
-        type === 'references' ||
-        (!body.stats?.length &&
-          !body.comparison_rows?.length &&
-          !body.process_steps?.length &&
-          !body.columns?.length &&
-          !body.quote_text &&
-          type !== 'title')) &&
-      slidePreviewBullets(slide).length ? (
-        <ul className="space-y-2.5 text-[14px] sm:text-[15px] text-black/85">
-          {slidePreviewBullets(slide).map((b, i) => (
-            <li key={i} className="flex gap-3 leading-snug">
-              {type === 'agenda' || type === 'summary' ? (
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0B6E99]/15 text-[12px] font-bold text-[#0B6E99]">
-                  {i + 1}
-                </span>
-              ) : (
-                <span className="text-[#0B6E99] shrink-0 mt-0.5">•</span>
-              )}
-              <span>{b}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {slide.speaker_notes && type === 'title' ? (
-        <p className="mt-auto pt-6 text-[13px] text-black/45 leading-relaxed">{slide.speaker_notes}</p>
-      ) : null}
-    </div>
-  );
+/** Brauzer PPTX ni o‘zi chiza olmaydi — Office Online orqali SHU fayl ochiladi. */
+function officeEmbedUrl(absoluteFileUrl: string): string {
+  if (!absoluteFileUrl || absoluteFileUrl.startsWith('blob:')) return '';
+  try {
+    const abs = new URL(absoluteFileUrl, window.location.origin).href;
+    if (!/^https?:\/\//i.test(abs)) return '';
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(abs)}`;
+  } catch {
+    return '';
+  }
 }
 
 type LightboxProps = {
@@ -264,87 +100,48 @@ type LightboxProps = {
 function PresentationLightbox({ items, index, onClose, onIndexChange }: LightboxProps) {
   const { t } = useUiText();
   const item = items[index];
-  const [fileSrc, setFileSrc] = useState('');
   const [downloadUrl, setDownloadUrl] = useState('');
-  const [deck, setDeck] = useState<PresentationContent | null>(null);
-  const [deckChecked, setDeckChecked] = useState(false);
-  const [slideIdx, setSlideIdx] = useState(0);
+  const [fileReady, setFileReady] = useState(false);
   if (!item) return null;
   const hasPrev = index > 0;
   const hasNext = index < items.length - 1;
   const publicUrl = resolvePresentationFileUrl(item.file_url);
+  const embedUrl =
+    item.kind === 'pdf' ? '' : officeEmbedUrl(publicUrl);
+  const pdfSrc = item.kind === 'pdf' ? downloadUrl || publicUrl : '';
 
   useEffect(() => {
     let cancelled = false;
-    setFileSrc('');
     setDownloadUrl('');
+    setFileReady(false);
     (async () => {
       try {
         const blob = await getPresentationFileBlobUrl(item.id);
         if (!cancelled) {
-          setFileSrc(blob);
           setDownloadUrl(blob);
+          setFileReady(true);
         }
       } catch {
-        if (!cancelled && publicUrl) {
-          setFileSrc(publicUrl);
-          setDownloadUrl(publicUrl);
+        if (!cancelled) {
+          if (publicUrl) setDownloadUrl(publicUrl);
+          setFileReady(true);
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [item.id, item.file_url, publicUrl]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setDeck(null);
-    setDeckChecked(false);
-    setSlideIdx(0);
-    const lookupTitle = (item.title || item.file_name || '').trim();
-    if (!lookupTitle) {
-      setDeckChecked(true);
-      return;
-    }
-    (async () => {
-      const found = await loadLatestPreparedContent<unknown>('presentation', lookupTitle);
-      if (!cancelled) {
-        if (found && typeof found === 'object') {
-          const coerced = coercePresentationContent(found, {
-            title: lookupTitle,
-            subject: '',
-          });
-          setDeck(coerced.slides.length ? coerced : null);
-        } else {
-          setDeck(null);
-        }
-        setDeckChecked(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [item.id, item.title, item.file_name]);
-
-  const slideCount = deck?.slides.length ?? 0;
-  const hasPrevSlide = slideIdx > 0;
-  const hasNextSlide = slideIdx < slideCount - 1;
+  }, [item.id, publicUrl]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      if (deck) {
-        if (e.key === 'ArrowLeft' && hasPrevSlide) setSlideIdx((i) => i - 1);
-        if (e.key === 'ArrowRight' && hasNextSlide) setSlideIdx((i) => i + 1);
-        return;
-      }
       if (e.key === 'ArrowLeft' && hasPrev) onIndexChange(index - 1);
       if (e.key === 'ArrowRight' && hasNext) onIndexChange(index + 1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, hasPrev, hasNext, onClose, onIndexChange, deck, hasPrevSlide, hasNextSlide]);
+  }, [index, hasPrev, hasNext, onClose, onIndexChange]);
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-black/92" role="dialog" aria-modal="true">
@@ -352,9 +149,7 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-semibold truncate">{item.title || item.file_name}</p>
           <p className="text-[12px] text-white/60 truncate">
-            {deck
-              ? `${t('presentation.slideLabel')} ${slideIdx + 1} / ${slideCount}`
-              : `${index + 1} / ${items.length}`}
+            {index + 1} / {items.length}
             {' · '}
             {kindLabel(item.kind)} · {item.author_name}
           </p>
@@ -374,95 +169,59 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
       </header>
 
       <div className="flex-1 relative flex items-center justify-center min-h-0 px-2 pb-2">
-        {deck ? (
-          <>
-            {hasPrevSlide && (
-              <button
-                type="button"
-                onClick={() => setSlideIdx((i) => i - 1)}
-                className="absolute left-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
-              >
-                <ChevronLeft size={28} />
-              </button>
-            )}
+        {hasPrev && (
+          <button
+            type="button"
+            onClick={() => onIndexChange(index - 1)}
+            className="absolute left-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+          >
+            <ChevronLeft size={28} />
+          </button>
+        )}
 
-            <div className="w-full h-full max-w-5xl mx-auto flex flex-col gap-4">
-              {deck.slides[slideIdx] ? <DeckSlidePreview slide={deck.slides[slideIdx]} /> : null}
-              <div className="flex items-center justify-center gap-1.5 shrink-0">
-                {deck.slides.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setSlideIdx(i)}
-                    aria-label={`${t('presentation.slideLabel')} ${i + 1}`}
-                    className={`h-1.5 rounded-full transition-all ${
-                      i === slideIdx ? 'w-6 bg-white' : 'w-1.5 bg-white/35 hover:bg-white/55'
-                    }`}
-                  />
-                ))}
+        <div className="w-full h-full max-w-6xl flex items-center justify-center">
+          {!fileReady ? (
+            <Loader2 className="animate-spin text-white" size={40} />
+          ) : item.kind === 'pdf' && pdfSrc ? (
+            <iframe
+              title={item.file_name}
+              src={pdfSrc}
+              className="w-full h-full min-h-[50vh] rounded-lg bg-white"
+            />
+          ) : embedUrl ? (
+            <iframe
+              title={item.file_name}
+              src={embedUrl}
+              className="w-full h-full min-h-[50vh] rounded-lg bg-white"
+              allowFullScreen
+            />
+          ) : (
+            <div className="text-center text-white px-6 space-y-5 max-w-md">
+              <div className="relative w-48 h-32 mx-auto rounded-2xl overflow-hidden bg-white/10">
+                <PresentationPreview item={item} mode="full" />
               </div>
-            </div>
-
-            {hasNextSlide && (
-              <button
-                type="button"
-                onClick={() => setSlideIdx((i) => i + 1)}
-                className="absolute right-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
-              >
-                <ChevronRight size={28} />
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            {hasPrev && (
-              <button
-                type="button"
-                onClick={() => onIndexChange(index - 1)}
-                className="absolute left-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
-              >
-                <ChevronLeft size={28} />
-              </button>
-            )}
-
-            <div className="w-full h-full max-w-6xl flex items-center justify-center">
-              {!fileSrc || !deckChecked ? (
-                <Loader2 className="animate-spin text-white" size={40} />
-              ) : item.kind === 'pdf' ? (
-                <iframe
-                  title={item.file_name}
-                  src={fileSrc}
-                  className="w-full h-full min-h-[50vh] rounded-lg bg-white"
-                />
-              ) : (
-                <div className="text-center text-white px-6 space-y-5 max-w-md">
-                  <div className="relative w-48 h-32 mx-auto rounded-2xl overflow-hidden bg-white/10">
-                    <PresentationPreview item={item} mode="full" />
-                  </div>
-                  <p className="text-[14px] text-white/80 leading-relaxed">{t('presentation.previewDownload')}</p>
-                  {downloadUrl && (
-                    <a
-                      href={downloadUrl}
-                      download={item.file_name}
-                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-600 text-white text-[14px] font-semibold hover:bg-blue-500"
-                    >
-                      <Download size={18} /> {t('common.download')}
-                    </a>
-                  )}
-                </div>
+              <p className="text-[14px] text-white/80 leading-relaxed">{t('presentation.previewDownload')}</p>
+              {downloadUrl && (
+                <a
+                  href={downloadUrl}
+                  download={item.file_name}
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-600 text-white text-[14px] font-semibold hover:bg-blue-500"
+                >
+                  <Download size={18} /> {t('common.download')}
+                </a>
               )}
             </div>
+          )}
+        </div>
 
-            {hasNext && (
-              <button
-                type="button"
-                onClick={() => onIndexChange(index + 1)}
-                className="absolute right-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
-              >
-                <ChevronRight size={28} />
-              </button>
-            )}
-          </>
+        {hasNext && (
+          <button
+            type="button"
+            onClick={() => onIndexChange(index + 1)}
+            className="absolute right-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+          >
+            <ChevronRight size={28} />
+          </button>
         )}
       </div>
     </div>
@@ -483,24 +242,50 @@ export default function PresentationMaterials() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [savedDecks, setSavedDecks] = useState<PreparedContentSummary[]>([]);
-  const [historyDeck, setHistoryDeck] = useState<PresentationContent | null>(null);
-  const [historySlideIdx, setHistorySlideIdx] = useState(0);
+  const [historyBusyId, setHistoryBusyId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refreshDeckHistory = useCallback(() => {
     void listAllPreparedForKindSynced('presentation').then(setSavedDecks);
   }, []);
 
+  /** Baza: HTML preview yo‘q — mavjud PPTX ni ochadi yoki shu deckdan PPTX yuklaydi. */
   const openHistoryDeck = async (summary: PreparedContentSummary) => {
-    const raw = await loadPreparedByIdSynced<unknown>('presentation', summary.id);
-    if (!raw) return;
-    setHistoryDeck(
-      coercePresentationContent(raw, {
+    const topicNorm = (summary.topic || '').trim().toLowerCase();
+    const matchIdx = items.findIndex((i) => {
+      const title = (i.title || '').trim().toLowerCase();
+      return title === topicNorm || title.includes(topicNorm) || topicNorm.includes(title);
+    });
+    if (matchIdx >= 0) {
+      setShowHistory(false);
+      setLightboxIndex(matchIdx);
+      return;
+    }
+
+    setHistoryBusyId(summary.id);
+    try {
+      const raw = await loadPreparedByIdSynced<unknown>('presentation', summary.id);
+      if (!raw) return;
+      const deck = coercePresentationContent(raw, {
         title: summary.topic,
         subject: globalTopic?.subjectName || '',
-      }),
-    );
-    setHistorySlideIdx(0);
+      });
+      const file = await buildPresentationPptxFile(deck, {
+        meta: {
+          subjectName: globalTopic?.subjectName || deck.subject_area,
+          topicId: globalTopic?.id || 'T',
+          variantLabel: globalTopic?.variantLabel,
+        },
+      });
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setHistoryBusyId(null);
+    }
   };
 
   const topicTitle = globalTopic?.title?.trim() ?? '';
@@ -667,90 +452,24 @@ export default function PresentationMaterials() {
               <button
                 key={deck.id}
                 type="button"
+                disabled={historyBusyId === deck.id}
                 onClick={() => void openHistoryDeck(deck)}
-                className="ios-glass rounded-2xl border border-white/70 p-5 text-left hover:border-[#083047]/20 transition-all"
+                className="ios-glass rounded-2xl border border-white/70 p-5 text-left hover:border-[#083047]/20 transition-all disabled:opacity-60"
               >
                 <h3 className="font-bold text-[15px] line-clamp-2 mb-2 text-[#083047]">{deck.topic}</h3>
                 <p className="text-[12px] text-black/45">
-                  {deck.createdAt ? new Date(deck.createdAt).toLocaleDateString() : t('common.recently')}
+                  {historyBusyId === deck.id ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Loader2 size={12} className="animate-spin" /> PPTX…
+                    </span>
+                  ) : deck.createdAt ? (
+                    new Date(deck.createdAt).toLocaleDateString()
+                  ) : (
+                    t('common.recently')
+                  )}
                 </p>
               </button>
             ))}
-          </div>
-        )}
-
-        {historyDeck && (
-          <div className="fixed inset-0 z-[200] flex flex-col bg-black/92" role="dialog" aria-modal="true">
-            <header className="flex items-center justify-between px-4 py-3 text-white shrink-0 gap-2">
-              <p className="text-[15px] font-semibold truncate flex-1">
-                {historyDeck.presentation_title}
-              </p>
-              <button
-                type="button"
-                onClick={async () => {
-                  const file = await buildPresentationPptxFile(historyDeck, {
-                    meta: {
-                      subjectName: globalTopic?.subjectName || historyDeck.subject_area,
-                      topicId: globalTopic?.id || 'T',
-                      variantLabel: globalTopic?.variantLabel,
-                    },
-                  });
-                  const url = URL.createObjectURL(file);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = file.name;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-[13px] font-semibold shrink-0"
-              >
-                <Download size={16} /> {t('common.download')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setHistoryDeck(null)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 shrink-0"
-              >
-                <X size={22} />
-              </button>
-            </header>
-            <div className="flex-1 relative flex items-center justify-center min-h-0 px-2 pb-2">
-              {historySlideIdx > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setHistorySlideIdx((i) => i - 1)}
-                  className="absolute left-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
-                >
-                  <ChevronLeft size={28} />
-                </button>
-              )}
-              <div className="w-full h-full max-w-5xl mx-auto flex flex-col gap-4">
-                {historyDeck.slides[historySlideIdx] ? (
-                  <DeckSlidePreview slide={historyDeck.slides[historySlideIdx]} />
-                ) : null}
-                <div className="flex items-center justify-center gap-1.5 shrink-0">
-                  {historyDeck.slides.map((_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setHistorySlideIdx(i)}
-                      className={`h-1.5 rounded-full transition-all ${
-                        i === historySlideIdx ? 'w-6 bg-white' : 'w-1.5 bg-white/35 hover:bg-white/55'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-              {historySlideIdx < historyDeck.slides.length - 1 && (
-                <button
-                  type="button"
-                  onClick={() => setHistorySlideIdx((i) => i + 1)}
-                  className="absolute right-2 z-10 p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
-                >
-                  <ChevronRight size={28} />
-                </button>
-              )}
-            </div>
           </div>
         )}
       </StaffPageLayout>
