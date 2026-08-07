@@ -889,7 +889,10 @@ export default function App() {
           >
             <StaffTeachingSubjectsPicker
               variant="onboarding"
-              onSaved={() => setTeachingSubjectsReady(true)}
+              onSaved={() => {
+                setTeachingSubjectsReady(true);
+                setActiveView('syllabus');
+              }}
             />
           </motion.div>
         </div>

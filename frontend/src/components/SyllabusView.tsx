@@ -102,6 +102,16 @@ export default function SyllabusView({
   }, [load]);
 
   useEffect(() => {
+    const onTeachingSubjectsChanged = () => {
+      void load();
+    };
+    window.addEventListener('imentor:teaching-subjects-changed', onTeachingSubjectsChanged);
+    return () => {
+      window.removeEventListener('imentor:teaching-subjects-changed', onTeachingSubjectsChanged);
+    };
+  }, [load]);
+
+  useEffect(() => {
     if (selectedTopic?.syllabusId != null) {
       setActiveSyllabusId(selectedTopic.syllabusId);
       return;

@@ -98,6 +98,7 @@ export default function StaffTeachingSubjectsPicker({
     try {
       const ids = Array.from(selected);
       await setMyTeachingSubjects(ids);
+      window.dispatchEvent(new CustomEvent('imentor:teaching-subjects-changed'));
       onSaved?.(ids);
     } catch (err) {
       setError(errMessage(err, t));
