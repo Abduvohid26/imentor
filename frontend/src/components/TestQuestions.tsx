@@ -234,6 +234,9 @@ export default function TestQuestions() {
     );
     setSubmissions([]);
     setShowAnalysis(true);
+    writeStoredTeacherSid(data.topic, sid);
+    return sid;
+  };
 
   const [error, setError] = useState<string | null>(null);
   const [teacherSessionId, setTeacherSessionId] = useState<string>('');
