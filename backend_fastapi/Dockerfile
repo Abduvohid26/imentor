@@ -6,8 +6,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# LibreOffice — PPTX preview (bepul headless PDF konvertatsiya)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libreoffice-impress-nogui \
+    fonts-dejavu-core \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt

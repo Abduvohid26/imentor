@@ -62,6 +62,24 @@ export async function getPresentationFileBlobUrl(id: number): Promise<string> {
   return url;
 }
 
+const previewBlobCache = new Map<number, string>();
+
+/** Brauzer preview: backend LibreOffice orqali PPTX→PDF. */
+export async function getPresentationPreviewBlobUrl(id: number): Promise<string> {
+  const cached = previewBlobCache.get(id);
+  if (cached) return cached;
+  const token = await getBackendAccessToken();
+  if (!token) throw new Error('no-backend-token');
+  const res = await fetchWithTimeout(`${apiBaseUrl()}/v1/presentations/${id}/preview/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }, 180_000);
+  if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status, null);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  previewBlobCache.set(id, url);
+  return url;
+}
+
 export function normPresentationTopic(topic: string): string {
   return normTopicKey(topic);
 }

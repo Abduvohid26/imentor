@@ -325,6 +325,42 @@ def download_presentation(
     return FileResponse(path, filename=obj.file_name)
 
 
+@router.get("/presentations/{pk}/preview/")
+def preview_presentation(
+    pk: int,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
+) -> FileResponse:
+    """Brauzer preview: PPTX/PPT → PDF (LibreOffice). PDF o'zi qaytariladi."""
+    from app.services.pptx_preview import ensure_presentation_preview_pdf
+
+    obj = db.get(TopicPresentation, pk)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Topilmadi.")
+    path = storage.absolute_path(obj.file)
+    try:
+        pdf_path = ensure_presentation_preview_pdf(path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Fayl diskda topilmadi.") from None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Taqdimot preview tayyorlanmadi. Yuklab olib PowerPoint da oching.",
+        ) from None
+
+    preview_name = (obj.file_name or "presentation").rsplit(".", 1)[0] + ".pdf"
+    return FileResponse(
+        pdf_path,
+        filename=preview_name,
+        media_type="application/pdf",
+        content_disposition_type="inline",
+    )
+
+
 @router.delete("/presentations/{pk}/", status_code=204, response_model=None)
 def delete_presentation(
     pk: int,

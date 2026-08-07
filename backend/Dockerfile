@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gettext \
     poppler-utils \
     p7zip-full \
+    libreoffice-impress-nogui \
+    fonts-dejavu-core \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt

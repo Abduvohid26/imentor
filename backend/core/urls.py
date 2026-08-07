@@ -11,6 +11,7 @@ from .presentation_views import (
     TopicPresentationDetailView,
     TopicPresentationFileView,
     TopicPresentationListCreateView,
+    TopicPresentationPreviewView,
 )
 from .handout_views import (
     AdminTopicHandoutDetailView,
@@ -204,6 +205,7 @@ urlpatterns = [
     path('v1/ai-jobs/<str:job_id>/', AiJobStatusView.as_view(), name='ai-job-status'),
     path('v1/presentations/', TopicPresentationListCreateView.as_view(), name='presentations-list-create'),
     path('v1/presentations/<int:pk>/file/', TopicPresentationFileView.as_view(), name='presentation-file'),
+    path('v1/presentations/<int:pk>/preview/', TopicPresentationPreviewView.as_view(), name='presentation-preview'),
     path('v1/presentations/<int:pk>/', TopicPresentationDetailView.as_view(), name='presentation-detail'),
     path('v1/handouts/', TopicHandoutListCreateView.as_view(), name='handouts-list-create'),
     path('v1/handouts/<int:pk>/file/', TopicHandoutFileView.as_view(), name='handout-file'),

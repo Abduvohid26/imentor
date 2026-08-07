@@ -37,8 +37,8 @@ import {
   deletePresentation,
   fetchPresentationsForTopic,
   getPresentationFileBlobUrl,
+  getPresentationPreviewBlobUrl,
   isAllowedPresentationFile,
-  resolvePresentationFileUrl,
   uploadPresentation,
   type TopicPresentationItem,
 } from '../utils/presentationUploadApi';
@@ -78,18 +78,6 @@ function PresentationPreview({ item, mode }: { item: TopicPresentationItem; mode
   );
 }
 
-/** Brauzer PPTX ni o‘zi chiza olmaydi — Office Online orqali SHU fayl ochiladi. */
-function officeEmbedUrl(absoluteFileUrl: string): string {
-  if (!absoluteFileUrl || absoluteFileUrl.startsWith('blob:')) return '';
-  try {
-    const abs = new URL(absoluteFileUrl, window.location.origin).href;
-    if (!/^https?:\/\//i.test(abs)) return '';
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(abs)}`;
-  } catch {
-    return '';
-  }
-}
-
 type LightboxProps = {
   items: TopicPresentationItem[];
   index: number;
@@ -101,37 +89,46 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
   const { t } = useUiText();
   const item = items[index];
   const [downloadUrl, setDownloadUrl] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
   const [fileReady, setFileReady] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
   if (!item) return null;
   const hasPrev = index > 0;
   const hasNext = index < items.length - 1;
-  const publicUrl = resolvePresentationFileUrl(item.file_url);
-  const embedUrl =
-    item.kind === 'pdf' ? '' : officeEmbedUrl(publicUrl);
-  const pdfSrc = item.kind === 'pdf' ? downloadUrl || publicUrl : '';
 
   useEffect(() => {
     let cancelled = false;
     setDownloadUrl('');
+    setPreviewUrl('');
     setFileReady(false);
+    setPreviewError(false);
     (async () => {
       try {
-        const blob = await getPresentationFileBlobUrl(item.id);
-        if (!cancelled) {
-          setDownloadUrl(blob);
-          setFileReady(true);
+        const fileBlob = await getPresentationFileBlobUrl(item.id);
+        if (cancelled) return;
+        setDownloadUrl(fileBlob);
+
+        if (item.kind === 'pdf') {
+          setPreviewUrl(fileBlob);
+        } else {
+          // PPTX/PPT → server LibreOffice PDF (shu taqdimotning o‘zi)
+          try {
+            const pdfBlob = await getPresentationPreviewBlobUrl(item.id);
+            if (!cancelled) setPreviewUrl(pdfBlob);
+          } catch {
+            if (!cancelled) setPreviewError(true);
+          }
         }
       } catch {
-        if (!cancelled) {
-          if (publicUrl) setDownloadUrl(publicUrl);
-          setFileReady(true);
-        }
+        if (!cancelled) setPreviewError(true);
+      } finally {
+        if (!cancelled) setFileReady(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [item.id, publicUrl]);
+  }, [item.id, item.kind]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -181,26 +178,28 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
 
         <div className="w-full h-full max-w-6xl flex items-center justify-center">
           {!fileReady ? (
-            <Loader2 className="animate-spin text-white" size={40} />
-          ) : item.kind === 'pdf' && pdfSrc ? (
+            <div className="text-center text-white space-y-3">
+              <Loader2 className="animate-spin mx-auto" size={40} />
+              {item.kind !== 'pdf' ? (
+                <p className="text-[13px] text-white/70">PPTX ochilmoqda…</p>
+              ) : null}
+            </div>
+          ) : previewUrl ? (
             <iframe
               title={item.file_name}
-              src={pdfSrc}
+              src={previewUrl}
               className="w-full h-full min-h-[50vh] rounded-lg bg-white"
-            />
-          ) : embedUrl ? (
-            <iframe
-              title={item.file_name}
-              src={embedUrl}
-              className="w-full h-full min-h-[50vh] rounded-lg bg-white"
-              allowFullScreen
             />
           ) : (
             <div className="text-center text-white px-6 space-y-5 max-w-md">
               <div className="relative w-48 h-32 mx-auto rounded-2xl overflow-hidden bg-white/10">
                 <PresentationPreview item={item} mode="full" />
               </div>
-              <p className="text-[14px] text-white/80 leading-relaxed">{t('presentation.previewDownload')}</p>
+              <p className="text-[14px] text-white/80 leading-relaxed">
+                {previewError
+                  ? t('presentation.previewDownload')
+                  : t('presentation.previewDownload')}
+              </p>
               {downloadUrl && (
                 <a
                   href={downloadUrl}

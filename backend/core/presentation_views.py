@@ -178,6 +178,48 @@ class TopicPresentationFileView(APIView):
         return FileResponse(f, as_attachment=False, filename=name, content_type=ctype)
 
 
+class TopicPresentationPreviewView(APIView):
+    """PPTX/PPT → PDF (LibreOffice), brauzer iframe uchun."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, HasEducationRole]
+
+    def get(self, request, pk: int):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        from .pptx_preview import ensure_presentation_preview_pdf
+
+        obj = TopicPresentation.objects.filter(pk=pk).first()
+        if not obj or not obj.file:
+            return Response({"detail": "Topilmadi."}, status=404)
+        try:
+            abs_path = Path(obj.file.path)
+        except Exception:
+            abs_path = Path(settings.MEDIA_ROOT) / str(obj.file)
+        try:
+            pdf_path = ensure_presentation_preview_pdf(abs_path)
+        except FileNotFoundError:
+            return Response({"detail": "Fayl diskda topilmadi."}, status=404)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=400)
+        except RuntimeError as e:
+            return Response({"detail": str(e)}, status=503)
+        except Exception:
+            return Response(
+                {"detail": "Taqdimot preview tayyorlanmadi. Yuklab olib PowerPoint da oching."},
+                status=503,
+            )
+        preview_name = (obj.file_name or "presentation").rsplit(".", 1)[0] + ".pdf"
+        return FileResponse(
+            open(pdf_path, "rb"),
+            as_attachment=False,
+            filename=preview_name,
+            content_type="application/pdf",
+        )
+
+
 class TopicPresentationDetailView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, HasEducationRole]
