@@ -522,12 +522,19 @@ export default function TestQuestions() {
     }
   };
 
-  const handleViewResults = () => {
-    setShowAnalysis(false);
-  };
-
   const handleBackToQuestions = () => {
     setShowAnalysis(true);
+  };
+
+  /** Yagona, izchil joylashgan almashtirish tugmasi — avval bu tugma faqat
+   * "Natijalarni ko'rish"ga o'tkazardi, orqaga qaytish esa natijalar
+   * jadvali ICHIDAGI alohida kichik "Orqaga" tugmasi orqali bo'lardi —
+   * ikkita boshqaruv ikki xil joyda bo'lgani foydalanuvchini
+   * chalg'itardi ("UI qotib qolganday" tuyulishi shundan). Endi bitta
+   * tugma ikkala yo'nalishda ham ishlaydi va holatga qarab yorlig'i
+   * o'zgaradi. */
+  const handleToggleResultsView = () => {
+    setShowAnalysis((prev) => !prev);
   };
 
   useEffect(() => {
@@ -747,7 +754,13 @@ export default function TestQuestions() {
         <div className="w-full space-y-6 pb-20">
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold text-gray-900">{t('test.studentTitle')}</h1>
-            <p className="text-gray-500">{t('test.studentSubtitle')}</p>
+            {/* Avval har doim (login bosqichida ham) "ism-familiyangizni kiriting"
+                degan matn ko'rsatilardi — aslida bu bosqichda login talab
+                qilinadi, ism-familiya keyingi qadamda so'raladi. Matn holatga
+                mos bo'lishi uchun shartli qilindi. */}
+            <p className="text-gray-500">
+              {studentAuthed ? t('test.studentSubtitle') : t('test.studentLoginHint')}
+            </p>
           </div>
           {!studentAuthed ? (
             <form
@@ -758,7 +771,6 @@ export default function TestQuestions() {
                 <KeyRound size={20} />
                 {t('test.studentLoginTitle')}
               </div>
-              <p className="text-sm text-gray-500">{t('test.studentLoginHint')}</p>
               <input
                 value={studentLoginId}
                 onChange={(e) => setStudentLoginId(e.target.value)}
@@ -1010,11 +1022,15 @@ export default function TestQuestions() {
                 <div className="flex gap-2 flex-wrap">
                   <button
                     type="button"
-                    onClick={handleViewResults}
+                    onClick={handleToggleResultsView}
                     className={`px-4 py-2 rounded-xl font-semibold ${!showAnalysis ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                   >
-                    <Users size={16} className="inline mr-1" />
-                    {t('test.viewResults')}
+                    {!showAnalysis ? (
+                      <Brain size={16} className="inline mr-1" />
+                    ) : (
+                      <Users size={16} className="inline mr-1" />
+                    )}
+                    {!showAnalysis ? t('test.viewAnalysis') : t('test.viewResults')}
                   </button>
                   {!sessionClosed && (
                     <button
