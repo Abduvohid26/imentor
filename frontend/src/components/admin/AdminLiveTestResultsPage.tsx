@@ -124,11 +124,14 @@ export default function AdminLiveTestResultsPage() {
     );
   }, [submissions, studentSearch]);
 
+  const subjectLabel = (row: AdminLiveTestStatRow) =>
+    row.subjectName || (row.subjectCode === '__unassigned__' ? t('admin.liveTestUnassignedSubject') : row.subjectCode);
+
   const headerTitle =
     level === 'subjects'
       ? t('admin.liveTestResultsTab')
       : level === 'sessions'
-        ? selectedSubject?.subjectName || selectedSubject?.subjectCode || ''
+        ? (selectedSubject ? subjectLabel(selectedSubject) : '')
         : selectedSession?.topic || '';
 
   const headerSubtitle =
@@ -153,7 +156,7 @@ export default function AdminLiveTestResultsPage() {
                 className="inline-flex items-center gap-1 text-[12px] font-semibold text-indigo-600 hover:text-indigo-700 mb-0.5"
               >
                 <ArrowLeft size={13} />
-                {level === 'sessions' ? t('admin.liveTestResultsTab') : selectedSubject?.subjectName || t('admin.backToSessions')}
+                {level === 'sessions' ? t('admin.liveTestResultsTab') : (selectedSubject ? subjectLabel(selectedSubject) : t('admin.backToSessions'))}
               </button>
             )}
             <h1 className="text-xl font-bold text-black/90 truncate">{headerTitle}</h1>
@@ -191,7 +194,7 @@ export default function AdminLiveTestResultsPage() {
               >
                 <div className="flex items-center gap-2 mb-2">
                   <GraduationCap size={16} className="text-indigo-600 shrink-0" />
-                  <span className="font-bold text-black/90 truncate">{s.subjectName || s.subjectCode}</span>
+                  <span className="font-bold text-black/90 truncate">{subjectLabel(s)}</span>
                 </div>
                 {s.department && <p className="text-[11px] text-black/40 mb-2">{s.department}</p>}
                 <div className="flex items-center gap-3 text-[12px] text-black/60">

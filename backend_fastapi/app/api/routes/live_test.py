@@ -23,6 +23,8 @@ from app.services.pagination import paginate
 router = APIRouter()
 
 STAFF_ROLES = ("admin", "klinika_admin", "hodim")
+# Admin natijalar sahifasida fan biriktirilmagan (eski) testlar guruhi uchun kalit.
+UNASSIGNED_SUBJECT_KEY = "__unassigned__"
 
 
 def _get_session(db: Session, session_key: str) -> LiveTestSession | None:
@@ -295,7 +297,12 @@ def admin_live_test_stats(
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_roles("admin")),
 ) -> dict:
-    """Fan (va kafedra) kesimida — kim qancha jonli test yechgani statistikasi."""
+    """
+    Fan (va kafedra) kesimida — kim qancha jonli test yechgani statistikasi.
+    subject_code bo'sh (eski, fan biriktirilmagan testlar) ham "" kaliti ostida
+    alohida guruh sifatida qaytadi — frontend buni "Noma'lum fan" deb ko'rsatadi,
+    aks holda tarixiy ma'lumot butunlay ko'rinmay qolardi.
+    """
     rows = (
         db.execute(
             select(
@@ -304,13 +311,12 @@ def admin_live_test_stats(
                 func.count(func.distinct(LiveTestSubmission.student_id)).label("student_count"),
             )
             .join(LiveTestSubmission, LiveTestSubmission.session_id == LiveTestSession.id)
-            .where(LiveTestSession.subject_code != "")
             .group_by(LiveTestSession.subject_code)
             .order_by(func.count(LiveTestSubmission.id).desc())
         )
         .all()
     )
-    codes = [r.subject_code for r in rows]
+    codes = [r.subject_code for r in rows if r.subject_code]
     subjects = {
         s.subject_code: {"subject_name": s.subject_name, "department": s.department.name if s.department else ""}
         for s in db.execute(
@@ -319,9 +325,7 @@ def admin_live_test_stats(
     }
 
     avg_scores: dict[str, list[float]] = {}
-    subs = db.execute(
-        select(LiveTestSubmission).join(LiveTestSession).where(LiveTestSession.subject_code != "")
-    ).scalars().all()
+    subs = db.execute(select(LiveTestSubmission).join(LiveTestSession)).scalars().all()
     for sub in subs:
         payload = sub.session.payload if isinstance(sub.session.payload, dict) else {}
         questions = payload.get("questions", [])
@@ -336,7 +340,7 @@ def admin_live_test_stats(
         scores = avg_scores.get(code, [])
         data.append(
             {
-                "subject_code": code,
+                "subject_code": code or UNASSIGNED_SUBJECT_KEY,
                 "subject_name": meta["subject_name"],
                 "department": meta["department"],
                 "submission_count": r.submission_count,
@@ -361,7 +365,10 @@ def admin_live_test_sessions(
         LiveTestSession.is_closed,
         func.count(LiveTestSubmission.id).label("submission_count"),
     ).join(LiveTestSubmission, LiveTestSubmission.session_id == LiveTestSession.id)
-    if subject_code:
+    # "__unassigned__" — fan biriktirilmagan (eski) testlar guruhi.
+    if subject_code == UNASSIGNED_SUBJECT_KEY:
+        query = query.where(LiveTestSession.subject_code == "")
+    elif subject_code:
         query = query.where(LiveTestSession.subject_code == subject_code)
     query = query.group_by(
         LiveTestSession.session_key, LiveTestSession.payload, LiveTestSession.created_at, LiveTestSession.is_closed
@@ -393,7 +400,9 @@ def admin_live_test_submissions(
 ) -> dict:
     """Har bir talabaning jonli test (QR) topshirig'i — sahifalangan, fan/sessiya bo'yicha filtrlanadi."""
     query = select(LiveTestSubmission).join(LiveTestSession).order_by(LiveTestSubmission.submitted_at.desc())
-    if subject_code:
+    if subject_code == UNASSIGNED_SUBJECT_KEY:
+        query = query.where(LiveTestSession.subject_code == "")
+    elif subject_code:
         query = query.where(LiveTestSession.subject_code == subject_code)
     if session_key:
         query = query.where(LiveTestSession.session_key == session_key)
