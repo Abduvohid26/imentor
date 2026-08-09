@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,8 @@ from app.schemas.course_syllabus import CourseSyllabusFullOut, CourseSyllabusUps
 from app.services.pagination import paginate
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
@@ -55,6 +58,8 @@ def _full_out(obj: CourseSyllabus) -> CourseSyllabusFullOut:
         file_name=obj.file_name,
         topics=obj.topics,
         variants=obj.variants,
+        name_i18n=obj.name_i18n or {},
+        topics_i18n=obj.topics_i18n or {},
         sort_order=obj.sort_order,
         is_active=obj.is_active,
         created_at=obj.created_at,
@@ -113,6 +118,37 @@ def syllabus_catalog(
         if topic_count > 0:
             out.append(_full_out(obj).model_dump())
     return paginate(out, request, default_page_size=200, max_page_size=1000)
+
+
+@router.post("/course-syllabuses/{pk}/translate/")
+def translate_syllabus(
+    pk: int,
+    lang: str = "",
+    db: Session = Depends(get_db),
+    auth=Depends(require_roles(*STAFF_ROLES)),
+) -> dict:
+    """Sillabus nomi va mavzu nomlarini interfeys tillariga tarjima qiladi.
+
+    Interfeys tili almashganda, tarjimasi yo'q sillabus uchun chaqiriladi.
+    Idempotent: mavjud tarjimalar qayta yaratilmaydi, shuning uchun bir necha
+    foydalanuvchi bir vaqtda chaqirsa ham natija bir xil bo'ladi.
+    """
+    from app.services.syllabus_i18n import SUPPORTED_LANGS, ensure_syllabus_translations
+
+    obj = db.get(CourseSyllabus, pk)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Sillabus topilmadi.")
+
+    wanted = (lang or "").strip().lower()
+    langs = (wanted,) if wanted in SUPPORTED_LANGS else SUPPORTED_LANGS
+    changed = ensure_syllabus_translations(db, obj, langs)
+    db.refresh(obj)
+    return {
+        "ok": True,
+        "changed": changed,
+        "name_i18n": obj.name_i18n or {},
+        "topics_i18n": obj.topics_i18n or {},
+    }
 
 
 def _topic_count(obj: CourseSyllabus) -> int:
@@ -438,6 +474,7 @@ def admin_list_syllabuses(
 )
 def admin_create_syllabus(
     payload: CourseSyllabusUpsertRequest,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     auth=Depends(require_roles("admin")),
 ) -> CourseSyllabusFullOut:
@@ -482,7 +519,30 @@ def admin_create_syllabus(
     db.add(obj)
     db.commit()
     db.refresh(obj)
+
+    # Yangi sillabus DARHOL 3 tilga tarjima qilinadi — o'qituvchi til
+    # almashtirganda kutib turmasin. Fonda bajariladi: tarjima xato bersa
+    # ham sillabus yaratilgan bo'lib qolaveradi (keyin talab bo'yicha
+    # /translate/ orqali to'ldiriladi).
+    background.add_task(_translate_syllabus_bg, obj.id)
+
     return _full_out(obj)
+
+
+def _translate_syllabus_bg(syllabus_id: int) -> None:
+    """Fon vazifasi: o'z DB sessiyasini ochadi (so'rovniki yopilgan bo'ladi)."""
+    from app.core.db import SessionLocal
+    from app.services.syllabus_i18n import ensure_syllabus_translations
+
+    db = SessionLocal()
+    try:
+        obj = db.get(CourseSyllabus, syllabus_id)
+        if obj is not None:
+            ensure_syllabus_translations(db, obj)
+    except Exception:
+        logger.warning("Sillabus %s tarjimasi bajarilmadi", syllabus_id, exc_info=True)
+    finally:
+        db.close()
 
 
 @router.patch("/admin/course-syllabuses/{pk}/", response_model=CourseSyllabusFullOut)

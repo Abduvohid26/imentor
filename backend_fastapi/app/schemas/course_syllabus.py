@@ -47,6 +47,11 @@ class CourseSyllabusFullOut(BaseModel):
     file_name: str
     topics: list
     variants: list
+    # Ko'rsatish uchun tarjimalar (asl nom o'zgarmaydi):
+    #   name_i18n   -> {"ru": "...", "en": "..."}
+    #   topics_i18n -> {"ru": {"<asl sarlavha>": "<tarjima>"}, ...}
+    name_i18n: dict = {}
+    topics_i18n: dict = {}
     sort_order: int
     is_active: bool
     created_at: dt.datetime

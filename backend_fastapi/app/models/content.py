@@ -43,6 +43,13 @@ class CourseSyllabus(Base):
     file_name: Mapped[str] = mapped_column(String(512))
     topics: Mapped[list] = mapped_column(JSONB, default=list)
     variants: Mapped[list] = mapped_column(JSONB, default=list)
+    # Interfeys tiliga moslash uchun tarjimalar. ASL nom hech qachon
+    # o'zgarmaydi — u kalit va AI promptlari uchun ishlatiladi; bu yerda
+    # faqat KO'RSATISH uchun variantlar saqlanadi.
+    #   name_i18n   -> {"ru": "...", "en": "..."}
+    #   topics_i18n -> {"ru": {"<asl sarlavha>": "<tarjima>"}, "en": {...}}
+    name_i18n: Mapped[dict] = mapped_column(JSONB, default=dict)
+    topics_i18n: Mapped[dict] = mapped_column(JSONB, default=dict)
     sort_order: Mapped[int] = mapped_column(SmallInteger, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
