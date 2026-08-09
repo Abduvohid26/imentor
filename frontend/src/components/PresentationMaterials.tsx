@@ -25,6 +25,7 @@ import {
   type PresentationContent,
 } from '../utils/presentationContentSchema';
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
+import PdfSlideViewer from './PdfSlideViewer';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
 import {
@@ -185,17 +186,9 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
               ) : null}
             </div>
           ) : previewUrl ? (
-            <iframe
-              title={item.file_name}
-              // Brauzer o'zining ichki PDF asboblar panelini (sarlavha, sahifalar
-              // ro'yxati, zoom, print) ko'rsatmasin — bu ilova o'z headerida
-              // allaqachon oldinga/orqaga, yuklab olish, yopish tugmalarini
-              // beradi; ikkita panel bir-ustiga chiqishi dars o'tishga xalaqit
-              // berardi. `#toolbar=0&navpanes=0` PDF open-parameter'lari
-              // Chrome/Edge'ning ichki PDF ko'ruvchisida qo'llab-quvvatlanadi.
-              src={`${previewUrl}#toolbar=0&navpanes=0&statusbar=0`}
-              className="w-full h-full min-h-[50vh] rounded-lg bg-white"
-            />
+            // Brauzerning o'z ichki PDF paneli o'rniga — dars o'tishga moslashtirilgan
+            // slayd ko'ruvchi: katta oldinga/orqaga tugmalari, zoom (+/-) va to'liq ekran.
+            <PdfSlideViewer fileUrl={previewUrl} />
           ) : (
             <div className="text-center text-white px-6 space-y-5 max-w-md">
               <div className="relative w-48 h-32 mx-auto rounded-2xl overflow-hidden bg-white/10">
