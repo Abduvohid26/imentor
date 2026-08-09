@@ -421,7 +421,6 @@ export default function PresentationMaterials() {
         // MUHIM: mavzu kaliti sifatida taqdimot SARLAVHASI emas, MAVZU nomi
         // ishlatiladi — aks holda Baza mavzu bo'yicha qidirganda topa olmaydi
         // (boshqa 3 bo'lim ham aynan shunday saqlaydi).
-        pushAppNotification({ title: t('common.doneTitle'), body: t('presentation.readyToast'), level: 'success' });
         // topicNorm (sillabus::yo'nalish::mavzu kodi) qo'shiladi — sarlavha
         // kalit bo'lib qolmasin (tarjimadan keyin yozuv yo'qolmasligi uchun).
         await savePreparedContent(
@@ -430,9 +429,17 @@ export default function PresentationMaterials() {
           deck,
           buildPreparedContentMeta(globalTopic),
         );
+        // Muvaffaqiyat xabari saqlangandan KEYIN — aks holda saqlash
+        // yiqilganda ham "tayyor" deb ko'rsatilardi.
+        pushAppNotification({ title: t('common.doneTitle'), body: t('presentation.readyToast'), level: 'success' });
         refreshDeckHistory();
       } catch (histErr) {
         console.warn('Presentation history save skipped:', histErr);
+        pushAppNotification({
+          title: t('common.doneTitle'),
+          body: t('common.saveFailedKeepWork'),
+          level: 'warning',
+        });
       }
       const shortTopic =
         [globalTopic.id, globalTopic.title].filter(Boolean).join(' — ').slice(0, 240) || topicTitle;

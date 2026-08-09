@@ -138,9 +138,17 @@ export default function LectureNotes() {
       // Kalit sifatida SARLAVHA emas, tuzilmali topicNorm ishlatiladi
       // (sillabus::yo'nalish::mavzu kodi) — aks holda mavzu nomi tarjima
       // qilinganda saqlangan ma'ruza topilmay qolardi.
-      await savePreparedContent('lecture', topic, data, buildPreparedContentMeta(globalTopic));
-      pushAppNotification({ title: t('common.doneTitle'), body: t('lecture.readyToast'), level: 'success' });
-      refreshHistory();
+      // Ma'ruza allaqachon ekranda (setLectureSession yuqorida) — saqlash
+      // yiqilsa "generatsiya xatosi" deb ko'rsatmaymiz, aks holda
+      // foydalanuvchi tayyor matnni yo'qotdim deb o'ylaydi.
+      try {
+        await savePreparedContent('lecture', topic, data, buildPreparedContentMeta(globalTopic));
+        pushAppNotification({ title: t('common.doneTitle'), body: t('lecture.readyToast'), level: 'success' });
+        refreshHistory();
+      } catch (saveErr) {
+        console.error('Lecture save failed', saveErr);
+        setError(t('common.saveFailedKeepWork'));
+      }
     } catch (err) {
       console.error('Lecture generation error:', err);
       setError(t('lecture.errorGenerate'));

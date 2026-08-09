@@ -24,8 +24,11 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://127.0.0.1:6379/0"
 
-    django_jwt_access_minutes: int = 30
-    django_jwt_refresh_days: int = 7
+    # Sessiya 12 soat davom etadi — o'qituvchi ish kuni davomida qayta
+    # kirmasligi kerak. Refresh token undan uzunroq (o'chib qolgan tabni
+    # ochganda ham sessiya tiklanadi).
+    django_jwt_access_minutes: int = 720
+    django_jwt_refresh_days: int = 14
 
     openai_api_key: str = ""
     openai_chat_model: str = "gpt-4o"

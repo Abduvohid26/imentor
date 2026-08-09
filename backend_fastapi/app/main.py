@@ -26,12 +26,18 @@ from app.api.routes import (
     syllabus_catalog,
     topic_content,
 )
+from app.core.compression import SmartGZipMiddleware
 from app.core.config import get_settings
 from app.services.file_storage import media_root
 
 settings = get_settings()
 
 app = FastAPI(title="iMentor API (FastAPI)", version="0.1.0")
+
+# Sillabus katalogi ~1.5 MB JSON qaytaradi — gzip'siz har bir o'qituvchi
+# kirganda shuncha trafik ketadi. SSE oqimi va siqilgan fayllar chetlab
+# o'tiladi (app/core/compression.py).
+app.add_middleware(SmartGZipMiddleware, minimum_size=1024, compresslevel=6)
 
 app.add_middleware(
     CORSMiddleware,

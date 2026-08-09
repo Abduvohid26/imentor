@@ -1,5 +1,5 @@
 import { getCurrentLocalUser } from './localStaffAuth';
-import { httpJson } from '../api/httpClient';
+import { HttpError, httpJson } from '../api/httpClient';
 import { getBackendAccessToken } from './backendAuth';
 import { topicNormLookupKeys } from './syllabusTopicContext';
 import type { SyllabusTopic } from '../services/aiService';
@@ -91,6 +91,31 @@ type CloudRow = {
   created_at: string;
 };
 
+/** Saqlash — AI generatsiyasidan keyingi eng muhim qadam: bu yerda yiqilsa
+ * o'qituvchining bir necha daqiqalik ishi yo'qoladi. Shuning uchun:
+ *  - timeout uzun (payload katta, mobil internet sekin bo'lishi mumkin),
+ *  - vaqtinchalik xatolarda (tarmoq, timeout, 5xx) qisqa kutib qayta uriniladi.
+ * 4xx (validatsiya/autentifikatsiya) da qayta urinilmaydi — natija o'zgarmaydi. */
+async function postWithRetry(url: string, token: string, body: unknown): Promise<void> {
+  const delaysMs = [800, 2500];
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await httpJson(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+        timeoutMs: 60_000,
+      });
+      return;
+    } catch (err) {
+      const status = err instanceof HttpError ? err.status : 0;
+      const retriable = status === 0 || status === 429 || status >= 500;
+      if (!retriable || attempt >= delaysMs.length) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+    }
+  }
+}
+
 /** Asosiy saqlash — FastAPI `/v1/prepared-content/` (Postgres). localStorage ishlatilmaydi. */
 export async function savePreparedContent(
   kind: PreparedContentKind,
@@ -106,10 +131,7 @@ export async function savePreparedContent(
   const topicNorm = meta?.topicNorm?.trim() || normTopic(topic);
   const lightPayload = stripHeavyMediaFromPayload(payload);
 
-  await httpJson(`${apiBaseUrl()}/v1/prepared-content/`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: {
+  await postWithRetry(`${apiBaseUrl()}/v1/prepared-content/`, token, {
       owner_key: owner,
       kind,
       topic: topic.trim() || 'Nomsiz',
@@ -120,7 +142,6 @@ export async function savePreparedContent(
       variant_label: meta?.variantLabel?.trim() || '',
       topic_code: meta?.topicCode?.trim() || '',
       payload: lightPayload,
-    },
   });
 }
 

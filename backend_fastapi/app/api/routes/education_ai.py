@@ -27,6 +27,22 @@ router = APIRouter()
 STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 
 
+def _release_db(db: Session) -> None:
+    """DB ulanishini pool'ga qaytaradi.
+
+    AI generatsiyasi 1–5 daqiqa davom etadi. Agar shu vaqt davomida Session
+    ochiq tranzaksiyani ushlab tursa, har bir generatsiya bitta Postgres
+    ulanishini band qiladi ("idle in transaction") va bir necha o'nlab
+    o'qituvchi bir vaqtda ishlaganda pool tugab, butun API 500 qaytaradi.
+    RAG so'rovlari tugagach ulanish darhol bo'shatiladi — keyingi murojaatda
+    Session o'zi qayta ochiladi.
+    """
+    try:
+        db.close()
+    except Exception:  # noqa: BLE001 — bo'shatish hech qachon so'rovni yiqitmasin
+        pass
+
+
 @router.post("/education-ai/completion/", response_model=EducationAiCompletionResponse)
 def education_ai_completion(
     payload: EducationAiCompletionRequest,
@@ -54,6 +70,8 @@ def education_ai_completion(
         if context_message:
             messages = [{"role": "system", "content": context_message}] + messages
             book_references = rag.book_references_from_chunks(chunks)
+
+    _release_db(db)
 
     model = payload.model.strip() or settings.openai_chat_model
     try:
@@ -103,6 +121,10 @@ def education_ai_completion_stream(
             messages = [{"role": "system", "content": context_message}] + messages
             book_references = rag.book_references_from_chunks(chunks)
 
+    # Stream javobida `Depends(get_db)` tozalanishi butun oqim tugagunicha
+    # kechikadi — ulanishni shu yerda qo'lda qaytaramiz.
+    _release_db(db)
+
     model = payload.model.strip() or settings.openai_chat_model
 
     def _gen():
@@ -121,7 +143,16 @@ def education_ai_completion_stream(
             return
         yield f"data: {json.dumps({'done': True, 'book_references': book_references})}\n\n"
 
-    return StreamingResponse(_gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            # nginx bufferlamasin — aks holda matn bo'lak-bo'lak emas,
+            # to'planib bir zarbda keladi va "oqim" effekti yo'qoladi.
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 @router.post("/education-ai/book-references/", response_model=EducationAiBookReferencesResponse)
@@ -205,6 +236,10 @@ def education_ai_case_context(
                     "text": text[:1200],
                 }
             )
+
+    # Bundan keyin faqat tashqi tarmoq (OpenAI, PubMed, Scholar, Wikipedia) —
+    # DB kerak emas, ulanishni pool'ga qaytaramiz.
+    _release_db(db)
 
     keywords = topic
     if api_key:

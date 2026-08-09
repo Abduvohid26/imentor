@@ -228,7 +228,22 @@ export async function fetchCourseSyllabusCatalog(): Promise<CourseSyllabusRow[]>
   return unwrapPagedResults(data);
 }
 
-export async function fetchMyCourseSelections(): Promise<StaffCourseSelectionRow[]> {
+/** Sahifa ochilganda App, SyllabusView va UserProfile bir vaqtda shu ro'yxatni
+ * so'raydi — javob esa ~250 KB. Bir vaqtda ketayotgan so'rovlar bittaga
+ * birlashtiriladi (kesh emas: so'rov tugagach dedupe bekor qilinadi, shuning
+ * uchun fanlar o'zgartirilgandan keyin keyingi chaqiruv yangi ma'lumot oladi). */
+let inFlightMySelections: Promise<StaffCourseSelectionRow[]> | null = null;
+
+export function fetchMyCourseSelections(): Promise<StaffCourseSelectionRow[]> {
+  if (!inFlightMySelections) {
+    inFlightMySelections = doFetchMyCourseSelections().finally(() => {
+      inFlightMySelections = null;
+    });
+  }
+  return inFlightMySelections;
+}
+
+async function doFetchMyCourseSelections(): Promise<StaffCourseSelectionRow[]> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
   const rows = await httpJson<StaffCourseSelectionRow[]>(`${apiBaseUrl()}/v1/course-syllabuses/my/`, {

@@ -32,9 +32,11 @@ vi.mock('../utils/liveTestApi', async (importOriginal) => {
   };
 });
 
+// Talaba rejimi endi login talab qiladi — testda allaqachon kirgan talaba
+// sessiyasini taqlid qilamiz, aks holda test faqat login formasini ko'radi.
 vi.mock('../utils/localStaffAuth', () => ({
-  getCurrentLocalUser: () => null,
-  normalizeUserRole: (u: { role?: string }) => u?.role || 'hodim',
+  getCurrentLocalUser: () => ({ uid: 'stu_1', role: 'student', displayName: 'Talaba Test' }),
+  normalizeUserRole: (u: { role?: string } | null) => u?.role || 'hodim',
 }));
 
 vi.mock('../services/aiService', () => ({

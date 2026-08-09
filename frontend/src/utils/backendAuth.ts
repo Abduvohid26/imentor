@@ -369,7 +369,21 @@ export async function syncCurrentUserPasswordToBackend(
   });
 }
 
-async function refreshAccessToken(cached: CachedBundle): Promise<CachedBundle | null> {
+/** Bir vaqtda ketayotgan refresh so'rovlari bittaga birlashtiriladi.
+ * Sahifa ochilganda 5–10 ta so'rov barobar 401 olishi mumkin — har biri
+ * alohida refresh yuborsa, serverga keraksiz zarba va token poygasi bo'ladi. */
+let inFlightRefresh: Promise<CachedBundle | null> | null = null;
+
+function refreshAccessToken(cached: CachedBundle): Promise<CachedBundle | null> {
+  if (!inFlightRefresh) {
+    inFlightRefresh = doRefreshAccessToken(cached).finally(() => {
+      inFlightRefresh = null;
+    });
+  }
+  return inFlightRefresh;
+}
+
+async function doRefreshAccessToken(cached: CachedBundle): Promise<CachedBundle | null> {
   if (!cached.refresh) return null;
   const now = Date.now();
   const leewayMs = 30_000;
@@ -396,8 +410,15 @@ async function refreshAccessToken(cached: CachedBundle): Promise<CachedBundle | 
       role: cached.role,
       username: cached.username,
     });
-  } catch {
-    notifyUnauthorized();
+  } catch (err) {
+    // Faqat HAQIQIY autentifikatsiya xatosida sessiyani yopamiz. Tarmoq
+    // uzilishi, timeout yoki server 5xx (masalan, bir vaqtda ko'p odam
+    // kirganda 502) da foydalanuvchini tizimdan chiqarib yuborish — token
+    // hali yaroqli bo'la turib ish yo'qolishiga olib keladi.
+    const status = err instanceof HttpError ? err.status : 0;
+    if (status === 401 || status === 403) {
+      notifyUnauthorized();
+    }
     return null;
   }
 }
@@ -465,9 +486,14 @@ export async function getBackendAccessToken(): Promise<string | null> {
   }
   if (cached.refresh) {
     const refreshed = await refreshAccessToken(cached);
-    if (refreshed?.access && refreshed.accessExpMs - leewayMs > now) {
+    if (refreshed?.access && refreshed.accessExpMs - Date.now() > 0) {
       return refreshed.access;
     }
+    // Refresh o'tmadi. Agar sabab tarmoq/server bo'lsa, `refreshAccessToken`
+    // sessiyani yopmagan — bu yerda ham yopmaymiz, chaqiruvchi shunchaki
+    // xatoni ko'rsatadi va foydalanuvchi qayta urinadi. Sessiya faqat
+    // refresh tokeni haqiqatan tugagan/rad etilgan holatda yopiladi.
+    return null;
   }
   notifyUnauthorized();
   return null;

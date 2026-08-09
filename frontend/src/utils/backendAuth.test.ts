@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { HttpError } from '../api/httpClient';
 import { establishLocalSessionFromProfile, getCurrentLocalUser } from './localStaffAuth';
 
 const TOKEN_KEY = 'salomatlik-backend-jwt-v1';
@@ -86,7 +87,7 @@ describe('backendAuth', () => {
     );
   });
 
-  it('invokes unauthorized handler when refresh fails', async () => {
+  it('keeps the session when refresh fails for network/server reasons', async () => {
     const handler = vi.fn();
     backendAuth.setUnauthorizedHandler(handler);
 
@@ -97,7 +98,28 @@ describe('backendAuth', () => {
       username: '998901112233',
     });
 
-    httpJsonMock.mockRejectedValueOnce(new Error('refresh failed'));
+    httpJsonMock.mockRejectedValueOnce(new Error('network down'));
+
+    const token = await backendAuth.getBackendAccessToken();
+    // Token berilmaydi (chaqiruvchi xatoni ko'rsatadi), lekin sessiya
+    // yopilmaydi — refresh tokeni hali yaroqli, foydalanuvchi qayta uriniladi.
+    expect(token).toBeNull();
+    expect(handler).not.toHaveBeenCalled();
+    expect(localStorage.getItem(TOKEN_KEY)).not.toBeNull();
+  });
+
+  it('invokes unauthorized handler when the server rejects the refresh token', async () => {
+    const handler = vi.fn();
+    backendAuth.setUnauthorizedHandler(handler);
+
+    backendAuth.writeBackendTokensFromPair({
+      access: makeJwt(pastExpSeconds()),
+      refresh: makeJwt(futureExpSeconds(7200)),
+      role: 'hodim',
+      username: '998901112233',
+    });
+
+    httpJsonMock.mockRejectedValueOnce(new HttpError('HTTP 401', 401, null));
 
     const token = await backendAuth.getBackendAccessToken();
     expect(token).toBeNull();

@@ -132,11 +132,19 @@ export default function CaseStudies() {
     setError(null);
     try {
       const data = await aiService.generateCaseStudy(currentTopic, contentLanguage, parsedKeywords, globalTopic?.subjectCode);
-      await savePreparedContent('case', currentTopic, data, buildPreparedContentMeta(globalTopic));
-      pushAppNotification({ title: t('common.doneTitle'), body: t('case.readyToast'), level: 'success' });
-      const list = await listPreparedForTopicSynced('case', globalTopic ?? currentTopic);
-      setVersions(list);
-      applySession(data, list[0]?.id ?? null);
+      // Avval ekranga chiqaramiz: generatsiya bir necha daqiqa vaqt va pul
+      // oladi, saqlash yiqilsa ham natija foydalanuvchida qolishi kerak.
+      applySession(data, null);
+      try {
+        await savePreparedContent('case', currentTopic, data, buildPreparedContentMeta(globalTopic));
+        pushAppNotification({ title: t('common.doneTitle'), body: t('case.readyToast'), level: 'success' });
+        const list = await listPreparedForTopicSynced('case', globalTopic ?? currentTopic);
+        setVersions(list);
+        applySession(data, list[0]?.id ?? null);
+      } catch (saveErr) {
+        console.error('Case save failed', saveErr);
+        setError(t('common.saveFailedKeepWork'));
+      }
       try {
         const u = getCurrentLocalUser();
         if (u && normalizeUserRole(u) === 'hodim') {
