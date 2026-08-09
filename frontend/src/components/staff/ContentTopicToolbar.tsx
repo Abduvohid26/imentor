@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import type { PreparedContentSummary } from '../../utils/preparedContentStore';
+import SavedWorkBanner from './SavedWorkBanner';
 import { useUiText } from '../../i18n/useUiText';
 import StaffTopicHeader, { type StaffTopicInfo } from './StaffTopicHeader';
 import { staffBtnPrimary, staffBtnSecondary, staffInput, staffLabel } from './staffUi';
@@ -71,6 +72,7 @@ export default function ContentTopicToolbar({
 }: Props) {
   const { t, locale } = useUiText();
   const resolvedVersionsTitle = versionsTitle ?? t('toolbar.saved');
+  const [showVersions, setShowVersions] = useState(false);
   const showTopicInput = !lockTopicFromSyllabus || !topic;
   const showQuestionCount = onQuestionCountChange != null && questionCount != null;
   const resolvedCountLabel = questionCountLabel ?? t('test.questionCountLabel');
@@ -142,11 +144,26 @@ export default function ContentTopicToolbar({
 
         {extra}
 
-        {versions.length > 0 && (
+        {/* Baza yopiq turadi (4 bo'limda bir xil): avval ingichka eslatma qatori
+            ko'rinadi, "Baza" bosilganda saqlangan versiyalar ro'yxati ochiladi. */}
+        {versions.length > 0 && !showVersions && (
+          <SavedWorkBanner count={versions.length} onOpen={() => setShowVersions(true)} />
+        )}
+
+        {versions.length > 0 && showVersions && (
           <div className="space-y-2 pt-1 border-t border-black/5">
-            <p className={staffLabel}>
-              {resolvedVersionsTitle} ({versions.length}) — {t('toolbar.savedHint')}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className={staffLabel}>
+                {resolvedVersionsTitle} ({versions.length}) — {t('toolbar.savedHint')}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowVersions(false)}
+                className="shrink-0 rounded-lg border border-black/10 bg-white/70 px-2.5 py-1 text-[12px] font-semibold text-black/60 hover:border-black/20"
+              >
+                {t('common.close')}
+              </button>
+            </div>
             <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto scrollbar-hide">
               {versions.map((v) => {
                 const active = activeVersionId === v.id;

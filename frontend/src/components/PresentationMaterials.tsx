@@ -31,7 +31,7 @@ import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicC
 import {
   loadLatestPreparedContent,
   loadPreparedByIdSynced,
-  listAllPreparedForKindSynced,
+  listPreparedForTopicSynced,
   savePreparedContent,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
@@ -45,6 +45,7 @@ import {
   type TopicPresentationItem,
 } from '../utils/presentationUploadApi';
 import StaffPageLayout from './staff/StaffPageLayout';
+import SavedWorkBanner from './staff/SavedWorkBanner';
 import StaffTopicHeader from './staff/StaffTopicHeader';
 import StaffEmptyState from './staff/StaffEmptyState';
 import StaffErrorAlert from './staff/StaffErrorAlert';
@@ -246,9 +247,19 @@ export default function PresentationMaterials() {
   const [historyBusyId, setHistoryBusyId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Baza faqat TANLANGAN MAVZU bo'yicha (4 bo'limda bir xil qoida).
   const refreshDeckHistory = useCallback(() => {
-    void listAllPreparedForKindSynced('presentation').then(setSavedDecks);
-  }, []);
+    if (!globalTopic) {
+      setSavedDecks([]);
+      return;
+    }
+    void listPreparedForTopicSynced('presentation', globalTopic).then(setSavedDecks);
+  }, [globalTopic]);
+
+  // Eslatma qatorida sonni ko'rsatish uchun sahifa ochilishida ham yuklaymiz.
+  useEffect(() => {
+    refreshDeckHistory();
+  }, [refreshDeckHistory]);
 
   /** Baza: HTML preview yo‘q — mavjud PPTX ni ochadi yoki shu deckdan PPTX yuklaydi. */
   const openHistoryDeck = async (summary: PreparedContentSummary) => {
@@ -404,7 +415,10 @@ export default function PresentationMaterials() {
         throw new Error('empty-pptx');
       }
       try {
-        await savePreparedContent('presentation', deck.presentation_title, deck, {
+        // MUHIM: mavzu kaliti sifatida taqdimot SARLAVHASI emas, MAVZU nomi
+        // ishlatiladi — aks holda Baza mavzu bo'yicha qidirganda topa olmaydi
+        // (boshqa 3 bo'lim ham aynan shunday saqlaydi).
+        await savePreparedContent('presentation', globalTopic.title, deck, {
           subjectName: globalTopic.subjectName,
           subjectCode: globalTopic.subjectCode,
           variantLabel: globalTopic.variantLabel,
@@ -566,6 +580,16 @@ export default function PresentationMaterials() {
           </button>
         </div>
       </StaffTopicHeader>
+
+      {!aiLoading && (
+        <SavedWorkBanner
+          count={savedDecks.length}
+          onOpen={() => {
+            refreshDeckHistory();
+            setShowHistory(true);
+          }}
+        />
+      )}
 
       {error && <StaffErrorAlert message={error} />}
 

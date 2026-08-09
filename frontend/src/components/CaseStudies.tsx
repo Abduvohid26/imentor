@@ -100,18 +100,14 @@ export default function CaseStudies() {
     }
     let mounted = true;
     const lookup = globalTopic ?? topic;
+    // Sahifa TOZA ochiladi — avval yaratilgan keys avtomatik ochilmaydi.
+    // Shu mavzuda saqlangani bo'lsa, tepadagi banner orqali Bazadan ochiladi.
     (async () => {
-      const prepared = await loadLatestPreparedContent<CaseStudySession>('case', lookup);
-      if (!mounted) return;
       const list = await listPreparedForTopicSynced('case', lookup);
       if (!mounted) return;
       setVersions(list);
-      if (!prepared) {
-        setCaseSession(null);
-        setActiveVersionId(null);
-        return;
-      }
-      applySession(prepared, list[0]?.id ?? null);
+      setCaseSession(null);
+      setActiveVersionId(null);
     })();
     return () => {
       mounted = false;

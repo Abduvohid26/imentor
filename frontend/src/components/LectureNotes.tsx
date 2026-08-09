@@ -22,13 +22,14 @@ import {
 import { useUiText } from '../i18n/useUiText';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
 import {
-  listAllPreparedForKindSynced,
+  listPreparedForTopicSynced,
   loadLatestPreparedContent,
   loadPreparedByIdSynced,
   savePreparedContent,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
 import StaffPageLayout from './staff/StaffPageLayout';
+import SavedWorkBanner from './staff/SavedWorkBanner';
 import StaffTopicHeader from './staff/StaffTopicHeader';
 import StaffEmptyState from './staff/StaffEmptyState';
 import StaffErrorAlert from './staff/StaffErrorAlert';
@@ -72,9 +73,15 @@ export default function LectureNotes() {
   const topicFromSyllabus = Boolean(globalTopic && isTopicContextComplete(globalTopic));
   const staffTopic = topicFromSyllabus && globalTopic ? globalTopic : null;
 
+  // Baza faqat TANLANGAN MAVZU bo'yicha (4 bo'limda bir xil qoida).
   const refreshHistory = useCallback(() => {
-    void listAllPreparedForKindSynced('lecture').then(setSavedLectures);
-  }, []);
+    const lookup = globalTopic ?? topic;
+    if (!topic.trim() && !globalTopic) {
+      setSavedLectures([]);
+      return;
+    }
+    void listPreparedForTopicSynced('lecture', lookup).then(setSavedLectures);
+  }, [topic, globalTopic]);
 
   useEffect(() => {
     if (globalTopic) {
@@ -94,14 +101,9 @@ export default function LectureNotes() {
     setLectureSession(null);
     setEditedContent('');
     setLectureContent('');
-    (async () => {
-      const prepared = await loadLatestPreparedContent<LectureNote>('lecture', topic);
-      if (!mounted) return;
-      if (!prepared) return;
-      setLectureSession(prepared);
-      setEditedContent(prepared.content || '');
-      setLectureContent(prepared.content || '');
-    })();
+    // Sahifa TOZA ochiladi: avval yaratilgan material avtomatik ochilmaydi.
+    // Shu mavzuda saqlangani bo'lsa, tepadagi SavedWorkBanner orqali Bazadan
+    // ochiladi (4 bo'limda bir xil xatti-harakat).
     return () => {
       mounted = false;
     };
@@ -267,6 +269,10 @@ export default function LectureNotes() {
           {t('lecture.generateButton')}
         </button>
       </StaffTopicHeader>
+
+      {!lectureSession && !loading && (
+        <SavedWorkBanner count={savedLectures.length} onOpen={() => setShowHistory(true)} />
+      )}
 
       {error && <StaffErrorAlert message={error} />}
       {loading && !streamingContent && (

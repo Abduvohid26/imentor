@@ -470,23 +470,16 @@ export default function TestQuestions() {
     if (isStudentMode || !topic.trim()) return;
     const lookup = globalTopic ?? topic;
     let mounted = true;
+    // Sahifa TOZA ochiladi — avval yaratilgan test avtomatik ochilmaydi
+    // (QR sessiyasi ham qayta tiklanmaydi). Bazadan tanlab ochiladi.
     (async () => {
-      const prepared = await loadLatestPreparedContent<TestSession>('test', lookup);
-      if (!mounted) return;
       const list = await listPreparedForTopicSynced('test', lookup);
       if (!mounted) return;
       setVersions(list);
-      if (!prepared) {
-        setTestSession(null);
-        setTeacherSessionId('');
-        setJoinUrl('');
-        setActiveVersionId(null);
-        return;
-      }
-      setTestSession(prepared);
-      const reused = tryReuseTeacherSessionId(prepared);
-      void setupTeacherLiveSession(prepared, reused ?? undefined);
-      setActiveVersionId(list[0]?.id ?? null);
+      setTestSession(null);
+      setTeacherSessionId('');
+      setJoinUrl('');
+      setActiveVersionId(null);
     })();
     return () => {
       mounted = false;
