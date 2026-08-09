@@ -32,6 +32,58 @@ def preview_pdf_path_for(source: Path) -> Path:
     return source.with_name(source.stem + ".preview.pdf")
 
 
+def _unoconvert_cmd() -> str | None:
+    return shutil.which("unoconvert")
+
+
+def _convert_via_unoserver(src: Path, out_pdf: Path) -> bool:
+    """Doimiy `unoserver` demoni orqali konvert qiladi.
+
+    Demon ishlamayotgan bo'lsa (yoki `unoconvert` yo'q bo'lsa) — False
+    qaytaradi va chaqiruvchi eski `soffice --convert-to` usuliga tushadi.
+    Shu sababli bu funksiya hech qachon istisno ko'tarmaydi.
+    """
+    unoconvert = _unoconvert_cmd()
+    if not unoconvert:
+        return False
+
+    port = os.environ.get("UNOSERVER_PORT", "2003")
+    tmp_target = out_pdf.with_suffix(".pdf.uno.tmp")
+    try:
+        proc = subprocess.run(
+            [
+                unoconvert,
+                "--host", "127.0.0.1",
+                "--port", port,
+                "--convert-to", "pdf",
+                str(src),
+                str(tmp_target),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        if proc.returncode != 0 or not tmp_target.is_file() or tmp_target.stat().st_size == 0:
+            logger.warning(
+                "unoserver konvert ishlamadi (rc=%s), soffice zaxira usuliga o'tilmoqda. stderr=%s",
+                proc.returncode,
+                (proc.stderr or "")[:300],
+            )
+            tmp_target.unlink(missing_ok=True)
+            return False
+        tmp_target.replace(out_pdf)
+        logger.info("unoserver preview tayyor: %s", out_pdf.name)
+        return True
+    except Exception as e:
+        logger.warning("unoserver mavjud emas/xato (%s), soffice zaxira usuli ishlatiladi", e)
+        try:
+            tmp_target.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False
+
+
 def ensure_presentation_preview_pdf(source: Path) -> Path:
     """
     PPTX/PPT ni PDF ga aylantiradi (LibreOffice headless).
@@ -51,6 +103,13 @@ def ensure_presentation_preview_pdf(source: Path) -> Path:
     if out_pdf.is_file() and out_pdf.stat().st_mtime >= src.stat().st_mtime and out_pdf.stat().st_size > 0:
         return out_pdf
 
+    out_pdf.parent.mkdir(parents=True, exist_ok=True)
+
+    # 1-usul: doimiy ishlaydigan unoserver demoni (tez, xotira barqaror).
+    if _convert_via_unoserver(src, out_pdf):
+        return out_pdf
+
+    # 2-usul (zaxira): har safar yangi LibreOffice jarayoni.
     soffice = find_soffice()
     if not soffice:
         raise RuntimeError(
@@ -58,7 +117,6 @@ def ensure_presentation_preview_pdf(source: Path) -> Path:
             "Docker: apt-get install -y libreoffice-impress-nogui fonts-dejavu-core"
         )
 
-    out_pdf.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="imentor-pptx-") as tmp:
         tmp_dir = Path(tmp)
         env = os.environ.copy()

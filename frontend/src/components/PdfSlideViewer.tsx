@@ -1,5 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, Minimize, RotateCcw, Loader2 } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  Minimize,
+  RotateCcw,
+  Loader2,
+  Square,
+  MousePointer2,
+  Pencil,
+  Eraser,
+} from 'lucide-react';
 import { pdfjsLib } from '../utils/pdfjsSetup';
 import { useUiText } from '../i18n/useUiText';
 
@@ -30,6 +43,15 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // --- Dars o'tish vositalari ---
+  /** Qora ekran (PowerPoint'dagi "B") — talabalar e'tiborini o'qituvchiga qaratish. */
+  const [blackout, setBlackout] = useState(false);
+  /** 'none' — oddiy, 'pointer' — laser ko'rsatkich, 'draw' — slayd ustida chizish. */
+  const [tool, setTool] = useState<'none' | 'pointer' | 'draw'>('none');
+  const [pointerPos, setPointerPos] = useState<{ x: number; y: number } | null>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef(false);
 
   // PDF hujjatini yuklash
   useEffect(() => {
@@ -143,16 +165,100 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
   const zoomOut = () => setScale((s) => Math.max(MIN_SCALE, (s ?? autoScale) - SCALE_STEP));
   const resetZoom = () => setScale(null);
 
+  /** Chizma qatlamini asosiy canvas o'lchamiga moslab tozalaydi. */
+  const clearDrawing = useCallback(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const ctx = overlay.getContext('2d');
+    ctx?.clearRect(0, 0, overlay.width, overlay.height);
+  }, []);
+
+  // Sahifa yoki masshtab o'zgarsa — chizma qatlami o'lchami moslanadi va
+  // eski chizma tozalanadi (chizma aynan o'sha slaydga tegishli).
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const overlay = overlayRef.current;
+    if (!canvas || !overlay) return;
+    overlay.width = canvas.width;
+    overlay.height = canvas.height;
+    const ctx = overlay.getContext('2d');
+    ctx?.clearRect(0, 0, overlay.width, overlay.height);
+  }, [pageNum, scale, autoScale, numPages]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      // Qora ekran yoqilganda faqat undan chiqish tugmalari ishlaydi.
+      if (blackout) {
+        if (k === 'b' || e.key === 'Escape') {
+          e.preventDefault();
+          setBlackout(false);
+        }
+        return;
+      }
       if (e.key === 'ArrowLeft') goPrev();
       else if (e.key === 'ArrowRight') goNext();
       else if (e.key === '+' || e.key === '=') zoomIn();
       else if (e.key === '-') zoomOut();
+      else if (k === 'b') {
+        e.preventDefault();
+        setBlackout(true);
+      } else if (k === 'l') {
+        setTool((prev) => (prev === 'pointer' ? 'none' : 'pointer'));
+      } else if (k === 'd') {
+        setTool((prev) => (prev === 'draw' ? 'none' : 'draw'));
+      } else if (k === 'c') {
+        clearDrawing();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goPrev, goNext]);
+  }, [goPrev, goNext, blackout, clearDrawing]);
+
+  /** Sichqoncha koordinatasini chizma canvas ichidagi nuqtaga o'giradi. */
+  const overlayPoint = (e: React.MouseEvent): { x: number; y: number } | null => {
+    const overlay = overlayRef.current;
+    if (!overlay) return null;
+    const rect = overlay.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * overlay.width,
+      y: ((e.clientY - rect.top) / rect.height) * overlay.height,
+    };
+  };
+
+  const handleOverlayMouseDown = (e: React.MouseEvent) => {
+    if (tool !== 'draw') return;
+    const p = overlayPoint(e);
+    if (!p) return;
+    drawingRef.current = true;
+    const ctx = overlayRef.current?.getContext('2d');
+    if (!ctx) return;
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  };
+
+  const handleOverlayMouseMove = (e: React.MouseEvent) => {
+    if (tool === 'pointer') {
+      const rect = overlayRef.current?.getBoundingClientRect();
+      if (rect) setPointerPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      return;
+    }
+    if (tool !== 'draw' || !drawingRef.current) return;
+    const p = overlayPoint(e);
+    const ctx = overlayRef.current?.getContext('2d');
+    if (!p || !ctx) return;
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  };
+
+  const endDrawing = () => {
+    drawingRef.current = false;
+  };
 
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -182,9 +288,50 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
         ) : error ? (
           <p className="text-white/70 text-sm">{t('presentation.previewDownload')}</p>
         ) : (
-          <canvas ref={canvasRef} className="shadow-2xl bg-white" />
+          // Slayd + uning ustidagi chizma/ko'rsatkich qatlami bir joyda turadi.
+          <div className="relative shadow-2xl">
+            <canvas ref={canvasRef} className="block bg-white" />
+            <canvas
+              ref={overlayRef}
+              onMouseDown={handleOverlayMouseDown}
+              onMouseMove={handleOverlayMouseMove}
+              onMouseUp={endDrawing}
+              onMouseLeave={() => {
+                endDrawing();
+                setPointerPos(null);
+              }}
+              className={`absolute inset-0 w-full h-full ${
+                tool === 'draw'
+                  ? 'cursor-crosshair'
+                  : tool === 'pointer'
+                    ? 'cursor-none'
+                    : 'pointer-events-none'
+              }`}
+            />
+            {tool === 'pointer' && pointerPos && (
+              <span
+                className="pointer-events-none absolute z-10 block w-5 h-5 -ml-2.5 -mt-2.5 rounded-full bg-red-500/70 ring-4 ring-red-500/25"
+                style={{ left: pointerPos.x, top: pointerPos.y }}
+              />
+            )}
+          </div>
         )}
       </div>
+
+      {/* Qora ekran — butun ko'ruvchini yopadi (B yoki bosish bilan chiqiladi) */}
+      {blackout && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setBlackout(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') setBlackout(false);
+          }}
+          className="absolute inset-0 z-30 bg-black flex items-end justify-center pb-10 cursor-pointer"
+        >
+          <p className="text-white/35 text-sm select-none">{t('presentation.blackScreenHint')}</p>
+        </div>
+      )}
 
       {!loading && !error && numPages > 0 && (
         <div className="shrink-0 flex items-center justify-center gap-2 py-2.5 px-3 bg-black/40 backdrop-blur-sm flex-wrap">
@@ -241,6 +388,50 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
               <RotateCcw size={16} />
             </button>
           )}
+
+          <span className="w-px h-6 bg-white/20 mx-1" />
+
+          {/* Dars vositalari: ko'rsatkich (L), chizish (D), tozalash (C), qora ekran (B) */}
+          <button
+            type="button"
+            onClick={() => setTool((p) => (p === 'pointer' ? 'none' : 'pointer'))}
+            className={`p-2.5 rounded-full text-white ${
+              tool === 'pointer' ? 'bg-red-500 hover:bg-red-400' : 'bg-white/15 hover:bg-white/25'
+            }`}
+            aria-label={t('presentation.pointer')}
+            title={t('presentation.pointer')}
+          >
+            <MousePointer2 size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setTool((p) => (p === 'draw' ? 'none' : 'draw'))}
+            className={`p-2.5 rounded-full text-white ${
+              tool === 'draw' ? 'bg-red-500 hover:bg-red-400' : 'bg-white/15 hover:bg-white/25'
+            }`}
+            aria-label={t('presentation.draw')}
+            title={t('presentation.draw')}
+          >
+            <Pencil size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={clearDrawing}
+            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
+            aria-label={t('presentation.clearDrawing')}
+            title={t('presentation.clearDrawing')}
+          >
+            <Eraser size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setBlackout(true)}
+            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
+            aria-label={t('presentation.blackScreen')}
+            title={t('presentation.blackScreen')}
+          >
+            <Square size={18} />
+          </button>
 
           <span className="w-px h-6 bg-white/20 mx-1" />
 

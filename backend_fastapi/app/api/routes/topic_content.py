@@ -3,7 +3,9 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -18,7 +20,26 @@ from app.services.pagination import paginate
 
 router = APIRouter()
 
+logger = logging.getLogger(__name__)
+
 STAFF_ROLES = ("admin", "klinika_admin", "hodim")
+
+PREVIEWABLE_PRESENTATION_KINDS = ("pptx", "ppt", "odp")
+
+
+def _pregenerate_preview(rel_path: str) -> None:
+    """Yuklashdan keyin fonda PDF preview'ni tayyorlab qo'yadi.
+
+    Shunda o'qituvchi dars paytida taqdimotni ochganda kutmaydi — PDF
+    allaqachon keshda bo'ladi. Xatolik bo'lsa jimgina o'tkazib yuboriladi:
+    preview endpoint'i baribir talab bo'yicha qayta urinib ko'radi.
+    """
+    from app.services.pptx_preview import ensure_presentation_preview_pdf
+
+    try:
+        ensure_presentation_preview_pdf(storage.absolute_path(rel_path))
+    except Exception as e:
+        logger.warning("Preview oldindan tayyorlanmadi (%s): %s", rel_path, e)
 
 HANDOUT_MAX_BYTES = 20 * 1024 * 1024
 PRESENTATION_MAX_BYTES = 50 * 1024 * 1024
@@ -266,6 +287,7 @@ def list_presentations(
 @router.post("/presentations/", response_model=TopicPresentationOut, status_code=201)
 async def upload_presentation(
     file: UploadFile,
+    background: BackgroundTasks,
     topic: str = Form(...),
     topic_norm: str = Form(""),
     title: str = Form(""),
@@ -309,6 +331,11 @@ async def upload_presentation(
     db.add(obj)
     db.commit()
     db.refresh(obj)
+
+    # Dars paytida kutish bo'lmasligi uchun PDF preview darhol, fonda tayyorlanadi.
+    if obj.kind in PREVIEWABLE_PRESENTATION_KINDS:
+        background.add_task(_pregenerate_preview, rel_path)
+
     return _presentation_out(obj, auth)
 
 

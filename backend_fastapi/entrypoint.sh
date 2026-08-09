@@ -13,6 +13,22 @@ if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
   alembic upgrade head
 fi
 
+# unoserver — doimiy LibreOffice demoni (PPTX/PPT/ODP → PDF).
+# Fon rejimida ishga tushiriladi; ishga tushmasa ilova eski `soffice --convert-to`
+# usuliga avtomatik qaytadi, shuning uchun bu yerda xatolik butun konteynerni
+# yiqitmasligi kerak.
+if [ "${UNOSERVER_ENABLED:-1}" = "1" ]; then
+  UNOSERVER_PORT="${UNOSERVER_PORT:-2003}"
+  export HOME="${HOME:-/tmp}"
+  mkdir -p /tmp/unoserver-home
+  HOME=/tmp/unoserver-home \
+    /usr/bin/python3 -m unoserver.server \
+      --port "$UNOSERVER_PORT" \
+      --interface 127.0.0.1 \
+      >/tmp/unoserver.log 2>&1 &
+  echo "unoserver ishga tushirildi (port $UNOSERVER_PORT, log: /tmp/unoserver.log)"
+fi
+
 WORKERS="${GUNICORN_WORKERS:-3}"
 TIMEOUT="${GUNICORN_TIMEOUT:-300}"
 
