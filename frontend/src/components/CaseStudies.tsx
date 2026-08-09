@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
+import { pushAppNotification } from '../utils/notifications';
 import {
   Stethoscope,
   Loader2,
@@ -130,6 +131,7 @@ export default function CaseStudies() {
     try {
       const data = await aiService.generateCaseStudy(currentTopic, contentLanguage, parsedKeywords, globalTopic?.subjectCode);
       await savePreparedContent('case', currentTopic, data, buildPreparedContentMeta(globalTopic));
+      pushAppNotification({ title: t('common.doneTitle'), body: t('case.readyToast'), level: 'success' });
       const list = await listPreparedForTopicSynced('case', globalTopic ?? currentTopic);
       setVersions(list);
       applySession(data, list[0]?.id ?? null);

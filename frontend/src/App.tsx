@@ -54,6 +54,7 @@ import {
 } from './i18n/language';
 import { navLabel, navMobileLabel, roleLabel, translate } from './i18n/translations';
 import { type AppNotificationEventDetail } from './utils/notifications';
+import AppToastHost from './components/AppToastHost';
 import { isPublicStudentTestUrl } from './utils/liveTestApi';
 
 // Components
@@ -627,6 +628,9 @@ export default function App() {
 
   return (
     <AppLanguageContext.Provider value={{ language, setLanguage }}>
+      {/* Global alertlar — yuqori o'ng burchak, 20 soniyada o'zi yo'qoladi.
+          Talaba QR rejimida ham ko'rinsin, shuning uchun eng tashqarida. */}
+      <AppToastHost />
       {/* Student QR: always fullscreen test only (no shell), even if staff session exists */}
       {isPublicStudentTestUrl() ? (
         <GlobalTopicContext.Provider value={null}>

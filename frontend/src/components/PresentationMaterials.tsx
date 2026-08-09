@@ -1,4 +1,5 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { pushAppNotification } from '../utils/notifications';
 import {
   ArrowLeft,
   BookOpen,
@@ -419,6 +420,7 @@ export default function PresentationMaterials() {
         // MUHIM: mavzu kaliti sifatida taqdimot SARLAVHASI emas, MAVZU nomi
         // ishlatiladi — aks holda Baza mavzu bo'yicha qidirganda topa olmaydi
         // (boshqa 3 bo'lim ham aynan shunday saqlaydi).
+        pushAppNotification({ title: t('common.doneTitle'), body: t('presentation.readyToast'), level: 'success' });
         await savePreparedContent('presentation', globalTopic.title, deck, {
           subjectName: globalTopic.subjectName,
           subjectCode: globalTopic.subjectCode,

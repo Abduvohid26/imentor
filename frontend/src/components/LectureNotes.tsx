@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
+import { pushAppNotification } from '../utils/notifications';
 import {
   FileText,
   Sparkles,
@@ -134,6 +135,7 @@ export default function LectureNotes() {
       setEditedContent(data.content);
       setLectureContent(data.content);
       await savePreparedContent('lecture', topic, data);
+      pushAppNotification({ title: t('common.doneTitle'), body: t('lecture.readyToast'), level: 'success' });
       refreshHistory();
     } catch (err) {
       console.error('Lecture generation error:', err);
