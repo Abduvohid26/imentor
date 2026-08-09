@@ -283,7 +283,7 @@ export default function PublicLandingPage({
               <FloatingChip icon={ClipboardList} label={t(language, 'publicLanding.featureTests')} color="violet" style={{ animationDelay: '2s' }} />
             </div>
             <div className="absolute right-[20%] bottom-2">
-              <FloatingChip icon={Zap} label="DeepSeek AI" color="amber" style={{ animationDelay: '0.5s' }} />
+              <FloatingChip icon={Zap} label={t(language, 'publicLanding.featureAiChip')} color="amber" style={{ animationDelay: '0.5s' }} />
             </div>
           </div>
 

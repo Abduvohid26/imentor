@@ -68,3 +68,6 @@ Thumbs.db
 
 # Cursor lokal sozlamalar (repoga kerak emas)
 .cursor/
+
+# Baza nusxalari (lokal, repoga tushmasin)
+backups/

@@ -152,9 +152,48 @@ function isNoiseLine(line: string): boolean {
   return false;
 }
 
+/**
+ * Matn qatlami buzilgan PDF'lardan kelgan "mavzu"larni rad etadi.
+ *
+ * Ba'zi sillabus PDF'larida shrift kodlanishi buzuq bo'lib, matn o'rniga
+ * belgilar to'plami chiqadi:
+ *
+ *     "N J4 -v ? qt .iO lcg q L & t i;"
+ *     "-.6 ol .FP >l Z.e =F e€ J € s Et E F"
+ *
+ * Bunday yozuvlar o'qituvchiga mavzu bo'lib ko'rinadi va eng yomoni — AI
+ * ma'ruza/test generatsiyasiga prompt sifatida ketadi. Haqiqiy mavzu
+ * nomida kamida ikkita "so'zga o'xshash" bo'lak (3+ harf) bo'ladi va
+ * belgilarning yarmidan ko'pi harf bo'ladi.
+ */
+function isGibberishTitle(title: string): boolean {
+  const nonSpace = [...title].filter((ch) => ch.trim() !== '');
+  if (nonSpace.length === 0) return true;
+  const letters = nonSpace.filter((ch) => /\p{L}/u.test(ch)).length;
+  if (letters / nonSpace.length < 0.5) return true;
+
+  const tokens = title.split(/\s+/).filter(Boolean);
+  // Yolg'iz qolgan bitta belgili bo'laklarning ko'pligi — buzuq matn belgisi.
+  // Harf-harf ajralgan matn bu bosqichga yetib kelmaydi (u hujjatdan matn
+  // olinayotganda `undoLetterTracking` bilan allaqachon yopishtirilgan),
+  // shuning uchun bu yerdagi yolg'iz belgilar chinakam axlat.
+  const loneChars = tokens.filter((t) => t.length === 1).length;
+  if (tokens.length >= 6 && loneChars / tokens.length >= 0.35) return true;
+
+  const wordLike = title.split(/\s+/).filter((token) => {
+    // Chekkadagi tinish belgilari olib tashlanadi ("Спирометрия." -> "Спирометрия"),
+    // lekin so'z ICHIDAGI begona belgilar saqlanadi — aynan ular buzuq
+    // matn belgisi ("C.ll", "Ee-g$ENAr").
+    const core = token.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '').replace(/['’`]/g, '');
+    return core.length >= 3 && /^\p{L}+$/u.test(core);
+  });
+  return wordLike.length < 2;
+}
+
 function isWeakTopicTitle(title: string): boolean {
   const t = title.trim();
   if (t.length < 10) return true;
+  if (isGibberishTitle(t)) return true;
   if (RUBRIC_NOISE_RE.test(t)) return true;
   if (/^[''']?smal/i.test(t)) return true;
   if (/^\d{4}\s*й\.?$/u.test(t)) return true;

@@ -2,6 +2,7 @@ import type { AppLanguage } from './language';
 
 export const UI_TEXT = {
   uz: {
+    'publicLanding.featureAiChip': 'AI yordamchi',
     'common.saveFailedKeepWork': 'Kontent tayyor, lekin bazaga saqlanmadi (tarmoq/server xatosi). Sahifani yopmang \u2014 matnni nusxalab oling yoki qayta urinib ko\'ring.',
     'shell.platformTitle': 'iMentor Platform',
     'shell.platformSubtitle.admin': 'Markaziy nazorat paneli',
@@ -1328,7 +1329,7 @@ export const UI_TEXT = {
     'analytics.error': 'Kechirasiz, tizimda xatolik yuz berdi. Iltimos, birozdan so\'ng qayta urinib ko\'ring.',
     'analytics.newChat': 'Yangi chat',
     'analytics.export': 'Eksport',
-    'analytics.powered': 'DeepSeek AI',
+    'analytics.powered': 'OpenAI',
     'error.title': 'Nimadir noto\'g\'ri ketdi',
     /* synced keys */
     'admin.session': 'Sessiya',
@@ -1505,6 +1506,7 @@ export const UI_TEXT = {
 
   },
   ru: {
+    'publicLanding.featureAiChip': '\u0418\u0418-\u043f\u043e\u043c\u043e\u0449\u043d\u0438\u043a',
     'common.saveFailedKeepWork': '\u041a\u043e\u043d\u0442\u0435\u043d\u0442 \u0433\u043e\u0442\u043e\u0432, \u043d\u043e \u043d\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d \u0432 \u0431\u0430\u0437\u0435 (\u0441\u0435\u0442\u044c/\u0441\u0435\u0440\u0432\u0435\u0440). \u041d\u0435 \u0437\u0430\u043a\u0440\u044b\u0432\u0430\u0439\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 \u2014 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0435\u0449\u0451 \u0440\u0430\u0437.',
     'shell.platformTitle': 'iMentor Platform',
     'shell.platformSubtitle.admin': 'Центральная панель управления',
@@ -2831,7 +2833,7 @@ export const UI_TEXT = {
     'analytics.error': 'Извините, произошла ошибка в системе. Пожалуйста, попробуйте через некоторое время.',
     'analytics.newChat': 'Новый чат',
     'analytics.export': 'Экспорт',
-    'analytics.powered': 'DeepSeek AI',
+    'analytics.powered': 'OpenAI',
     'error.title': 'Что-то пошло не так',
     /* synced keys */
     'admin.session': 'Сессия',
@@ -3008,6 +3010,7 @@ export const UI_TEXT = {
 
   },
   en: {
+    'publicLanding.featureAiChip': 'AI assistant',
     'common.saveFailedKeepWork': 'Content is ready but was not saved to the database (network/server). Do not close the page \u2014 try saving again.',
     'shell.platformTitle': 'iMentor Platform',
     'shell.platformSubtitle.admin': 'Central admin console',
@@ -4506,7 +4509,7 @@ export const UI_TEXT = {
     'analytics.error': 'Sorry, a system error occurred. Please try again later.',
     'analytics.newChat': 'New chat',
     'analytics.export': 'Export',
-    'analytics.powered': 'DeepSeek AI',
+    'analytics.powered': 'OpenAI',
     'error.title': 'Something went wrong',
   },
 } as const;

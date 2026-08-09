@@ -10,15 +10,20 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# Pool o'lchami: har bir gunicorn worker uchun alohida. 3 worker × (15 + 25)
-# = 120 — Postgres `max_connections=100` dan oshmasligi uchun pool_size ni
-# o'lchab qo'yamiz. AI so'rovlari endi ulanishni ushlab turmaydi
-# (education_ai.py da `db.close()`), shuning uchun bu zaxira yetarli.
+# Pool o'lchami HAR BIR gunicorn worker uchun alohida hisoblanadi, shuning
+# uchun jami ulanish = workers × (pool_size + max_overflow) bo'ladi va u
+# Postgres `max_connections` (100) dan past qolishi SHART:
+#
+#     4 worker × (8 + 12) = 80  <  100   (admin/psql uchun zaxira qoladi)
+#
+# AI so'rovlari endi ulanishni ushlab turmaydi (education_ai.py da
+# `_release_db`), shuning uchun bu zaxira yetarli. Worker sonini
+# oshirsangiz, shu yerdagi qiymatlarni ham qayta hisoblang.
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
-    pool_size=int(os.environ.get("DB_POOL_SIZE", "10")),
-    max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "15")),
+    pool_size=int(os.environ.get("DB_POOL_SIZE", "8")),
+    max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "12")),
     # Uzoq turgan ulanish (NAT/pgbouncer timeout) jimgina uzilib qolmasin
     pool_recycle=1800,
     # 30s kutish o'rniga tezroq xato — foydalanuvchi 30 soniya osilib

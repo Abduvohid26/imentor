@@ -1,7 +1,7 @@
 import type { AppLanguage } from '../i18n/language';
 import { translate } from '../i18n/translations';
 
-/** AI (DeepSeek proxy) xatolarini foydalanuvchi tilida ko‘rsatish */
+/** AI (OpenAI proxy) xatolarini foydalanuvchi tilida ko‘rsatish */
 export function messageFromAiError(err: unknown, fallback: string, lang: AppLanguage = 'uz'): string {
   const msg = err instanceof Error ? err.message : String(err ?? '');
   if (

@@ -444,11 +444,6 @@ export async function openaiJsonStream<T>(opts: {
   return opts.parse(text);
 }
 
-/** @deprecated openaiText ishlating */
-export const deepseekText = openaiText;
-/** @deprecated openaiJson ishlating */
-export const deepseekJson = openaiJson;
-
 export async function openaiWithPdf(opts: {
   model?: string;
   system: string;
@@ -497,6 +492,3 @@ export async function openaiWithImage(opts: {
     temperature: 0.2,
   });
 }
-
-export const deepseekWithPdf = openaiWithPdf;
-export const deepseekWithImage = openaiWithImage;

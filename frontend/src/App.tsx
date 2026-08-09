@@ -290,8 +290,9 @@ export default function App() {
       clearBackendAuthTokens();
       clearDesktopPairedSession(user?.uid);
       logoutLocalStaff();
-      setLanguage('uz');
-      persistAppLanguage('uz');
+      // Interfeys tili ATAYLAB tiklanmaydi: u qurilma sozlamasi (localStorage),
+      // hisobga bog'liq emas. Rus/ingliz tilida ishlaydigan o'qituvchi
+      // sessiyasi tugaganda login sahifasini o'zbekchada ko'rmasligi kerak.
     });
     return () => setUnauthorizedHandler(null);
   }, [user?.uid]);
@@ -430,8 +431,7 @@ export default function App() {
     clearBackendAuthTokens();
     clearDesktopPairedSession(user?.uid);
     logoutLocalStaff();
-    setLanguage('uz');
-    persistAppLanguage('uz');
+    // Tanlangan interfeys tili saqlanib qoladi (qurilma sozlamasi).
   };
 
   const userRole = user ? normalizeUserRole(user) : null;

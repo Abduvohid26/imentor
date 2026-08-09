@@ -1,3 +1,5 @@
+import { undoLetterTracking } from './letterTracking';
+
 const SYLLABUS_EXTENSIONS = ['.pdf', '.doc', '.docx'] as const;
 
 export const SYLLABUS_UPLOAD_ACCEPT =
@@ -96,10 +98,13 @@ function extractLegacyDocText(buffer: ArrayBuffer): string {
 
 export async function extractSyllabusDocumentText(file: File): Promise<string> {
   const ext = syllabusFileExtension(file.name);
-  if (ext === '.pdf') return extractPdfText(file);
-  if (ext === '.docx') return extractDocxText(file);
+  // MUHIM: `undoLetterTracking` shu yerda — matn olingan zahoti — chaqiriladi.
+  // Parser keyinroq `\s+ -> ' '` qiladi va so'z chegarasini bildiruvchi
+  // qo'sh probellar yo'qoladi, o'shandan keyin tiklash imkonsiz bo'lib qoladi.
+  if (ext === '.pdf') return undoLetterTracking(await extractPdfText(file));
+  if (ext === '.docx') return undoLetterTracking(await extractDocxText(file));
   if (ext === '.doc') {
-    const text = extractLegacyDocText(await file.arrayBuffer());
+    const text = undoLetterTracking(extractLegacyDocText(await file.arrayBuffer()));
     if (text.trim().length >= 20) return text;
     throw new Error('doc-empty');
   }

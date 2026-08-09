@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 
+from anyio import to_thread
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +34,24 @@ from app.services.file_storage import media_root
 
 settings = get_settings()
 
-app = FastAPI(title="iMentor API (FastAPI)", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Sinxron (`def`) endpointlar uchun ishchi oqimlar (thread) chegarasi.
+
+    FastAPI `def` bilan yozilgan endpointlarni threadpool'da bajaradi.
+    AI generatsiyasi 1-5 daqiqa davom etadi va shu vaqt davomida bitta
+    oqimni band qiladi — chegara juda past bo'lsa, AI so'rovlari login va
+    sillabus kabi tez so'rovlarni ham bloklab qo'yadi.
+
+    Anyio standarti 40; uni aniq belgilab qo'yamiz, shunda kutubxona
+    versiyasi o'zgarganda sig'im jimgina o'zgarib ketmaydi.
+    """
+    limiter = to_thread.current_default_thread_limiter()
+    limiter.total_tokens = int(os.environ.get("APP_THREAD_LIMIT", "48"))
+    yield
+
+
+app = FastAPI(title="iMentor API (FastAPI)", version="0.1.0", lifespan=lifespan)
 
 # Sillabus katalogi ~1.5 MB JSON qaytaradi — gzip'siz har bir o'qituvchi
 # kirganda shuncha trafik ketadi. SSE oqimi va siqilgan fayllar chetlab
