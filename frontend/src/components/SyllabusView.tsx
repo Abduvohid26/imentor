@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { pushAppNotification } from '../utils/notifications';
 import {
   BookOpen,
   Loader2,
@@ -88,10 +89,28 @@ export default function SyllabusView({
     if (!pending.length) return;
     let cancelled = false;
     (async () => {
+      // Tarjima bir daqiqagacha olishi mumkin — o'qituvchi "nega o'zgarmadi?"
+      // deb o'ylamasligi uchun jarayon boshlanganini va tugaganini bildiramiz.
+      pushAppNotification({
+        title: t('common.doneTitle'),
+        body: t('syllabus.translating'),
+        level: 'info',
+      });
+      let any = false;
       for (const syl of pending) {
         if (cancelled) return;
         const ok = await requestSyllabusTranslation(syl.id, language);
-        if (ok && !cancelled) void load();
+        if (ok && !cancelled) {
+          any = true;
+          void load();
+        }
+      }
+      if (any && !cancelled) {
+        pushAppNotification({
+          title: t('common.doneTitle'),
+          body: t('syllabus.translated'),
+          level: 'success',
+        });
       }
     })();
     return () => {
