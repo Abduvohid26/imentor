@@ -37,6 +37,10 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const docRef = useRef<PdfDoc | null>(null);
   const renderTokenRef = useRef(0);
+  /** Ishlab turgan pdf.js render vazifasi — yangisidan oldin bekor qilinadi. */
+  const renderTaskRef = useRef<{ cancel: () => void; promise: Promise<void> } | null>(null);
+  /** Renderlar navbati — bir vaqtda faqat bittasi ishlaydi. */
+  const renderChainRef = useRef<Promise<void>>(Promise.resolve());
   const drawingRef = useRef(false);
 
   const [numPages, setNumPages] = useState(0);
@@ -95,6 +99,13 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
   }, []);
 
   // ---- Slaydni konteynerga TO'LIQ sig'diradigan masshtabda chizish ----
+  //
+  // MUHIM: pdf.js PDF koordinatalarini (pastdan-yuqoriga) ekran koordinatalariga
+  // o'girish uchun canvas kontekstiga Y-aylantirish transformini qo'llaydi.
+  // Agar BIR canvas ustida ikkita render bir vaqtda ishlasa, transformlar
+  // ustma-ust tushib, sahifa TESKARI (vertikal aylangan) chiziladi.
+  // Shuning uchun: (1) avvalgi render majburan bekor qilinadi va tugashi
+  // kutiladi, (2) renderlar navbat bilan (ketma-ket) bajariladi.
   const renderPage = useCallback(async () => {
     const doc = docRef.current;
     const canvas = canvasRef.current;
@@ -102,6 +113,20 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
     if (!doc || !canvas || !stage) return;
 
     const token = ++renderTokenRef.current;
+
+    // Ishlab turgan renderni bekor qilamiz va u to'liq to'xtaguncha kutamiz.
+    const running = renderTaskRef.current;
+    if (running) {
+      running.cancel();
+      try {
+        await running.promise;
+      } catch {
+        /* bekor qilingani normal holat */
+      }
+      renderTaskRef.current = null;
+    }
+    if (token !== renderTokenRef.current) return;
+
     try {
       const page = await doc.getPage(pageNum);
       if (token !== renderTokenRef.current) return;
@@ -109,18 +134,27 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
       const base = page.getViewport({ scale: 1 });
       // Butun slayd ko'rinishi uchun eni va bo'yi bo'yicha kichigini olamiz.
       const fit = Math.min(stage.clientWidth / base.width, stage.clientHeight / base.height);
+      if (!Number.isFinite(fit) || fit <= 0) return;
       // Proyektorda aniq chiqishi uchun ekran zichligini hisobga olamiz.
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const viewport = page.getViewport({ scale: fit * dpr });
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
+      // `width` ga yozish canvas holatini (shu jumladan transformni) tozalaydi.
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       canvas.style.width = `${base.width * fit}px`;
       canvas.style.height = `${base.height * fit}px`;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-      await page.render({ canvasContext: ctx, viewport }).promise;
+      const task = page.render({ canvasContext: ctx, viewport });
+      renderTaskRef.current = task;
+      try {
+        await task.promise;
+      } finally {
+        if (renderTaskRef.current === task) renderTaskRef.current = null;
+      }
       if (token !== renderTokenRef.current) return;
 
       // Chizma qatlamini slayd o'lchamiga moslaymiz (va tozalaymiz).
@@ -137,19 +171,33 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
     }
   }, [pageNum]);
 
+  /** Renderlarni navbatga qo'yadi — hech qachon ikkitasi birga ishlamaydi. */
+  const queueRender = useCallback(() => {
+    renderChainRef.current = renderChainRef.current.then(renderPage).catch(() => {});
+  }, [renderPage]);
+
   useEffect(() => {
     if (!numPages || useNativeViewer) return;
-    void renderPage();
-  }, [numPages, pageNum, useNativeViewer, renderPage]);
+    queueRender();
+  }, [numPages, pageNum, useNativeViewer, queueRender]);
 
   // Konteyner o'lchami o'zgarsa (to'liq ekran, oyna) — qayta moslab chizamiz.
+  // Debounce: o'lcham o'zgarishi ketma-ket ko'p marta keladi, har biriga
+  // render boshlash mantiqsiz va navbatni uzaytiradi.
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || useNativeViewer) return;
-    const ro = new ResizeObserver(() => void renderPage());
+    let timer = 0;
+    const ro = new ResizeObserver(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(queueRender, 120);
+    });
     ro.observe(stage);
-    return () => ro.disconnect();
-  }, [renderPage, useNativeViewer]);
+    return () => {
+      window.clearTimeout(timer);
+      ro.disconnect();
+    };
+  }, [queueRender, useNativeViewer]);
 
   const goPrev = useCallback(() => setPageNum((p) => Math.max(1, p - 1)), []);
   const goNext = useCallback(() => setPageNum((p) => Math.min(numPages, p + 1)), [numPages]);
