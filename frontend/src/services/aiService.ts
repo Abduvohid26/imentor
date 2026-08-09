@@ -403,6 +403,58 @@ const CASE_PERSONA_HINTS: Record<CaseStudyFocus, string> = {
     'kabi juda keng tarqalgan ismlardan QOCHING).',
 };
 
+/** Keys yechimi bo'limlarga ajratilgan holda so'raladi — bitta uzun "answer"
+ *  so'ralganda model hajm ko'rsatmasini bajarmay, 400 so'z atrofida qaytarardi.
+ *  Alohida maydonlar har biriga o'z ulushini beradi. */
+type CaseSections = {
+  patient?: string;
+  complaints?: string;
+  history?: string;
+  lifestyle?: string;
+  examination?: string;
+  labs?: string;
+  diagnosis?: string;
+  differential?: string;
+  investigations?: string;
+  management?: string;
+  recommendations?: string;
+  focus?: string;
+};
+
+const CASE_SCENARIO_PARTS: (keyof CaseSections)[] = [
+  'patient',
+  'complaints',
+  'history',
+  'lifestyle',
+  'examination',
+  'labs',
+];
+
+/** Vaziyat bo'limlarini bitta bemor tarixi matniga birlashtiradi. */
+function joinCaseScenario(raw: CaseSections): string {
+  return CASE_SCENARIO_PARTS.map((k) => String(raw[k] || '').trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+const CASE_SECTION_TITLES: { key: keyof CaseSections; label: string }[] = [
+  { key: 'diagnosis', label: 'Klinik tashxis va asoslanishi' },
+  { key: 'differential', label: 'Differensial tashxis' },
+  { key: 'investigations', label: "Qo'shimcha tekshiruvlar" },
+  { key: 'management', label: 'Davolash / profilaktika taktikasi' },
+  { key: 'recommendations', label: 'Amaliy tavsiyalar va prognoz' },
+];
+
+/** Bo'limlarni sarlavhali yagona yechim matniga birlashtiradi. */
+function joinCaseSections(raw: CaseSections): string {
+  return CASE_SECTION_TITLES.map(({ key, label }, i) => {
+    const text = String(raw[key] || '').trim();
+    return text ? `${String.fromCharCode(97 + i)}) ${label}\n${text}` : '';
+  })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 async function generateSingleCaseQuestion(
   topic: string,
   focus: CaseStudyFocus,
@@ -416,18 +468,20 @@ async function generateSingleCaseQuestion(
   const structure = buildCaseStructurePrompt(topic);
   const hasContext = Boolean(contextText.trim());
   const request = (strict: boolean) =>
-    openaiJson<{ scenario?: string; answer?: string; focus?: string }>({
+    openaiJson<CaseSections>({
       model: OPENAI_CHAT,
       system:
-        `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} Return ONLY valid JSON object: ` +
-        `{"scenario":"...","answer":"..."}. Language: ${outLang}. focus="${focus}". ` +
+        `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} Return ONLY valid JSON object with EXACTLY ` +
+        'these keys: {"patient","complaints","history","lifestyle","examination","labs",' +
+        '"diagnosis","differential","investigations","management","recommendations"}. ' +
+        'Har bir kalit alohida, to\'liq yozilgan matn bo\'lsin — qisqartirilgan tezis emas. ' +
+        `Language: ${outLang}. focus="${focus}". ` +
         (hasContext
           ? 'MANBALAR (raqamlangan) sizga user xabarida berilgan — "answer" matnida HAR bir muhim klinik ' +
             'da\'vodan keyin mos manba raqamini [n] shaklida qo\'ying (masalan "...tavsiya etiladi [2]."). ' +
-            'Manbada bo\'lmagan narsani manba raqami bilan bog\'lamang; agar manbada yetarli ma\'lumot bo\'lmasa, ' +
-            'ochiq tan oling ("berilgan manbalarda aniq ma\'lumot yo\'q, umumiy klinik amaliyotga asoslanib...") ' +
-            'va bu qismni raqamsiz qoldiring. HECH QACHON o\'zingiz PMID/DOI/link yoki manba raqami o\'ylab topmang — ' +
-            'faqat sizga berilgan manbalar ro\'yxatidagi raqamlardan foydalaning. "Foydalanilgan adabiyotlar" ' +
+            'Kamida 5 ta turli manba raqami ishlatilsin. Manbada bo\'lmagan narsani manba raqami bilan ' +
+            'bog\'lamang. HECH QACHON o\'zingiz PMID/DOI/link yoki manba raqami o\'ylab topmang — faqat ' +
+            'sizga berilgan manbalar ro\'yxatidagi raqamlardan foydalaning. "Foydalanilgan adabiyotlar" ' +
             'bo\'limini o\'zingiz yozmang — u dasturiy ravishda alohida qo\'shiladi.'
           : 'Hech qanday manba berilmagan — hech qanday raqamli iqtibos [n], link yoki "Manba:" degan matn yozmang, faqat umumiy klinik bilim asosida yozing.'),
       user:
@@ -435,50 +489,73 @@ async function generateSingleCaseQuestion(
         `Generate ONE clinical case with focus="${focus}" (${CASE_FOCUS_HINTS[focus]}). ` +
         `${CASE_PERSONA_HINTS[focus]}\n` +
         'QATTIQ QOIDALAR:\n' +
-        '1. "scenario" — KENGAYTIRILGAN, kamida 700-800 so\'z: bemor ismi/yoshi/jinsi/kasbi, batafsil ' +
-        'anamnez (o\'tgan kasalliklar, oilaviy tarix, ijtimoiy holat, hayot tarzi), shikoyatlarning ' +
-        'rivojlanish tarixi (qachon boshlangan, qanday kuchaygan, nima yaxshilaydi/yomonlashtiradi), ' +
-        'to\'liq klinik ko\'rik topilmalari (tizim-tizim bo\'yicha: yurak-qon tomir, nafas, asab va h.k.), ' +
-        'laborator/instrumental tekshiruv natijalari (aniq raqamlar bilan), ijtimoiy/oilaviy/psixologik ' +
-        'kontekst — real, batafsil bemor tarixiga (case report) o\'xshash TO\'LIQ klinik rasm chizing, ' +
-        'qisqartirmang.\n' +
-        '2. "answer" — KENGAYTIRILGAN, kamida 1000-1200 so\'z, quyidagi tuzilishda (mos sarlavhalar ' +
-        'bilan, focus\'ga qarab moslashtiring, har bo\'lim chuqur va batafsil, yuzaki emas):\n' +
-        '   a) Dastlabki (taxminiy) tashxis va uning to\'liq klinik asoslanishi\n' +
-        '   b) Differensial tashxis (kamida 3-4 muqobil tashxis, har biri uchun nega tanlangani/rad etilgani batafsil)\n' +
-        '   c) Tavsiya etilgan qo\'shimcha tekshiruvlar (har biri uchun nima uchun kerakligi tushuntirilsin)\n' +
-        '   d) Davolash/profilaktika taktikasi, bosqichma-bosqich (dozalar, muqobil variantlar, kuzatuv rejasi)\n' +
-        '   e) Amaliy tavsiyalar (bemorga/ota-onaga) va uzoq muddatli prognoz/kuzatuv\n' +
+        '1. Vaziyat OLTITA alohida maydonga yoziladi (jami kamida 700 so\'z), har biri to\'liq ' +
+        'paragraf(lar) bo\'lsin:\n' +
+        '   "patient" (kamida 90 so\'z) — bemor ismi, yoshi, jinsi, kasbi, oilaviy holati va murojaat sababi.\n' +
+        '   "complaints" (kamida 120 so\'z) — shikoyatlar tafsiloti: xarakteri, joylashuvi, kuchi, ' +
+        'qachon kuchayadi/yengillashadi.\n' +
+        '   "history" (kamida 130 so\'z) — kasallik tarixi, o\'tgan kasalliklar, qabul qilayotgan dorilar, ' +
+        'allergiya, oilaviy anamnez.\n' +
+        '   "lifestyle" (kamida 90 so\'z) — hayot tarzi, ish sharoiti, ovqatlanish, zararli odatlar, ' +
+        'ijtimoiy-psixologik kontekst.\n' +
+        '   "examination" (kamida 140 so\'z) — obyektiv ko\'rik TIZIM-TIZIM bo\'yicha (umumiy holat, ' +
+        'yurak-qon tomir, nafas, hazm, asab), aniq o\'lchovlar bilan (AB, puls, harorat, BMI).\n' +
+        '   "labs" (kamida 130 so\'z) — laborator va instrumental natijalar ANIQ raqam va o\'lchov ' +
+        'birligi bilan, me\'yor oralig\'i ko\'rsatilgan holda.\n' +
+        '2. Yechim BESHTA ALOHIDA maydonga yoziladi. HAR BIRI o\'z hajmiga ega bo\'lsin ' +
+        '(jami kamida 1000-1200 so\'z), qisqartirmang:\n' +
+        '   "diagnosis" (kamida 180 so\'z) — klinik tashxis ANIQ nozologiya nomi bilan va uning ' +
+        'to\'liq asoslanishi: qaysi shikoyat/topilma/laborator qiymat qaysi mezonni qanoatlantiradi.\n' +
+        '   "differential" (kamida 220 so\'z) — kamida 3-4 muqobil tashxis, HAR biri uchun ' +
+        'qo\'llab-quvvatlovchi va rad etuvchi aniq dalillar.\n' +
+        '   "investigations" (kamida 180 so\'z) — qo\'shimcha tekshiruvlar, har biri uchun maqsad va ' +
+        'kutilayotgan natija (aniq qiymat oralig\'i bilan).\n' +
+        '   "management" (kamida 250 so\'z) — bosqichma-bosqich davolash/profilaktika: aniq dori nomi, ' +
+        'dozasi, qabul yo\'li va davomiyligi, muqobil variantlar, kuzatuv jadvali.\n' +
+        '   "recommendations" (kamida 170 so\'z) — bemorga/oilaga amaliy tavsiyalar, xavf belgilari ' +
+        '(qachon shoshilinch murojaat qilish) va uzoq muddatli prognoz/kuzatuv rejasi.\n' +
+        '4. REAL VA QAT\'IY BO\'LSIN: taxminiy/ehtimoliy iboralardan qoching — "taxminiy tashxis", ' +
+        '"taxmin qilish mumkin", "ehtimol", "bo\'lishi mumkin" kabi ikkilanishlar o\'rniga aniq nozologiya, ' +
+        'aniq dori nomi va dozasi, aniq tekshiruv nomi va kutilayotgan qiymat yozilsin. Laborator ' +
+        'ko\'rsatkichlar aniq raqam va o\'lchov birligi bilan berilsin. Xalqaro klinik yo\'riqnomalarga ' +
+        '(guideline) mos, haqiqiy amaliyotda qo\'llanadigan yechim bo\'lsin.\n' +
         '3. Bu 3 ta vaziyatdan FAQAT BITTASI — qolgan ikkitasi boshqa bemor, boshqa ism, boshqa yosh/kasb ' +
         'bilan alohida generatsiya qilinmoqda. O\'zingizning vaziyatingiz ularnikidan butunlay farq qilishi ' +
         'shart: umumiy ismlardan (Anvar, Nigora, Shirin, Gulnora, Madina, Iskandar, Odil, Otabek kabi juda ' +
         'ko\'p ishlatiladigan ismlardan) qoching, o\'ziga xos ism tanlang.\n' +
         (hasContext ? `\nMANBALAR:\n${contextText}\n` : '') +
         (strict ? '\nStrict valid JSON only.' : ''),
-      maxTokens: 11000,
+      // 11 ta maydon (6 vaziyat + 5 yechim) bitta JSON'ga sig'ishi kerak.
+      // 11000 token'da JSON oxiri kesilib, yechim bo'limlari bo'sh qolardi.
+      maxTokens: 16000,
       temperature: strict ? 0.45 : 0.65,
       parse: (t) => parseJSONSafe(t),
     });
 
-  let raw: { scenario?: string; answer?: string; focus?: string };
+  let raw: CaseSections;
   try {
     raw = await request(false);
   } catch {
     raw = await request(true);
   }
 
-  const answer = (raw.answer || '').trim();
+  const answer = joinCaseSections(raw);
   const usedIndices = new Set(
     Array.from(answer.matchAll(/\[(\d+)\]/g)).map((m) => Number(m[1])),
   );
+  // Adabiyotlar HAR DOIM yechim oxirida ko'rsatiladi. Model iqtibos qo'ygan
+  // manbalar ustuvor; agar u [n] yozishni unutgan bo'lsa ham, yechim aynan shu
+  // manbalar asosida yaratilgani uchun ular ro'yxatda beriladi (bo'sh "Foydalanilgan
+  // adabiyotlar" bo'limi chiqmasligi kerak).
   const citedSources = sources.filter((s) => usedIndices.has(s.index));
-  const referencesSection = buildReferencesSection(citedSources.length ? citedSources : []);
+  const shownSources = citedSources.length ? citedSources : sources.slice(0, 8);
+  const referencesSection = buildReferencesSection(shownSources);
 
   return {
-    scenario: (raw.scenario || '').trim(),
+    scenario: joinCaseScenario(raw),
     answer: answer + referencesSection,
     focus: normalizeCaseFocus(raw.focus, CASE_STUDY_FOCUS_ORDER.indexOf(focus)),
-    ...(citedSources.length ? { references: sourcesToMedicalReferences(citedSources) } : {}),
+    ...(shownSources.length ? { references: sourcesToMedicalReferences(shownSources) } : {}),
   };
 }
 
@@ -648,6 +725,11 @@ async function fetchCaseContext(
           'Content-Type': 'application/json',
         },
         body: { topic, subject_code: subjectCode || '' },
+        // Bu endpoint bir necha tashqi so'rov qiladi (kalit so'z tarjimasi,
+        // PubMed, Semantic Scholar, Wikipedia, kitob RAG). httpJson ning
+        // standart 12s timeout'i yetmay, so'rov uzilardi (nginx 499) va keys
+        // manbasiz — ya'ni adabiyotlarsiz — yaratilib qolardi.
+        timeoutMs: 90000,
       },
     );
     return {
