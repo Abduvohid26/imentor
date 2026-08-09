@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
+import { buildPreparedContentMeta } from '../utils/preparedContentMeta';
 import { pushAppNotification } from '../utils/notifications';
 import {
   FileText,
@@ -134,7 +135,10 @@ export default function LectureNotes() {
       setLectureSession(data);
       setEditedContent(data.content);
       setLectureContent(data.content);
-      await savePreparedContent('lecture', topic, data);
+      // Kalit sifatida SARLAVHA emas, tuzilmali topicNorm ishlatiladi
+      // (sillabus::yo'nalish::mavzu kodi) — aks holda mavzu nomi tarjima
+      // qilinganda saqlangan ma'ruza topilmay qolardi.
+      await savePreparedContent('lecture', topic, data, buildPreparedContentMeta(globalTopic));
       pushAppNotification({ title: t('common.doneTitle'), body: t('lecture.readyToast'), level: 'success' });
       refreshHistory();
     } catch (err) {

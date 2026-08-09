@@ -1,4 +1,5 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { buildPreparedContentMeta } from '../utils/preparedContentMeta';
 import { pushAppNotification } from '../utils/notifications';
 import {
   ArrowLeft,
@@ -421,12 +422,14 @@ export default function PresentationMaterials() {
         // ishlatiladi — aks holda Baza mavzu bo'yicha qidirganda topa olmaydi
         // (boshqa 3 bo'lim ham aynan shunday saqlaydi).
         pushAppNotification({ title: t('common.doneTitle'), body: t('presentation.readyToast'), level: 'success' });
-        await savePreparedContent('presentation', globalTopic.title, deck, {
-          subjectName: globalTopic.subjectName,
-          subjectCode: globalTopic.subjectCode,
-          variantLabel: globalTopic.variantLabel,
-          topicCode: globalTopic.id,
-        });
+        // topicNorm (sillabus::yo'nalish::mavzu kodi) qo'shiladi — sarlavha
+        // kalit bo'lib qolmasin (tarjimadan keyin yozuv yo'qolmasligi uchun).
+        await savePreparedContent(
+          'presentation',
+          globalTopic.title,
+          deck,
+          buildPreparedContentMeta(globalTopic),
+        );
         refreshDeckHistory();
       } catch (histErr) {
         console.warn('Presentation history save skipped:', histErr);
