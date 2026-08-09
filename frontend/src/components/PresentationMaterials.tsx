@@ -134,8 +134,10 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowLeft' && hasPrev) onIndexChange(index - 1);
-      if (e.key === 'ArrowRight' && hasNext) onIndexChange(index + 1);
+      // ←/→ endi slaydlarni almashtiradi (PdfSlideViewer ichida) — bu yerda
+      // ular boshqa TAQDIMOTGA o'tkazsa, dars paytida bir tugma ikki ishni
+      // bajarib chalkashlik tug'dirardi. Taqdimotlar orasida o'tish uchun
+      // chap/o'ng chetdagi katta tugmalar qoldi.
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
