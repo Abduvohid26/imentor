@@ -945,6 +945,7 @@ async function requestPresentationDeckFromAi(params: {
     'comparison_table yoki process_flow, case_study, image_focus, summary — aralashtir, ketma-ket bir xil bo\'lmasin. ' +
     'content_bullets / image_focus / case_study / two_column uchun image_query MAJBURIY ' +
     '(inglizcha tibbiy anatomiya/diagramma kalit so\'zi, masalan "human skin layers epidermis dermis diagram"). ' +
+    'summary (xulosa) slaydi FAQAT BITTA va ENG OXIRGI slayd bo\'lsin — o\'rtada xulosa yaratmang. '
     'summary bulletlari "Sarlavha: tushuntirish" formatida bo\'lsin. ' +
     'ADABIYOTLAR/MANBALAR SLAYDI KERAK EMAS — references yoki "Foydalanilgan adabiyotlar" ' +
     'slaydini umuman yaratmang va matn ichida havola/iqtibos yozmang. ' +

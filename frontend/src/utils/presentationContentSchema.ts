@@ -480,11 +480,35 @@ export function normalizePresentationContent(
     slides[0] = { ...slides[0], slide_type: 'title' };
   }
 
+  // Xulosa HAR DOIM oxirida bo'lsin. Model ba'zan bir nechta "summary"
+  // slaydini o'rtada ham yaratadi — bunda oxirgisi yakuniy xulosa sifatida
+  // qoldiriladi, qolganlari oddiy kontent slaydiga aylantiriladi (matni
+  // yo'qolmasin uchun o'z o'rnida turadi).
+  const summaryIdx = slides
+    .map((s, i) => (s.slide_type === 'summary' ? i : -1))
+    .filter((i) => i >= 0);
+  if (summaryIdx.length) {
+    const lastIdx = summaryIdx[summaryIdx.length - 1];
+    const finalSummary = slides[lastIdx];
+    slides = slides
+      .map((s, i) =>
+        s.slide_type === 'summary' && i !== lastIdx ? { ...s, slide_type: 'content_bullets' as SlideType } : s,
+      )
+      .filter((_, i) => i !== lastIdx)
+      .concat(finalSummary);
+  }
+
   const refSlides = slides.filter((s) => s.slide_type === 'references');
-  const mainSlides = diversifyTypes(slides.filter((s) => s.slide_type !== 'references')).slice(
-    0,
-    MAX_SLIDES,
-  );
+  const diversified = diversifyTypes(slides.filter((s) => s.slide_type !== 'references'));
+
+  // MAX_SLIDES gacha qisqartirishda xulosa kesilib ketmasligi kerak —
+  // u oxirgi slayd, shuning uchun alohida ajratib, qisqartirishdan keyin
+  // qaytadan oxiriga qo'shiladi.
+  const tailSummary =
+    diversified[diversified.length - 1]?.slide_type === 'summary' ? diversified.pop() : undefined;
+  const mainSlides = diversified.slice(0, tailSummary ? MAX_SLIDES - 1 : MAX_SLIDES);
+  if (tailSummary) mainSlides.push(tailSummary);
+
   slides = refSlides.length ? [...mainSlides, refSlides[refSlides.length - 1]] : mainSlides;
 
   const topRefs = Array.isArray((raw as { references?: unknown } | null)?.references)
