@@ -46,6 +46,7 @@ import {
 } from '../utils/presentationUploadApi';
 import StaffPageLayout from './staff/StaffPageLayout';
 import SavedWorkBanner from './staff/SavedWorkBanner';
+import SavedWorkList from './staff/SavedWorkList';
 import StaffTopicHeader from './staff/StaffTopicHeader';
 import StaffEmptyState from './staff/StaffEmptyState';
 import StaffErrorAlert from './staff/StaffErrorAlert';
@@ -470,37 +471,15 @@ export default function PresentationMaterials() {
             {t('lecture.database')}
           </h2>
         </div>
-        {savedDecks.length === 0 ? (
-          <StaffPanel className="p-10 text-center">
-            <Presentation size={40} className="mx-auto text-black/20 mb-4" />
-            <p className="text-black/50 font-medium">{t('lecture.noSaved')}</p>
-          </StaffPanel>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {savedDecks.map((deck) => (
-              <button
-                key={deck.id}
-                type="button"
-                disabled={historyBusyId === deck.id}
-                onClick={() => void openHistoryDeck(deck)}
-                className="ios-glass rounded-2xl border border-white/70 p-5 text-left hover:border-[#083047]/20 transition-all disabled:opacity-60"
-              >
-                <h3 className="font-bold text-[15px] line-clamp-2 mb-2 text-[#083047]">{deck.topic}</h3>
-                <p className="text-[12px] text-black/45">
-                  {historyBusyId === deck.id ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Loader2 size={12} className="animate-spin" /> PPTX…
-                    </span>
-                  ) : deck.createdAt ? (
-                    new Date(deck.createdAt).toLocaleDateString()
-                  ) : (
-                    t('common.recently')
-                  )}
-                </p>
-              </button>
-            ))}
-          </div>
-        )}
+        <SavedWorkList
+          items={savedDecks}
+          activeId={historyBusyId}
+          onSelect={(id) => {
+            const deck = savedDecks.find((x) => x.id === id);
+            if (deck) void openHistoryDeck(deck);
+          }}
+          emptyText={t('lecture.noSaved')}
+        />
       </StaffPageLayout>
     );
   }

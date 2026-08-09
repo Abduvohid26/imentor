@@ -52,4 +52,6 @@ class PreparedContentSummaryOut(BaseModel):
     topic: str
     topic_norm: str
     subject_name: str
+    # Baza ro'yxatida muallif ko'rsatiladi (kim yaratgan).
+    author_display_name: str = ""
     created_at: dt.datetime

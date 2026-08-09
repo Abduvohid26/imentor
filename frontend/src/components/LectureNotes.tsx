@@ -30,6 +30,7 @@ import {
 } from '../utils/preparedContentStore';
 import StaffPageLayout from './staff/StaffPageLayout';
 import SavedWorkBanner from './staff/SavedWorkBanner';
+import SavedWorkList from './staff/SavedWorkList';
 import StaffTopicHeader from './staff/StaffTopicHeader';
 import StaffEmptyState from './staff/StaffEmptyState';
 import StaffErrorAlert from './staff/StaffErrorAlert';
@@ -177,32 +178,14 @@ export default function LectureNotes() {
             {t('lecture.database')}
           </h2>
         </div>
-        {savedLectures.length === 0 ? (
-          <StaffPanel className="p-10 text-center">
-            <FileText size={40} className="mx-auto text-black/20 mb-4" />
-            <p className="text-black/50 font-medium">{t('lecture.noSaved')}</p>
-          </StaffPanel>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {savedLectures.map((lecture) => (
-              <button
-                key={lecture.id}
-                type="button"
-                onClick={() => loadPastSession(lecture)}
-                className="ios-glass rounded-2xl border border-white/70 p-5 text-left hover:border-[#083047]/20 transition-all"
-              >
-                <h3 className={`font-bold text-[15px] line-clamp-2 mb-2 ${STAFF_HEADING}`}>
-                  {lecture.topic}
-                </h3>
-                <p className="text-[12px] text-black/45">
-                  {lecture.createdAt
-                    ? new Date(lecture.createdAt).toLocaleDateString(locale)
-                    : t('common.recently')}
-                </p>
-              </button>
-            ))}
-          </div>
-        )}
+        <SavedWorkList
+          items={savedLectures}
+          onSelect={(id) => {
+            const item = savedLectures.find((x) => x.id === id);
+            if (item) void loadPastSession(item);
+          }}
+          emptyText={t('lecture.noSaved')}
+        />
       </StaffPageLayout>
     );
   }

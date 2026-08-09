@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import type { PreparedContentSummary } from '../../utils/preparedContentStore';
 import SavedWorkBanner from './SavedWorkBanner';
+import SavedWorkList from './SavedWorkList';
 import { useUiText } from '../../i18n/useUiText';
 import StaffTopicHeader, { type StaffTopicInfo } from './StaffTopicHeader';
 import { staffBtnPrimary, staffBtnSecondary, staffInput, staffLabel } from './staffUi';
@@ -154,7 +155,7 @@ export default function ContentTopicToolbar({
           <div className="space-y-2 pt-1 border-t border-black/5">
             <div className="flex items-center justify-between gap-2">
               <p className={staffLabel}>
-                {resolvedVersionsTitle} ({versions.length}) — {t('toolbar.savedHint')}
+                {resolvedVersionsTitle} ({versions.length})
               </p>
               <button
                 type="button"
@@ -164,36 +165,12 @@ export default function ContentTopicToolbar({
                 {t('common.close')}
               </button>
             </div>
-            <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto scrollbar-hide">
-              {versions.map((v) => {
-                const active = activeVersionId === v.id;
-                return (
-                  <div key={v.id} className="inline-flex items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => onSelectVersion(v.id)}
-                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
-                        active
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white/70 text-black/70 border-black/10 hover:border-black/20'
-                      }`}
-                    >
-                      {formatWhen(v.createdAt, locale)}
-                    </button>
-                    {onDeleteVersion && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteVersion(v.id)}
-                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200"
-                        aria-label={t('toolbar.deleteVersion')}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <SavedWorkList
+              items={versions}
+              activeId={activeVersionId}
+              onSelect={onSelectVersion}
+              onDelete={onDeleteVersion}
+            />
           </div>
         )}
 

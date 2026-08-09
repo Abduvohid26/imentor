@@ -22,6 +22,8 @@ export type PreparedContentSummary = {
   topicNorm?: string;
   createdAt: number;
   source: 'local' | 'cloud';
+  /** Kim yaratgan — Baza ro'yxatida ko'rsatiladi. */
+  author?: string;
 };
 
 const CLOUD_ID_PREFIX = 'cloud_';
@@ -143,7 +145,13 @@ export async function listAllPreparedForKindSynced(
     const token = await getBackendAccessToken();
     if (!token) return [];
     const data = await httpJson<{
-      results?: { id: number; topic: string; topic_norm?: string; created_at: string }[];
+      results?: {
+        id: number;
+        topic: string;
+        topic_norm?: string;
+        author_display_name?: string;
+        created_at: string;
+      }[];
     }>(`${apiBaseUrl()}/v1/prepared-content/mine/?kind=${encodeURIComponent(kind)}&page_size=200`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -152,6 +160,7 @@ export async function listAllPreparedForKindSynced(
         id: cloudId(r.id),
         topic: r.topic,
         topicNorm: r.topic_norm || normTopic(r.topic),
+        author: r.author_display_name || '',
         createdAt: new Date(r.created_at).getTime(),
         source: 'cloud' as const,
       }))

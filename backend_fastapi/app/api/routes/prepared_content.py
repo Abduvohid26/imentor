@@ -48,6 +48,7 @@ def list_my_prepared_content(
             topic=r.topic,
             topic_norm=r.topic_norm,
             subject_name=r.subject_name,
+            author_display_name=r.author_display_name or "",
             created_at=r.created_at,
         ).model_dump()
         for r in rows
@@ -148,7 +149,13 @@ def create_prepared_content(
         # validatsiya qiladi).
         topic=payload.topic[:255],
         topic_norm=topic_norm[:255],
-        author_display_name=payload.author_display_name[:128],
+        # Muallif: frontend yubormasa ham, server foydalanuvchini biladi —
+        # Baza ro'yxatida "kim yaratgan" doim ko'rinishi kerak.
+        author_display_name=(
+            payload.author_display_name.strip()
+            or f"{auth.user.first_name} {auth.user.last_name}".strip()
+            or auth.user.username
+        )[:128],
         subject_name=subject_name[:255],
         subject_code=subject_code[:64],
         variant_label=variant_label[:128],
