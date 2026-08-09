@@ -127,35 +127,37 @@ export function demoteSlidesWithoutImages(content: PresentationContent): Present
 }
 
 /** Har kerakli slayd uchun image_query → Wikimedia. */
+/** Bir vaqtda nechta slayd uchun rasm qidirilsin (Wikimedia'ni bosmaslik uchun). */
+const IMAGE_CONCURRENCY = 5;
+
 export async function resolvePresentationImages(
   content: PresentationContent,
 ): Promise<PresentationContent> {
-  const slides: ContentSlide[] = [];
-  for (const slide of content.slides) {
-    if (slide.imageUrl?.startsWith('data:')) {
-      slides.push(slide);
-      continue;
-    }
+  const resolveOne = async (slide: ContentSlide): Promise<ContentSlide> => {
+    if (slide.imageUrl?.startsWith('data:')) return slide;
     const tryFetch = IMAGE_TYPES.includes(slide.slide_type) || Boolean(slide.image_query);
-    if (!tryFetch) {
-      slides.push(slide);
-      continue;
-    }
+    if (!tryFetch) return slide;
 
-    let attached = slide;
     for (const query of queriesForSlide(slide, content.subject_area)) {
       try {
         const found = await searchOpenImage(query);
         if (!found) continue;
         const dataUrl = await fetchImageAsDataUrl(found.url);
         if (!dataUrl) continue;
-        attached = { ...slide, imageUrl: dataUrl, imageCredit: found.credit };
-        break;
+        return { ...slide, imageUrl: dataUrl, imageCredit: found.credit };
       } catch {
-        /* next */
+        /* keyingi so'rov */
       }
     }
-    slides.push(attached);
+    return slide;
+  };
+
+  // 20-30 slaydda ketma-ket qidirish bir necha daqiqa ketardi — shuning uchun
+  // bo'laklab, parallel bajaramiz (slaydlar tartibi saqlanadi).
+  const slides: ContentSlide[] = [];
+  for (let i = 0; i < content.slides.length; i += IMAGE_CONCURRENCY) {
+    const batch = content.slides.slice(i, i + IMAGE_CONCURRENCY);
+    slides.push(...(await Promise.all(batch.map(resolveOne))));
   }
   return demoteSlidesWithoutImages({ ...content, slides });
 }

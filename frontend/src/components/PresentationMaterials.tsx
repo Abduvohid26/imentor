@@ -18,7 +18,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GlobalTopicContext, AppNavigationContext, AppLanguageContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
-import { aiService } from '../services/aiService';
+import { aiService, type LectureNote } from '../services/aiService';
 import { buildPresentationPptxFile } from '../utils/buildPresentationPptx';
 import {
   coercePresentationContent,
@@ -29,6 +29,7 @@ import PdfSlideViewer from './PdfSlideViewer';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
 import {
+  loadLatestPreparedContent,
   loadPreparedByIdSynced,
   listAllPreparedForKindSynced,
   savePreparedContent,
@@ -349,9 +350,22 @@ export default function PresentationMaterials() {
     setError(null);
     setAiProgress('');
     try {
-      // Enhance FAQAT o'qituvchi yuklagan PDF manba bo'lsa.
-      // Avvalgi AI PPTX borligi enhance qilmasin — aks holda eski bullet-uslub
-      // qayta ishlanib "yangi" taqdimot ham eski ko'rinishda chiqardi.
+      // Taqdimot MA'RUZA MATNI asosida quriladi. Matn bo'lmasa yaratmaymiz —
+      // aks holda taqdimot ma'ruzaga bog'lanmagan, umumiy bo'lib qolardi.
+      // MUHIM: "Ma'ruza matni" bo'limi matnni MAVZU SARLAVHASI (oddiy satr)
+      // bo'yicha saqlaydi, sillabus-kontekst kaliti bilan emas. Shuning uchun
+      // avval kontekst bo'yicha, topilmasa sarlavha bo'yicha qidiramiz —
+      // shunda eski va yangi formatda saqlangan ma'ruzalar ham topiladi.
+      const lecture =
+        (await loadLatestPreparedContent<LectureNote>('lecture', globalTopic)) ??
+        (await loadLatestPreparedContent<LectureNote>('lecture', globalTopic.title));
+      const lectureText = (lecture?.content || '').trim();
+      if (!lectureText) {
+        setError(t('presentation.errorNoLecture'));
+        return;
+      }
+
+      // Yuklangan PDF (bo'lsa) qo'shimcha kontekst sifatida beriladi.
       let sourceText = '';
       const pdfItem = items.find((i) => i.kind === 'pdf');
       if (pdfItem) {
@@ -363,7 +377,7 @@ export default function PresentationMaterials() {
           /* PDF matn ixtiyoriy */
         }
       }
-      const useEnhance = Boolean(pdfItem && sourceText.trim());
+      const hasPdfContext = Boolean(pdfItem && sourceText.trim());
       const deck = await aiService.generatePresentationDeck({
         topicTitle: globalTopic.title,
         topicId: globalTopic.id,
@@ -372,9 +386,10 @@ export default function PresentationMaterials() {
         variantLabel: globalTopic.variantLabel,
         // Foydalanuvchi UI'da tanlagan til ustuvor (lekin bilan bir xil qoida).
         language,
-        mode: useEnhance ? 'enhance' : 'generate',
-        sourceFileName: useEnhance ? pdfItem?.file_name : undefined,
-        sourceText: useEnhance ? sourceText : undefined,
+        mode: hasPdfContext ? 'enhance' : 'generate',
+        lectureText,
+        sourceFileName: hasPdfContext ? pdfItem?.file_name : undefined,
+        sourceText: hasPdfContext ? sourceText : undefined,
         subjectCode: globalTopic.subjectCode,
         onProgress: (textSoFar) => setAiProgress(textSoFar),
       });

@@ -902,6 +902,8 @@ async function requestPresentationDeckFromAi(params: {
   mode: 'generate' | 'enhance';
   sourceFileName?: string;
   sourceText?: string;
+  /** Mavzu bo'yicha tayyor ma'ruza matni — taqdimotning ASOSIY manbasi. */
+  lectureText?: string;
   subjectCode?: string;
   onProgress?: (rawTextSoFar: string) => void;
 }): Promise<PresentationContent> {
@@ -912,13 +914,23 @@ async function requestPresentationDeckFromAi(params: {
     : undefined;
   const kind = params.topicType === 'practical' ? "amaliy mashg'ulot" : "ma'ruza";
   const fallbackTitle = `${params.topicId} — ${params.topicTitle}`;
-  const enhanceBlock =
-    params.mode === 'enhance'
-      ? `O'qituvchi taqdimot yuklagan ("${params.sourceFileName || 'fayl'}"). Kontentni boyiting, lekin slide_type tuzilmasini saqlang. ` +
-        (params.sourceText?.trim()
-          ? `Manba matn:\n${params.sourceText.slice(0, 8000)}\n`
-          : '')
-      : "Noldan dars taqdimoti yarating.";
+
+  // Taqdimot ma'ruza matni asosida quriladi; yuklangan PDF (bo'lsa) qo'shimcha
+  // kontekst sifatida beriladi.
+  const lecture = (params.lectureText || '').trim();
+  const pdfText = (params.sourceText || '').trim();
+  const sourceBlock =
+    (lecture
+      ? 'ASOSIY MANBA — shu mavzu bo\'yicha tayyorlangan MA\'RUZA MATNI. Taqdimot ' +
+        'AYNAN shu matn asosida qurilsin: uning bo\'limlari, atamalari, misollari va ' +
+        'mantiqiy ketma-ketligi saqlansin. O\'zingizdan yangi mavzu qo\'shmang.\n' +
+        `<MARUZA_MATNI>\n${lecture.slice(0, 24000)}\n</MARUZA_MATNI>\n`
+      : '') +
+    (pdfText
+      ? `QO'SHIMCHA MANBA — o'qituvchi yuklagan fayl ("${params.sourceFileName || 'fayl'}"). ` +
+        'Faqat ma\'ruza matnini to\'ldirish uchun ishlating, unga zid bo\'lsa ma\'ruza matni ustun.\n' +
+        `<QOSHIMCHA_MANBA>\n${pdfText.slice(0, 6000)}\n</QOSHIMCHA_MANBA>\n`
+      : '');
 
   const system =
     `${SYS_MEDICAL} Sen FAQAT kontent qaytarasan — dizayn, rang, font haqida hech narsa yozma. ` +
@@ -926,20 +938,28 @@ async function requestPresentationDeckFromAi(params: {
     'Har slaydda MAX 5 bullet. HAR bullet MINIMUM 15, MAXIMUM 36 so\'z: ' +
     'faqat atama emas — nima ekanligi, qanday ishlashi yoki klinik ahamiyati tushuntirilsin. ' +
     'Qisqa 2–4 so\'zli tezislar TAQIQLANGAN. ' +
-    '8–11 slayd; slide_type: title, agenda, content_bullets (2–3), statistics, ' +
+    'MAJBURIY HAJM: KAMIDA 20, KO\'PI BILAN 30 slayd. Mavzu qanchalik keng bo\'lsa, ' +
+    'shuncha ko\'p slayd. 20 tadan kam qaytarish XATO hisoblanadi — ma\'ruza matnini ' +
+    'bo\'limlarga bo\'lib, har bir muhim bo\'limga alohida slayd ajrating. ' +
+    'slide_type: title, agenda, content_bullets (ko\'pchiligi), statistics, ' +
     'comparison_table yoki process_flow, case_study, image_focus, summary — aralashtir, ketma-ket bir xil bo\'lmasin. ' +
     'content_bullets / image_focus / case_study / two_column uchun image_query MAJBURIY ' +
     '(inglizcha tibbiy anatomiya/diagramma kalit so\'zi, masalan "human skin layers epidermis dermis diagram"). ' +
     'summary bulletlari "Sarlavha: tushuntirish" formatida bo\'lsin. ' +
-    'references / "Foydalanilgan manbalar" slaydini YOZMA — tizim oxirida haqiqiy ichki/tashqi manbalarni qo\'shadi. ' +
+    'ADABIYOTLAR/MANBALAR SLAYDI KERAK EMAS — references yoki "Foydalanilgan adabiyotlar" ' +
+    'slaydini umuman yaratmang va matn ichida havola/iqtibos yozmang. ' +
     `Til: ${outLang}. ` +
     (bookContext
-      ? 'Darslik parchalariga tayan; o\'ylab topilgan manba yozma.'
+      ? 'Darslik parchalari qo\'shimcha kontekst; o\'ylab topilgan manba yozma.'
       : "O'ylab topilgan manba/havola qo'shma.");
 
   const user =
     `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
-    `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${enhanceBlock}\n` +
+    `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${sourceBlock}\n` +
+    (lecture
+      ? 'VAZIFA: yuqoridagi ma\'ruza matnini 20-30 slaydlik dars taqdimotiga aylantiring. ' +
+        'Matnni qisqartirib tashlamang — har bo\'lim va kichik bo\'lim slaydlarda aks etsin.\n'
+      : 'VAZIFA: mavzu bo\'yicha 20-30 slaydlik dars taqdimoti yarating.\n') +
     'JSON: presentation_title, subject_area, author, slides[]. ' +
     'slides[].slide_type, title, subtitle, body{bullets,key_stat,stats,columns,comparison_rows,process_steps,quote_text,quote_author}, ' +
     'image_query, speaker_notes. Ishlatilmagan body maydonlari bo\'sh string/array.';
@@ -957,7 +977,7 @@ async function requestPresentationDeckFromAi(params: {
       model: OPENAI_CHAT,
       system,
       user,
-      maxTokens: 8000,
+      maxTokens: 16000,
       temperature: 0.35,
       bookContext,
       responseFormat,
@@ -969,7 +989,7 @@ async function requestPresentationDeckFromAi(params: {
       model: OPENAI_CHAT,
       system: system + ' Return ONLY valid JSON matching the schema.',
       user,
-      maxTokens: 8000,
+      maxTokens: 16000,
       temperature: 0.3,
       bookContext,
       parse: (t) => parseJSONSafe<Partial<PresentationContent>>(t),
@@ -982,7 +1002,8 @@ async function requestPresentationDeckFromAi(params: {
     subject: params.subjectName,
     author: 'iMentor',
   });
-  // AI references slaydini olib tashlaymiz — keyin haqiqiy manbalar qo‘shiladi.
+  // Adabiyotlar/manbalar slaydi taqdimotda ko'rsatilmaydi (foydalanuvchi so'rovi):
+  // AI ni o'zi yaratib qo'ygan bo'lsa ham olib tashlanadi.
   content = {
     ...content,
     slides: content.slides.filter((s) => s.slide_type !== 'references'),
@@ -990,13 +1011,6 @@ async function requestPresentationDeckFromAi(params: {
   qaPresentationContent(content);
   params.onProgress?.('Rasmlar…');
   content = await resolvePresentationImages(content);
-
-  params.onProgress?.('Manbalar…');
-  content = await attachPresentationReferences(content, {
-    topicTitle: params.topicTitle,
-    subjectCode: params.subjectCode,
-    language: params.language,
-  });
   return content;
 }
 
@@ -1020,35 +1034,6 @@ function dedupePresentationRefs(refs: MedicalReference[]): MedicalReference[] {
 }
 
 /** Ichki (kitob+bet) + tashqi (PubMed/Scholar/Wikipedia) + rasm kreditlari. */
-async function attachPresentationReferences(
-  content: PresentationContent,
-  opts: { topicTitle: string; subjectCode?: string; language: AppLanguage },
-): Promise<PresentationContent> {
-  const { sources } = await fetchCaseContext(opts.topicTitle, opts.subjectCode);
-  const fromRag = sourcesToMedicalReferences(sources);
-
-  const imageRefs: MedicalReference[] = [];
-  const seenCredits = new Set<string>();
-  for (const slide of content.slides) {
-    const credit = (slide.imageCredit || '').trim();
-    if (!credit || seenCredits.has(credit)) continue;
-    seenCredits.add(credit);
-    imageRefs.push({
-      title: credit,
-      publisher: 'Wikimedia Commons',
-      url: 'https://commons.wikimedia.org/',
-      note: 'Slayd rasmi',
-    });
-  }
-
-  const refs = dedupePresentationRefs([...fromRag, ...imageRefs]);
-  if (!refs.length) return content;
-  return withPresentationReferences(
-    content,
-    refs,
-    presentationReferencesTitle(opts.language),
-  );
-}
 
 export const aiService = {
   async extractSyllabusFromDocument(file: File): Promise<SyllabusExtractResult> {
@@ -1327,6 +1312,8 @@ export const aiService = {
     mode: 'generate' | 'enhance';
     sourceFileName?: string;
     sourceText?: string;
+    /** Mavzu bo'yicha tayyor ma'ruza matni — taqdimotning asosiy manbasi. */
+    lectureText?: string;
     subjectCode?: string;
     onProgress?: (rawTextSoFar: string) => void;
   }): Promise<PresentationContent> {

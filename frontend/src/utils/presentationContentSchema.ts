@@ -64,8 +64,12 @@ export const MAX_REFERENCE_WORDS = 48;
 /** Qisqa atama emas — har bullet tushuntirish bilan (15–36 so‘z). */
 export const MIN_WORDS_PER_BULLET = 15;
 export const MAX_WORDS_PER_BULLET = 36;
-export const MIN_SLIDES = 8;
-export const MAX_SLIDES = 12;
+export const MIN_SLIDES = 20;
+export const MAX_SLIDES = 30;
+/** Model kamroq slayd qaytarsa, umumiy "to'ldiruvchi" slaydlar shu chegaragacha
+ *  qo'shiladi. MIN_SLIDES gacha to'ldirish sifatni buzardi — 20 ta slaydning
+ *  yarmi mavzuga aloqasiz shablon bo'lib qolardi. */
+export const MIN_SLIDES_WITH_FILLER = 8;
 
 export function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -303,8 +307,8 @@ export const PRESENTATION_JSON_SCHEMA = {
       author: { type: 'string' },
       slides: {
         type: 'array',
-        minItems: 8,
-        maxItems: 12,
+        minItems: MIN_SLIDES,
+        maxItems: MAX_SLIDES,
         items: {
           type: 'object',
           additionalProperties: false,
@@ -451,10 +455,10 @@ export function normalizePresentationContent(
   }
   let slides = mapped;
 
-  if (slides.length < MIN_SLIDES) {
+  if (slides.length < MIN_SLIDES_WITH_FILLER) {
     const fb = fallbackSlides(presentation_title, subject_area);
     for (const filler of fb) {
-      if (slides.length >= MIN_SLIDES) break;
+      if (slides.length >= MIN_SLIDES_WITH_FILLER) break;
       if (slides.some((s) => s.title.toLowerCase() === filler.title.toLowerCase())) continue;
       slides.push(filler);
     }
