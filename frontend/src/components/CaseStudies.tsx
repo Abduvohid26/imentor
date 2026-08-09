@@ -121,7 +121,9 @@ export default function CaseStudies() {
   };
 
   const parsedKeywords = useMemo(() => parseKeywordsInput(keywords), [keywords]);
-  const contentLanguage = globalTopic?.instructionLanguage ?? language;
+  // Ma'ruza va Taqdimot bilan bir xil: kontent INTERFEYS tilida yaratiladi
+  // (ilgari sillabusning o'qitish tili olinardi va bo'limlar mos kelmasdi).
+  const contentLanguage = language;
 
   const handleGenerate = async (currentTopic: string = topic) => {
     if (!currentTopic.trim()) return;

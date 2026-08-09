@@ -14,6 +14,12 @@ import TopicVideoPanel from './staff/TopicVideoPanel';
 import type { SyllabusTopic } from '../services/aiService';
 import { AppLanguageContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
+import {
+  hasTranslations,
+  localizedSubjectName,
+  localizedTopicTitle,
+  requestSyllabusTranslation,
+} from '../utils/syllabusI18n';
 import type { UserRole } from '../utils/localStaffAuth';
 import {
   fetchMyCourseSelections,
@@ -70,6 +76,30 @@ export default function SyllabusView({
     }
     return out;
   })();
+
+  // Interfeys tili almashganda, tarjimasi yetishmayotgan fanlar uchun
+  // serverdan tarjima so'raymiz. Natija darhol kerak emas — server uni
+  // bazaga yozadi va keyingi yuklashda tayyor bo'ladi (idempotent, shuning
+  // uchun bir necha o'qituvchi bir vaqtda so'rasa ham xavfsiz).
+  useEffect(() => {
+    const pending = mySubjects
+      .map((s) => s.syllabus)
+      .filter((syl) => syl && !hasTranslations(syl, language));
+    if (!pending.length) return;
+    let cancelled = false;
+    (async () => {
+      for (const syl of pending) {
+        if (cancelled) return;
+        const ok = await requestSyllabusTranslation(syl.id, language);
+        if (ok && !cancelled) void load();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // `load` ataylab bog'liqlikda emas — u har renderda yangilanadi.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language, mySelections]);
 
   const load = useCallback(async () => {
     if (userRole !== 'hodim') {
@@ -257,7 +287,7 @@ export default function SyllabusView({
                     }`}
                   >
                     <span className="font-semibold text-slate-900 truncate max-w-[160px] sm:max-w-[220px]">
-                      {syllabus.subject_name}
+                      {localizedSubjectName(syllabus, language)}
                     </span>
                     <span className="text-[9px] text-slate-500 shrink-0">
                       {instructionLanguageBadge(resolveSyllabusInstructionLanguage(syllabus))}
@@ -454,6 +484,7 @@ function TopicColumn({
   const visibleTopics = topics.slice(pageStart, pageStart + TOPICS_PER_PAGE);
   const showPagination = topics.length > TOPICS_PER_PAGE;
 
+  const { language } = React.useContext(AppLanguageContext);
   const selectedCard =
     accent === 'blue'
       ? 'border-2 ring-blue-200 border-blue-500 bg-blue-50/80'
@@ -512,7 +543,9 @@ function TopicColumn({
                   {topic.id}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-800 text-[12px] leading-snug break-words line-clamp-2">{topic.title}</p>
+                  <p className="font-medium text-gray-800 text-[12px] leading-snug break-words line-clamp-2">
+                    {localizedTopicTitle(syllabus, topic.title, language)}
+                  </p>
                 </div>
                 {isSelected ? (
                   <Check size={20} className={accent === 'blue' ? 'text-blue-600' : 'text-indigo-600'} />

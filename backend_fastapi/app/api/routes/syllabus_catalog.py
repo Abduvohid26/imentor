@@ -151,6 +151,64 @@ def translate_syllabus(
     }
 
 
+@router.patch("/admin/course-syllabuses/{pk}/translations/")
+def admin_update_syllabus_translations(
+    pk: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    auth=Depends(require_roles("admin")),
+) -> dict:
+    """Admin tarjimalarni qo'lda tuzatadi (sifat nazorati).
+
+    Kutiladigan shakl:
+        {"lang": "en",
+         "subject_name": "...",                 # ixtiyoriy
+         "topics": {"<asl sarlavha>": "<tarjima>"}}   # ixtiyoriy
+
+    Faqat berilgan qiymatlar yangilanadi; bo'sh satr yuborilsa o'sha
+    tarjima o'chiriladi (keyin avtomatik qayta yaratilishi mumkin).
+    """
+    from app.services.syllabus_i18n import SUPPORTED_LANGS
+
+    obj = db.get(CourseSyllabus, pk)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Sillabus topilmadi.")
+
+    lang = str(payload.get("lang") or "").strip().lower()
+    if lang not in SUPPORTED_LANGS:
+        raise HTTPException(status_code=400, detail="Til noto'g'ri (uz/ru/en).")
+
+    name_i18n = dict(obj.name_i18n or {})
+    if "subject_name" in payload:
+        value = str(payload.get("subject_name") or "").strip()
+        if value:
+            name_i18n[lang] = value[:255]
+        else:
+            name_i18n.pop(lang, None)
+
+    topics_i18n = {k: dict(v or {}) for k, v in (obj.topics_i18n or {}).items()}
+    incoming = payload.get("topics")
+    if isinstance(incoming, dict):
+        current = topics_i18n.get(lang) or {}
+        for original, translated in incoming.items():
+            original = str(original or "").strip()
+            if not original:
+                continue
+            value = str(translated or "").strip()
+            if value:
+                current[original] = value[:512]
+            else:
+                current.pop(original, None)
+        topics_i18n[lang] = current
+
+    obj.name_i18n = name_i18n
+    obj.topics_i18n = topics_i18n
+    obj.updated_at = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+    db.refresh(obj)
+    return {"ok": True, "name_i18n": obj.name_i18n, "topics_i18n": obj.topics_i18n}
+
+
 def _topic_count(obj: CourseSyllabus) -> int:
     topic_count = sum(len((v or {}).get("topics") or []) for v in (obj.variants or []))
     if not topic_count and obj.topics:

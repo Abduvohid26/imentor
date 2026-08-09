@@ -6,6 +6,7 @@ import {
   ChevronUp,
   FileText,
   Loader2,
+  Languages,
   Pencil,
   Plus,
   Search,
@@ -46,6 +47,7 @@ import {
 import SyllabusUploadPreview, {
   type SyllabusUploadPreviewData,
 } from './SyllabusUploadPreview';
+import SyllabusTranslationsEditor from './SyllabusTranslationsEditor';
 
 type UploadProgress = {
   current: number;
@@ -128,6 +130,8 @@ export default function AdminSyllabusCatalog() {
   /** OnlineTest academic-catalog tartibi (28) — asosiy ro'yxat. */
   const [catalogOrder, setCatalogOrder] = useState<{ name: string; code: string }[] | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  /** Nomlar tarjimasini tahrirlash oynasi (sifat nazorati). */
+  const [translatingRow, setTranslatingRow] = useState<CourseSyllabusRow | null>(null);
   const [editingNameId, setEditingNameId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
   const [draftTopicsByFan, setDraftTopicsByFan] = useState<Record<number, SyllabusVariant[]>>({});
@@ -885,6 +889,14 @@ export default function AdminSyllabusCatalog() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setTranslatingRow(row)}
+                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                    title={t('admin.editTranslations')}
+                  >
+                    <Languages size={16} />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       const next = open ? null : row.id;
                       setExpandedId(next);
@@ -1047,6 +1059,14 @@ export default function AdminSyllabusCatalog() {
           e.target.value = '';
         }}
       />
+
+      {translatingRow && (
+        <SyllabusTranslationsEditor
+          row={translatingRow}
+          onClose={() => setTranslatingRow(null)}
+          onSaved={() => void load()}
+        />
+      )}
     </div>
   );
 }

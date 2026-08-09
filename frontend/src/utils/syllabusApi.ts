@@ -22,6 +22,9 @@ export type CourseSyllabusRow = {
   department?: number | null;
   department_name?: string;
   department_code?: string;
+  /** Ko'rsatish uchun tarjimalar (asl nom o'zgarmaydi — u kalit): */
+  name_i18n?: Partial<Record<AppLanguage, string>>;
+  topics_i18n?: Partial<Record<AppLanguage, Record<string, string>>>;
 };
 
 export type StaffCourseSelectionRow = {
