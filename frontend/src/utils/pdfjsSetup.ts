@@ -1,5 +1,12 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
+// Worker ataylab o'z kirish nuqtamiz orqali yuklanadi — u pdf.js worker'idan
+// oldin `Uint8Array` polifillarini o'rnatadi (eskiroq brauzerlar uchun).
+import PdfWorker from './pdfWorkerEntry?worker';
+import { installUint8ArrayPolyfills } from './uint8ArrayPolyfill';
+
+// Asosiy oqim uchun ham kerak: pdf.mjs `.toBase64()` / `Uint8Array.fromBase64`
+// ishlatadi (rasm ma'lumotlarini data-URL ga o'girishda).
+installUint8ArrayPolyfills();
 
 let workerReady = false;
 

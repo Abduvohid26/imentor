@@ -120,7 +120,7 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
       canvas.style.width = `${base.width * fit}px`;
       canvas.style.height = `${base.height * fit}px`;
 
-      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+      await page.render({ canvasContext: ctx, viewport }).promise;
       if (token !== renderTokenRef.current) return;
 
       // Chizma qatlamini slayd o'lchamiga moslaymiz (va tozalaymiz).
