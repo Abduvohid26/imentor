@@ -1,194 +1,73 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  Minimize,
-  RotateCcw,
-  Loader2,
-  Square,
-  MousePointer2,
-  Pencil,
-  Eraser,
-} from 'lucide-react';
-import { pdfjsLib } from '../utils/pdfjsSetup';
+import React, { useEffect, useRef, useState } from 'react';
+import { Maximize, Minimize, Square, MousePointer2, Pencil, Eraser } from 'lucide-react';
 import { useUiText } from '../i18n/useUiText';
 
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 3;
-const SCALE_STEP = 0.25;
-
-type PdfDoc = Awaited<ReturnType<typeof pdfjsLib.getDocument>['promise']>;
-
 /**
- * Dars o'tish uchun mo'ljallangan slayd ko'ruvchi — brauzerning o'z ichki
- * PDF panelidan farqli o'laroq, katta oldinga/orqaga tugmalari, sahifa
- * hisoblagichi, zoom (+/-) va to'liq ekran rejimi bilan. Sahifa avval
- * ekran kengligiga moslab ko'rsatiladi (fit-to-width), keyin o'qituvchi
- * kerak bo'lsa yaqinlashtirishi mumkin.
+ * Dars o'tish uchun slayd ko'ruvchi.
+ *
+ * PDF'ning o'zini BRAUZERNING ICHKI ko'ruvchisi chizadi (`<iframe>`) — u
+ * eskizlar panelini, sahifa raqamini, zoom va chop etishni allaqachon beradi
+ * va har qanday PDF'ni ishonchli ochadi. Biz ustiga faqat dars uchun kerakli
+ * vositalarni qo'shamiz: qora ekran, laser ko'rsatkich, chizish, to'liq ekran.
+ *
+ * Avval bu komponent PDF'ni pdf.js bilan canvas'ga o'zi chizardi — lekin
+ * ba'zi PDF'larda pdf.js xato berib, foydalanuvchiga qora ekran ko'rinardi
+ * (o'sha PDF brauzerning o'z ko'ruvchisida esa muammosiz ochilardi).
  */
 export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
   const { t } = useUiText();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const docRef = useRef<PdfDoc | null>(null);
-  const renderTokenRef = useRef(0);
-
-  const [numPages, setNumPages] = useState(0);
-  const [pageNum, setPageNum] = useState(1);
-  const [scale, setScale] = useState<number | null>(null); // null = auto (fit width) hali hisoblanmagan
-  const [autoScale, setAutoScale] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // --- Dars o'tish vositalari ---
-  /** Qora ekran (PowerPoint'dagi "B") — talabalar e'tiborini o'qituvchiga qaratish. */
-  const [blackout, setBlackout] = useState(false);
-  /** 'none' — oddiy, 'pointer' — laser ko'rsatkich, 'draw' — slayd ustida chizish. */
-  const [tool, setTool] = useState<'none' | 'pointer' | 'draw'>('none');
-  const [pointerPos, setPointerPos] = useState<{ x: number; y: number } | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
 
-  // PDF hujjatini yuklash
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-    setNumPages(0);
-    setPageNum(1);
-    setScale(null);
-    (async () => {
-      try {
-        const doc = await pdfjsLib.getDocument(fileUrl).promise;
-        if (cancelled) return;
-        docRef.current = doc;
-        setNumPages(doc.numPages);
-      } catch {
-        if (!cancelled) setError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      docRef.current?.destroy();
-      docRef.current = null;
-    };
-  }, [fileUrl]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  /** Qora ekran (PowerPoint'dagi "B") — talabalar e'tiborini o'qituvchiga qaratish. */
+  const [blackout, setBlackout] = useState(false);
+  /** 'none' — PDF bilan oddiy ishlash, 'pointer' — laser, 'draw' — chizish. */
+  const [tool, setTool] = useState<'none' | 'pointer' | 'draw'>('none');
+  const [pointerPos, setPointerPos] = useState<{ x: number; y: number } | null>(null);
 
-  const computeFitScale = useCallback(async () => {
-    const doc = docRef.current;
-    const container = containerRef.current;
-    if (!doc || !container) return 1;
-    try {
-      const page = await doc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1 });
-      const availableWidth = container.clientWidth - 24;
-      const availableHeight = container.clientHeight - 24;
-      const fitW = availableWidth / viewport.width;
-      const fitH = availableHeight / viewport.height;
-      return Math.max(MIN_SCALE, Math.min(fitW, fitH));
-    } catch {
-      return 1;
-    }
-  }, [pageNum]);
-
-  // Sahifani chizish
-  const renderPage = useCallback(
-    async (effectiveScale: number) => {
-      const doc = docRef.current;
-      const canvas = canvasRef.current;
-      if (!doc || !canvas) return;
-      const token = ++renderTokenRef.current;
-      try {
-        const page = await doc.getPage(pageNum);
-        if (token !== renderTokenRef.current) return;
-        const viewport = page.getViewport({ scale: effectiveScale });
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-      } catch {
-        /* rendering bekor qilingan bo'lishi mumkin — e'tiborsiz qoldiramiz */
-      }
-    },
-    [pageNum],
-  );
-
-  // Sahifa o'zgarganda: fit-scale hisoblab (agar auto bo'lsa) chizamiz
-  useEffect(() => {
-    if (!numPages) return;
-    let cancelled = false;
-    (async () => {
-      const fit = await computeFitScale();
-      if (cancelled) return;
-      setAutoScale(fit);
-      const effective = scale ?? fit;
-      await renderPage(effective);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageNum, numPages]);
-
-  // Zoom o'zgarganda qayta chizish (sahifa almashmasdan)
-  useEffect(() => {
-    if (!numPages || scale == null) return;
-    void renderPage(scale);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scale]);
-
-  // Konteyner o'lchami o'zgarsa (masalan fullscreen), auto-fit qayta hisoblansin
-  useEffect(() => {
-    const onResize = () => {
-      if (scale != null) return; // foydalanuvchi qo'lda zoom qilgan bo'lsa, avto-fit bilan ustidan yozmaymiz
-      void (async () => {
-        const fit = await computeFitScale();
-        setAutoScale(fit);
-        await renderPage(fit);
-      })();
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scale, computeFitScale, renderPage]);
-
-  const goPrev = useCallback(() => setPageNum((p) => Math.max(1, p - 1)), []);
-  const goNext = useCallback(() => setPageNum((p) => Math.min(numPages, p + 1)), [numPages]);
-  const zoomIn = () => setScale((s) => Math.min(MAX_SCALE, (s ?? autoScale) + SCALE_STEP));
-  const zoomOut = () => setScale((s) => Math.max(MIN_SCALE, (s ?? autoScale) - SCALE_STEP));
-  const resetZoom = () => setScale(null);
-
-  /** Chizma qatlamini asosiy canvas o'lchamiga moslab tozalaydi. */
-  const clearDrawing = useCallback(() => {
+  const clearDrawing = () => {
     const overlay = overlayRef.current;
-    if (!overlay) return;
-    const ctx = overlay.getContext('2d');
-    ctx?.clearRect(0, 0, overlay.width, overlay.height);
+    const ctx = overlay?.getContext('2d');
+    if (overlay && ctx) ctx.clearRect(0, 0, overlay.width, overlay.height);
+  };
+
+  // Chizma qatlamini konteyner o'lchamiga moslab turamiz (fullscreen/resize).
+  useEffect(() => {
+    const resize = () => {
+      const overlay = overlayRef.current;
+      const box = containerRef.current;
+      if (!overlay || !box) return;
+      // Mavjud chizmani saqlab qolamiz.
+      const prev = document.createElement('canvas');
+      prev.width = overlay.width;
+      prev.height = overlay.height;
+      prev.getContext('2d')?.drawImage(overlay, 0, 0);
+
+      overlay.width = box.clientWidth;
+      overlay.height = box.clientHeight;
+      if (prev.width && prev.height) {
+        overlay.getContext('2d')?.drawImage(prev, 0, 0, overlay.width, overlay.height);
+      }
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
   }, []);
 
-  // Sahifa yoki masshtab o'zgarsa — chizma qatlami o'lchami moslanadi va
-  // eski chizma tozalanadi (chizma aynan o'sha slaydga tegishli).
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const overlay = overlayRef.current;
-    if (!canvas || !overlay) return;
-    overlay.width = canvas.width;
-    overlay.height = canvas.height;
-    const ctx = overlay.getContext('2d');
-    ctx?.clearRect(0, 0, overlay.width, overlay.height);
-  }, [pageNum, scale, autoScale, numPages]);
+    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
+  // Klaviatura: B — qora ekran, L — ko'rsatkich, D — chizish, C — tozalash.
+  // Eslatma: fokus PDF (iframe) ichida bo'lsa brauzer klaviatura hodisasini
+  // bizga bermaydi — shuning uchun pastdagi tugmalar asosiy boshqaruv.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      // Qora ekran yoqilganda faqat undan chiqish tugmalari ishlaydi.
       if (blackout) {
         if (k === 'b' || e.key === 'Escape') {
           e.preventDefault();
@@ -196,44 +75,39 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
         }
         return;
       }
-      if (e.key === 'ArrowLeft') goPrev();
-      else if (e.key === 'ArrowRight') goNext();
-      else if (e.key === '+' || e.key === '=') zoomIn();
-      else if (e.key === '-') zoomOut();
-      else if (k === 'b') {
+      if (k === 'b') {
         e.preventDefault();
         setBlackout(true);
       } else if (k === 'l') {
-        setTool((prev) => (prev === 'pointer' ? 'none' : 'pointer'));
+        setTool((p) => (p === 'pointer' ? 'none' : 'pointer'));
       } else if (k === 'd') {
-        setTool((prev) => (prev === 'draw' ? 'none' : 'draw'));
+        setTool((p) => (p === 'draw' ? 'none' : 'draw'));
       } else if (k === 'c') {
         clearDrawing();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goPrev, goNext, blackout, clearDrawing]);
+  }, [blackout]);
 
-  /** Sichqoncha koordinatasini chizma canvas ichidagi nuqtaga o'giradi. */
-  const overlayPoint = (e: React.MouseEvent): { x: number; y: number } | null => {
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void containerRef.current?.requestFullscreen();
+  };
+
+  const overlayPoint = (e: React.MouseEvent) => {
     const overlay = overlayRef.current;
     if (!overlay) return null;
     const rect = overlay.getBoundingClientRect();
-    if (!rect.width || !rect.height) return null;
-    return {
-      x: ((e.clientX - rect.left) / rect.width) * overlay.width,
-      y: ((e.clientY - rect.top) / rect.height) * overlay.height,
-    };
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
-  const handleOverlayMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (e: React.MouseEvent) => {
     if (tool !== 'draw') return;
     const p = overlayPoint(e);
-    if (!p) return;
-    drawingRef.current = true;
     const ctx = overlayRef.current?.getContext('2d');
-    if (!ctx) return;
+    if (!p || !ctx) return;
+    drawingRef.current = true;
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
@@ -242,10 +116,9 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
     ctx.moveTo(p.x, p.y);
   };
 
-  const handleOverlayMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = (e: React.MouseEvent) => {
     if (tool === 'pointer') {
-      const rect = overlayRef.current?.getBoundingClientRect();
-      if (rect) setPointerPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      setPointerPos(overlayPoint(e));
       return;
     }
     if (tool !== 'draw' || !drawingRef.current) return;
@@ -256,69 +129,112 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
     ctx.stroke();
   };
 
-  const endDrawing = () => {
-    drawingRef.current = false;
-  };
-
-  useEffect(() => {
-    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, []);
-
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void containerRef.current?.requestFullscreen();
-    }
-  };
-
-  const effectiveScale = scale ?? autoScale;
-  const zoomPct = Math.round(effectiveScale && autoScale ? (effectiveScale / autoScale) * 100 : 100);
+  const toolActive = tool !== 'none';
 
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full flex flex-col bg-gray-900 ${isFullscreen ? 'p-0' : 'rounded-lg overflow-hidden'}`}
+      className={`relative w-full h-full flex flex-col bg-gray-900 ${
+        isFullscreen ? 'p-0' : 'rounded-lg overflow-hidden'
+      }`}
     >
-      <div className="flex-1 min-h-0 overflow-auto flex items-center justify-center p-3">
-        {loading ? (
-          <Loader2 className="animate-spin text-white/70" size={40} />
-        ) : error ? (
-          <p className="text-white/70 text-sm">{t('presentation.previewDownload')}</p>
-        ) : (
-          // Slayd + uning ustidagi chizma/ko'rsatkich qatlami bir joyda turadi.
-          <div className="relative shadow-2xl">
-            <canvas ref={canvasRef} className="block bg-white" />
-            <canvas
-              ref={overlayRef}
-              onMouseDown={handleOverlayMouseDown}
-              onMouseMove={handleOverlayMouseMove}
-              onMouseUp={endDrawing}
-              onMouseLeave={() => {
-                endDrawing();
-                setPointerPos(null);
-              }}
-              className={`absolute inset-0 w-full h-full ${
-                tool === 'draw'
-                  ? 'cursor-crosshair'
-                  : tool === 'pointer'
-                    ? 'cursor-none'
-                    : 'pointer-events-none'
-              }`}
-            />
-            {tool === 'pointer' && pointerPos && (
-              <span
-                className="pointer-events-none absolute z-10 block w-5 h-5 -ml-2.5 -mt-2.5 rounded-full bg-red-500/70 ring-4 ring-red-500/25"
-                style={{ left: pointerPos.x, top: pointerPos.y }}
-              />
-            )}
-          </div>
+      <div className="flex-1 min-h-0 relative">
+        {/* PDF — brauzerning ichki ko'ruvchisi (eskizlar, zoom, sahifa raqami) */}
+        <iframe
+          src={fileUrl}
+          title={t('presentation.slideLabel')}
+          className="w-full h-full border-0 bg-gray-900"
+        />
+
+        {/* Chizma / ko'rsatkich qatlami — vosita tanlanmagan bo'lsa PDF bilan
+            ishlashga xalaqit bermaydi (pointer-events: none). */}
+        <canvas
+          ref={overlayRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={() => {
+            drawingRef.current = false;
+          }}
+          onMouseLeave={() => {
+            drawingRef.current = false;
+            setPointerPos(null);
+          }}
+          className={`absolute inset-0 w-full h-full ${
+            tool === 'draw' ? 'cursor-crosshair' : tool === 'pointer' ? 'cursor-none' : 'pointer-events-none'
+          }`}
+        />
+
+        {tool === 'pointer' && pointerPos && (
+          <span
+            className="pointer-events-none absolute z-10 block w-5 h-5 -ml-2.5 -mt-2.5 rounded-full bg-red-500/70 ring-4 ring-red-500/25"
+            style={{ left: pointerPos.x, top: pointerPos.y }}
+          />
         )}
       </div>
 
-      {/* Qora ekran — butun ko'ruvchini yopadi (B yoki bosish bilan chiqiladi) */}
+      {/* Dars vositalari paneli */}
+      <div className="shrink-0 flex items-center justify-center gap-2 py-2.5 px-3 bg-black/50 backdrop-blur-sm flex-wrap">
+        <button
+          type="button"
+          onClick={() => setTool((p) => (p === 'pointer' ? 'none' : 'pointer'))}
+          className={`p-2.5 rounded-full text-white ${
+            tool === 'pointer' ? 'bg-red-500 hover:bg-red-400' : 'bg-white/15 hover:bg-white/25'
+          }`}
+          title={t('presentation.pointer')}
+          aria-label={t('presentation.pointer')}
+        >
+          <MousePointer2 size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setTool((p) => (p === 'draw' ? 'none' : 'draw'))}
+          className={`p-2.5 rounded-full text-white ${
+            tool === 'draw' ? 'bg-red-500 hover:bg-red-400' : 'bg-white/15 hover:bg-white/25'
+          }`}
+          title={t('presentation.draw')}
+          aria-label={t('presentation.draw')}
+        >
+          <Pencil size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={clearDrawing}
+          className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
+          title={t('presentation.clearDrawing')}
+          aria-label={t('presentation.clearDrawing')}
+        >
+          <Eraser size={18} />
+        </button>
+
+        <span className="w-px h-6 bg-white/20 mx-1" />
+
+        <button
+          type="button"
+          onClick={() => setBlackout(true)}
+          className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
+          title={t('presentation.blackScreen')}
+          aria-label={t('presentation.blackScreen')}
+        >
+          <Square size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
+          title={t('presentation.fullscreen')}
+          aria-label={t('presentation.fullscreen')}
+        >
+          {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+        </button>
+
+        {toolActive && (
+          <span className="text-white/60 text-xs ml-1 select-none">
+            {tool === 'draw' ? t('presentation.draw') : t('presentation.pointer')}
+          </span>
+        )}
+      </div>
+
+      {/* Qora ekran — hamma narsani yopadi */}
       {blackout && (
         <div
           role="button"
@@ -330,119 +246,6 @@ export default function PdfSlideViewer({ fileUrl }: { fileUrl: string }) {
           className="absolute inset-0 z-30 bg-black flex items-end justify-center pb-10 cursor-pointer"
         >
           <p className="text-white/35 text-sm select-none">{t('presentation.blackScreenHint')}</p>
-        </div>
-      )}
-
-      {!loading && !error && numPages > 0 && (
-        <div className="shrink-0 flex items-center justify-center gap-2 py-2.5 px-3 bg-black/40 backdrop-blur-sm flex-wrap">
-          <button
-            type="button"
-            onClick={goPrev}
-            disabled={pageNum <= 1}
-            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white disabled:opacity-30"
-            aria-label={t('presentation.prevSlide')}
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span className="text-white text-sm font-semibold tabular-nums px-2 min-w-[60px] text-center">
-            {pageNum} / {numPages}
-          </span>
-          <button
-            type="button"
-            onClick={goNext}
-            disabled={pageNum >= numPages}
-            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white disabled:opacity-30"
-            aria-label={t('presentation.nextSlide')}
-          >
-            <ChevronRight size={20} />
-          </button>
-
-          <span className="w-px h-6 bg-white/20 mx-1" />
-
-          <button
-            type="button"
-            onClick={zoomOut}
-            disabled={effectiveScale <= MIN_SCALE}
-            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white disabled:opacity-30"
-            aria-label={t('presentation.zoomOut')}
-          >
-            <ZoomOut size={18} />
-          </button>
-          <span className="text-white text-xs font-semibold tabular-nums min-w-[42px] text-center">{zoomPct}%</span>
-          <button
-            type="button"
-            onClick={zoomIn}
-            disabled={effectiveScale >= MAX_SCALE}
-            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white disabled:opacity-30"
-            aria-label={t('presentation.zoomIn')}
-          >
-            <ZoomIn size={18} />
-          </button>
-          {scale != null && (
-            <button
-              type="button"
-              onClick={resetZoom}
-              className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
-              aria-label={t('presentation.resetZoom')}
-            >
-              <RotateCcw size={16} />
-            </button>
-          )}
-
-          <span className="w-px h-6 bg-white/20 mx-1" />
-
-          {/* Dars vositalari: ko'rsatkich (L), chizish (D), tozalash (C), qora ekran (B) */}
-          <button
-            type="button"
-            onClick={() => setTool((p) => (p === 'pointer' ? 'none' : 'pointer'))}
-            className={`p-2.5 rounded-full text-white ${
-              tool === 'pointer' ? 'bg-red-500 hover:bg-red-400' : 'bg-white/15 hover:bg-white/25'
-            }`}
-            aria-label={t('presentation.pointer')}
-            title={t('presentation.pointer')}
-          >
-            <MousePointer2 size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setTool((p) => (p === 'draw' ? 'none' : 'draw'))}
-            className={`p-2.5 rounded-full text-white ${
-              tool === 'draw' ? 'bg-red-500 hover:bg-red-400' : 'bg-white/15 hover:bg-white/25'
-            }`}
-            aria-label={t('presentation.draw')}
-            title={t('presentation.draw')}
-          >
-            <Pencil size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={clearDrawing}
-            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
-            aria-label={t('presentation.clearDrawing')}
-            title={t('presentation.clearDrawing')}
-          >
-            <Eraser size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setBlackout(true)}
-            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
-            aria-label={t('presentation.blackScreen')}
-            title={t('presentation.blackScreen')}
-          >
-            <Square size={18} />
-          </button>
-
-          <span className="w-px h-6 bg-white/20 mx-1" />
-
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
-            aria-label={t('presentation.fullscreen')}
-          >
-            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-          </button>
         </div>
       )}
     </div>
