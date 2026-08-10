@@ -32,6 +32,7 @@ import {
 import type { CaseStudySession, TestQuestion, TestSession } from '../../services/aiService';
 import { caseFocusBadgeClass, caseFocusLabel } from '../../utils/caseFocusLabels';
 import MedicalReferencesList from '../staff/MedicalReferencesList';
+import LinkifiedText from '../staff/LinkifiedText';
 import ProtectedContentShell from './ProtectedContentShell';
 import { stripOptionLetterPrefix } from '../../utils/testOptionText';
 
@@ -174,7 +175,7 @@ function PublicCatalogDetail({
                 <p className="text-[14px] leading-relaxed whitespace-pre-wrap text-black/85">{q.scenario}</p>
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                   <p className="text-[11px] font-bold uppercase text-blue-800 mb-2">{t(language, 'catalog.answerKey')}</p>
-                  <p className="text-[14px] text-blue-900/90 whitespace-pre-wrap leading-relaxed">{q.answer}</p>
+                  <LinkifiedText text={q.answer} className="text-[14px] text-blue-900/90 whitespace-pre-wrap leading-relaxed" />
                 </div>
                 {q.references && q.references.length > 0 && (
                   <MedicalReferencesList references={q.references} title={t(language, 'catalog.references')} compact />

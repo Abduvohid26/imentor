@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import type { AppNotificationEventDetail, AppNotificationLevel } from '../utils/notifications';
 
 /** Alert ekranda shuncha turadi, keyin o'zi yo'qoladi. */
-export const TOAST_TIMEOUT_MS = 20_000;
+export const TOAST_TIMEOUT_MS = 5_000;
 /** Bir vaqtda ko'rinadigan maksimal alert (ekranni to'sib qo'ymasin). */
 const MAX_VISIBLE = 4;
 

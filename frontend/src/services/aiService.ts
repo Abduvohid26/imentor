@@ -480,19 +480,45 @@ function joinCaseScenario(raw: CaseSections): string {
     .join('\n\n');
 }
 
-const CASE_SECTION_TITLES: { key: keyof CaseSections; label: string }[] = [
-  { key: 'diagnosis', label: 'Klinik tashxis va asoslanishi' },
-  { key: 'differential', label: 'Differensial tashxis' },
-  { key: 'investigations', label: "Qo'shimcha tekshiruvlar" },
-  { key: 'management', label: 'Davolash / profilaktika taktikasi' },
-  { key: 'recommendations', label: 'Amaliy tavsiyalar va prognoz' },
+const CASE_SECTION_KEYS: (keyof CaseSections)[] = [
+  'diagnosis',
+  'differential',
+  'investigations',
+  'management',
+  'recommendations',
 ];
 
+/** Yechim bo'limlari sarlavhalari — interfeys tilida ko'rsatiladi. */
+const CASE_SECTION_TITLES: Record<AppLanguage, string[]> = {
+  uz: [
+    'Klinik tashxis va asoslanishi',
+    'Differensial tashxis',
+    "Qo'shimcha tekshiruvlar",
+    'Davolash / profilaktika taktikasi',
+    'Amaliy tavsiyalar va prognoz',
+  ],
+  ru: [
+    'Клинический диагноз и его обоснование',
+    'Дифференциальный диагноз',
+    'Дополнительные исследования',
+    'Тактика лечения / профилактики',
+    'Практические рекомендации и прогноз',
+  ],
+  en: [
+    'Clinical diagnosis and rationale',
+    'Differential diagnosis',
+    'Additional investigations',
+    'Management / prevention plan',
+    'Practical recommendations and prognosis',
+  ],
+};
+
 /** Bo'limlarni sarlavhali yagona yechim matniga birlashtiradi. */
-function joinCaseSections(raw: CaseSections): string {
-  return CASE_SECTION_TITLES.map(({ key, label }, i) => {
+function joinCaseSections(raw: CaseSections, language: AppLanguage = 'uz'): string {
+  const labels = CASE_SECTION_TITLES[language] ?? CASE_SECTION_TITLES.uz;
+  return CASE_SECTION_KEYS.map((key, i) => {
     const text = String(raw[key] || '').trim();
-    return text ? `${String.fromCharCode(97 + i)}) ${label}\n${text}` : '';
+    return text ? `${String.fromCharCode(97 + i)}) ${labels[i]}\n${text}` : '';
   })
     .filter(Boolean)
     .join('\n\n');
@@ -584,11 +610,11 @@ async function generateSingleCaseQuestion(
 
   // Til nazorati: model so'ralgan til o'rniga o'zbekchani (ko'pincha kirilda)
   // qaytarsa — bir marta qat'iyroq rejimda qayta so'raymiz.
-  if (outputLanguageLooksWrong(joinCaseSections(raw), language)) {
+  if (outputLanguageLooksWrong(joinCaseSections(raw, language), language)) {
     console.warn(`Case focus "${focus}": javob ${language} tilida emas, qayta urinilmoqda`);
     try {
       const retry = await request(true);
-      if (!outputLanguageLooksWrong(joinCaseSections(retry), language)) {
+      if (!outputLanguageLooksWrong(joinCaseSections(retry, language), language)) {
         raw = retry;
       }
     } catch (err) {
@@ -596,7 +622,7 @@ async function generateSingleCaseQuestion(
     }
   }
 
-  const answer = joinCaseSections(raw);
+  const answer = joinCaseSections(raw, language);
   const usedIndices = new Set(
     Array.from(answer.matchAll(/\[(\d+)\]/g)).map((m) => Number(m[1])),
   );
@@ -606,7 +632,7 @@ async function generateSingleCaseQuestion(
   // adabiyotlar" bo'limi chiqmasligi kerak).
   const citedSources = sources.filter((s) => usedIndices.has(s.index));
   const shownSources = citedSources.length ? citedSources : sources.slice(0, 8);
-  const referencesSection = buildReferencesSection(shownSources);
+  const referencesSection = buildReferencesSection(shownSources, language);
 
   return {
     scenario: joinCaseScenario(raw),
@@ -805,7 +831,13 @@ function apiBaseUrlForCase(): string {
 
 /** `sources` ro'yxatidan haqiqiy metadata asosida (LLM ishtirokisiz) "Foydalanilgan
  * adabiyotlar" bo'limini quradi — havolalar 100% real, chunki API'dan olingan. */
-function buildReferencesSection(sources: CaseSource[]): string {
+const REFERENCES_HEADING: Record<AppLanguage, string> = {
+  uz: 'FOYDALANILGAN ADABIYOTLAR',
+  ru: 'ИСПОЛЬЗОВАННАЯ ЛИТЕРАТУРА',
+  en: 'REFERENCES USED',
+};
+
+function buildReferencesSection(sources: CaseSource[], language: AppLanguage = 'uz'): string {
   if (!sources.length) return '';
   const lines = sources.map((s) => {
     if (s.type === 'book') {
@@ -816,7 +848,8 @@ function buildReferencesSection(sources: CaseSource[]): string {
     const metaBit = s.meta ? ` (${s.meta})` : '';
     return `[${s.index}] ${authorBit}${s.title}${metaBit}. ${kind}: ${s.url || ''}`.trim();
   });
-  return `\n\nFOYDALANILGAN ADABIYOTLAR:\n${lines.join('\n')}`;
+  const heading = REFERENCES_HEADING[language] ?? REFERENCES_HEADING.uz;
+  return `\n\n${heading}:\n${lines.join('\n')}`;
 }
 
 function sourcePublisherLabel(type: CaseSource['type']): string {

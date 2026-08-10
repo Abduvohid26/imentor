@@ -34,6 +34,7 @@ import StaffErrorAlert from './staff/StaffErrorAlert';
 import StaffLoading from './staff/StaffLoading';
 import StaffPanel from './staff/StaffPanel';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
+import LinkifiedText from './staff/LinkifiedText';
 import { staffInput, staffLabel, staffBtnSecondary, STAFF_HEADING } from './staff/staffUi';
 import { messageFromAiError } from '../utils/aiErrors';
 import { parseKeywordsInput } from '../utils/generationVariety';
@@ -351,7 +352,7 @@ export default function CaseStudies() {
                         <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-2 ${STAFF_HEADING}`}>
                           {t('case.answerLabel')}
                         </h4>
-                        <p className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap">{q.answer}</p>
+                        <LinkifiedText text={q.answer} className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap" />
                       </motion.div>
                     )}
                   </div>
@@ -361,7 +362,7 @@ export default function CaseStudies() {
                     <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-2 ${STAFF_HEADING}`}>
                       {t('case.answerLabel')}
                     </h4>
-                    <p className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap">{q.answer}</p>
+                    <LinkifiedText text={q.answer} className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap" />
                   </div>
                 </StaffPanel>
               );
