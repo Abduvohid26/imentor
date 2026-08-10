@@ -25,6 +25,7 @@ import {
 import type { CaseStudySession, TestQuestion, TestSession } from '../../services/aiService';
 import { caseFocusBadgeClass, caseFocusLabel } from '../../utils/caseFocusLabels';
 import MedicalReferencesList from '../staff/MedicalReferencesList';
+import { stripOptionLetterPrefix } from '../../utils/testOptionText';
 
 type KindFilter = '' | CatalogKind;
 
@@ -118,7 +119,7 @@ function CatalogDetailPanel({
                       : 'bg-white border-black/10 text-black/75'
                   }`}
                 >
-                  {String.fromCharCode(65 + optIdx)}) {opt}
+                  {String.fromCharCode(65 + optIdx)}) {stripOptionLetterPrefix(opt, optIdx)}
                 </p>
               ))}
             </div>

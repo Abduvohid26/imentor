@@ -6,6 +6,7 @@ import { translate, type UiTextKey } from '../i18n/translations';
 import type { MedicalReference, TestQuestion, TestSession } from '../services/aiService';
 import { scoreToGrade } from './testGrading';
 import { catalogPdfVerificationFooter, type CatalogPdfMeta } from './catalogPdfVerification';
+import { stripOptionLetterPrefix } from './testOptionText';
 
 export interface TestSubmissionRow {
   firstName: string;
@@ -59,7 +60,7 @@ function buildQuestionsHtml(session: TestSession, lang: AppLanguage, meta?: Cata
       const options = q.options
         .map(
           (opt, optIdx) =>
-            `<p style="margin:6px 0 6px 12px;font-size:14px;color:#1f2937;">${optionLetter(optIdx)}) ${escapeHtml(opt)}</p>`
+            `<p style="margin:6px 0 6px 12px;font-size:14px;color:#1f2937;">${optionLetter(optIdx)}) ${escapeHtml(stripOptionLetterPrefix(opt, optIdx))}</p>`
         )
         .join('');
       return `
@@ -96,7 +97,7 @@ function buildAnswerKeyHtml(session: TestSession, lang: AppLanguage, meta?: Cata
             ? 'margin:6px 0 6px 12px;padding:8px 10px;border-radius:8px;background:#ecfdf5;border:1px solid #34d399;font-size:14px;color:#065f46;font-weight:600;'
             : 'margin:6px 0 6px 12px;font-size:14px;color:#374151;';
           const marker = isCorrect ? ' ✓' : '';
-          return `<p style="${style}">${optionLetter(optIdx)}) ${escapeHtml(opt)}${marker}</p>`;
+          return `<p style="${style}">${optionLetter(optIdx)}) ${escapeHtml(stripOptionLetterPrefix(opt, optIdx))}${marker}</p>`;
         })
         .join('');
       const refs = referencesBlock(q.references, t(lang, 'pdf.questionReferences'));

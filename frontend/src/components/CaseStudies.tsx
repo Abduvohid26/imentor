@@ -255,7 +255,12 @@ export default function CaseStudies() {
       {!loading && caseSession && (
         <div className="space-y-5 print:hidden">
           <StaffPanel className="p-4 flex flex-wrap items-center justify-between gap-3">
-            <p className={`text-[14px] font-semibold ${STAFF_HEADING}`}>{caseSession.topic}</p>
+            {/* Sarlavha interfeys tilida — sessiyada asl (o'zbekcha) matn turadi. */}
+            <p className={`text-[14px] font-semibold ${STAFF_HEADING}`}>
+              {staffTopic && staffTopic.title && caseSession.topic === globalTopic?.title
+                ? staffTopic.title
+                : caseSession.topic}
+            </p>
             <div className="flex flex-wrap gap-2">
               <StaffToolbarButton onClick={() => void handleGenerate(topic)} disabled={loading}>
                 <RefreshCw size={16} />

@@ -56,6 +56,7 @@ import {
   downloadTestResultsPdf,
 } from '../utils/buildTestPdf';
 import { gradeBadgeClass, scoreToGrade } from '../utils/testGrading';
+import { stripOptionLetterPrefix } from '../utils/testOptionText';
 
 interface LiveTestSessionDoc {
   topic: string;
@@ -892,7 +893,7 @@ export default function TestQuestions() {
                             studentAnswers[i] === optIdx ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
                           }`}
                         >
-                          {String.fromCharCode(65 + optIdx)}) {opt}
+                          {String.fromCharCode(65 + optIdx)}) {stripOptionLetterPrefix(opt, optIdx)}
                         </button>
                       ))}
                     </div>
@@ -978,7 +979,12 @@ export default function TestQuestions() {
           >
             <StaffPanel className="p-5 sm:p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <h2 className={`text-xl font-bold ${STAFF_HEADING}`}>{displayedTest.topic}</h2>
+                {/* Sarlavha interfeys tilida — sessiyada asl (o'zbekcha) matn turadi. */}
+                <h2 className={`text-xl font-bold ${STAFF_HEADING}`}>
+                  {staffTopic && staffTopic.title && displayedTest.topic === globalTopic?.title
+                    ? staffTopic.title
+                    : displayedTest.topic}
+                </h2>
                 <div className="flex flex-wrap gap-2 shrink-0">
                   {availableTestLangs.length > 1 && (
                     <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0">
@@ -1176,7 +1182,7 @@ export default function TestQuestions() {
                             }`}
                           >
                             <div>
-                              {String.fromCharCode(65 + optIdx)}) {option}
+                              {String.fromCharCode(65 + optIdx)}) {stripOptionLetterPrefix(option, optIdx)}
                               {optIdx === q.correctOptionIndex && (
                                 <span className="ml-2 inline-flex items-center text-xs font-semibold">
                                   <CheckCircle2 size={14} className="mr-1" /> {t('test.correctAnswer')}

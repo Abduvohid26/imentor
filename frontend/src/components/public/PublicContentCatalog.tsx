@@ -33,6 +33,7 @@ import type { CaseStudySession, TestQuestion, TestSession } from '../../services
 import { caseFocusBadgeClass, caseFocusLabel } from '../../utils/caseFocusLabels';
 import MedicalReferencesList from '../staff/MedicalReferencesList';
 import ProtectedContentShell from './ProtectedContentShell';
+import { stripOptionLetterPrefix } from '../../utils/testOptionText';
 
 type KindFilter = '' | 'case' | 'test';
 
@@ -215,7 +216,7 @@ function PublicCatalogDetail({
                         : 'bg-white border-black/10 text-black/75'
                     }`}
                   >
-                    {String.fromCharCode(65 + optIdx)}) {opt}
+                    {String.fromCharCode(65 + optIdx)}) {stripOptionLetterPrefix(opt, optIdx)}
                   </p>
                 ))}
               </div>

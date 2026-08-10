@@ -576,13 +576,7 @@ export default function PresentationMaterials() {
       </StaffTopicHeader>
 
       {!aiLoading && (
-        <SavedWorkBanner
-          count={savedDecks.length}
-          onOpen={() => {
-            refreshDeckHistory();
-            setShowHistory(true);
-          }}
-        />
+        <SavedWorkBanner count={savedDecks.length} />
       )}
 
       {error && <StaffErrorAlert message={error} />}
@@ -638,11 +632,12 @@ export default function PresentationMaterials() {
                   {kindLabel(item.kind)} · {formatSize(item.file_size)} · {item.author_name}
                 </p>
               </div>
+              {/* O'chirish tugmasi doim ko'rinadi — hover yo'q qurilmalarda ham ishlasin. */}
               {item.can_delete && (
                 <button
                   type="button"
                   onClick={() => void handleDelete(item.id)}
-                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 text-rose-600 shadow opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 text-rose-600 shadow ring-1 ring-rose-200/70 hover:bg-rose-50 transition-colors"
                   aria-label={t('common.delete')}
                 >
                   <Trash2 size={16} />

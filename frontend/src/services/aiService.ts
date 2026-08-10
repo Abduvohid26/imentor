@@ -89,7 +89,25 @@ function stripPlaceholderManba(text: string): string {
   if (!text) return text;
   return text
     .split('\n')
-    .filter((line) => !/\(?Manba:\s*kitob\s*nomi/i.test(line))
+    .filter((line) => !/\(?(?:Manba|Источник|Source):\s*(?:kitob\s*nomi|название\s*книги|book\s*name)/i.test(line))
+    .join('\n');
+}
+
+/** Manba bo'limi sarlavhalari — modelning har xil variantlari. */
+const SOURCE_HEADING_RE =
+  /^(#{1,4})\s*(?:Manbalar|Манбалар|Foydalanilgan\s+adabiyotlar|Фойдаланилган\s+адабиётлар|Источники|Использованная\s+литература|Sources|References(?:\s+used)?)\s*:?\s*$/i;
+
+/** Xavfsizlik to'ri: model ba'zan o'zbekcha "Manbalar" so'zini chiqish tiliga
+ * transliteratsiya qiladi ("Манбалар"). Sarlavhani to'g'ri tarjimaga almashtiramiz. */
+function normalizeSourceHeading(text: string, language: AppLanguage): string {
+  if (!text) return text;
+  const heading = sourceWords(language).heading;
+  return text
+    .split('\n')
+    .map((line) => {
+      const m = SOURCE_HEADING_RE.exec(line.trim());
+      return m ? `${m[1]} ${heading}` : line;
+    })
     .join('\n');
 }
 
@@ -97,8 +115,27 @@ function jsonReferencesRule(hasBookContext: boolean): string {
   return hasBookContext ? NO_EXTERNAL_REFS_JSON_RULE_BOOK : NO_EXTERNAL_REFS_JSON_RULE_NOBOOK;
 }
 
-function textReferencesRule(hasBookContext: boolean): string {
-  return hasBookContext ? NO_EXTERNAL_REFS_TEXT_RULE_BOOK : NO_EXTERNAL_REFS_TEXT_RULE_NOBOOK;
+/** Matn ichidagi manba sarlavhasi/yorlig'i — CHIQISH tilida bo'lishi kerak.
+ * Aks holda model o'zbekcha "Manbalar" so'zini rus tiliga transliteratsiya
+ * qilib "Манбалар" deb yozib qo'yadi. */
+const SOURCE_WORDS: Record<AppLanguage, { heading: string; label: string }> = {
+  uz: { heading: 'Manbalar', label: 'Manba' },
+  ru: { heading: 'Источники', label: 'Источник' },
+  en: { heading: 'Sources', label: 'Source' },
+};
+
+function sourceWords(language: AppLanguage) {
+  return SOURCE_WORDS[language] ?? SOURCE_WORDS.uz;
+}
+
+function textReferencesRule(hasBookContext: boolean, language: AppLanguage = 'uz'): string {
+  const w = sourceWords(language);
+  const base = hasBookContext ? NO_EXTERNAL_REFS_TEXT_RULE_BOOK : NO_EXTERNAL_REFS_TEXT_RULE_NOBOOK;
+  return (
+    `${base} Manba sarlavhasi va yorlig'i CHIQISH tilida yozilsin: bo'lim sarlavhasi ` +
+    `aynan "## ${w.heading}", matn ichidagi yorliq esa aynan "(${w.label}: ...)". ` +
+    'Bu so\'zlarni boshqa tilga transliteratsiya QILMANG.'
+  );
 }
 
 async function previousCaseAvoidBlock(topic: string): Promise<string> {
@@ -796,9 +833,33 @@ const UZ_TEXT_MARKERS = [
   'maqbul',
 ];
 
+/** O'zbek KIRIL matni markerlari — rus tilida uchramaydigan so'z va harflar.
+ * Model ba'zan tarjima o'rniga o'zbekchani kirilga transliteratsiya qiladi
+ * ("5 ёшли бола терисида қизил тошмалар...") — bu rus tili emas. */
+const UZ_CYRILLIC_MARKERS = [
+  'ёшли',
+  'бўлиб',
+  'бўлган',
+  'қайси',
+  'ушбу',
+  'билан',
+  'ҳисобланади',
+  'терисида',
+  'касаллиги',
+  'аниқланади',
+  'кузатилади',
+  'мустаҳкам',
+  'келди',
+];
+/** Faqat o'zbek kirilida bor harflar (rus alifbosida yo'q): қ ғ ҳ ў */
+const UZ_ONLY_CYRILLIC_LETTERS = /[қҚғҒҳҲўЎ]/;
+
 function looksLikeUzbekText(text: string): boolean {
   const s = (text || '').toLowerCase();
-  return UZ_TEXT_MARKERS.reduce((n, m) => n + (s.includes(m) ? 1 : 0), 0) >= 2;
+  const latin = UZ_TEXT_MARKERS.reduce((n, m) => n + (s.includes(m) ? 1 : 0), 0);
+  if (latin >= 2) return true;
+  if (UZ_ONLY_CYRILLIC_LETTERS.test(s)) return true;
+  return UZ_CYRILLIC_MARKERS.reduce((n, m) => n + (s.includes(m) ? 1 : 0), 0) >= 2;
 }
 
 function cyrillicCharCount(text: string): number {
@@ -888,6 +949,11 @@ async function translateTestSession(
       'inline citation phrase like "(Manba: kitob, sahifa-bet)" — translate the label word too ' +
       `("Manba" → "Источник" for Russian, "Source" for English), keeping the book title and page number unchanged. ` +
       `CRITICAL: Output MUST be entirely in ${outLang}. Do NOT leave any Uzbek/source-language sentences. ` +
+      'NEVER transliterate — do not rewrite Uzbek words in another alphabet. In particular, Russian ' +
+      'output must be real Russian medical language ("5-летний ребёнок поступил в больницу с красными ' +
+      'папулёзными высыпаниями на коже…"), never Uzbek written in Cyrillic ("5 ёшли бола терисида…") ' +
+      'and it must not contain the letters қ ғ ҳ ў. ' +
+      'Option texts must contain ONLY the answer itself — no "A.", "B)" or any letter/number prefix. ' +
       'Return ONLY valid JSON, no markdown fences.',
     user: JSON.stringify(source),
     // ~273 token/savol (30 ta uchun 8192 asosida o'lchangan) — gpt-4o-mini
@@ -1330,13 +1396,14 @@ export const aiService = {
               'belgilarini haqiqiy nom/raqam bilan almashtiring, "kitob nomi"/"sahifa-bet" so\'zlarini ' +
               'o\'zgarishsiz qoldirmang; aniq bilmasangiz manba qatorini butunlay tashlab keting.'
             : 'Tashqi havola yoki o\'ylab topilgan manba qo\'shmang.'
-          ) + ` ${textReferencesRule(Boolean(bookContext))} Til: ${outLang}.`,
+          ) + ` ${textReferencesRule(Boolean(bookContext), language)} Til: ${outLang}.`,
         user:
           `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. ` +
           'UZUN va BATAFSIL ma\'ruza matni yozing — qisqa xulosa yoki tezislar emas. ' +
           'Kamida 7 ta asosiy bo\'lim, har biri bir necha to\'liq paragraf. ' +
           (bookContext
-            ? 'Darslik manbalarini matn ichida (Manba: ...) ko\'rsating va oxirida ## Manbalar qo\'shing.'
+            ? `Darslik manbalarini matn ichida (${sourceWords(language).label}: ...) ko'rsating va ` +
+              `oxirida "## ${sourceWords(language).heading}" bo'limini qo'shing.`
             : ''),
         maxTokens: 16000,
         temperature: 0.4,
@@ -1346,7 +1413,7 @@ export const aiService = {
 
       return {
         topic: topic,
-        content: stripPlaceholderManba(content || '')
+        content: normalizeSourceHeading(stripPlaceholderManba(content || ''), language)
       };
     } catch (error) {
       console.error("Lecture Note generation failed:", error);

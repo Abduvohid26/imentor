@@ -270,7 +270,7 @@ export default function LectureNotes() {
       </StaffTopicHeader>
 
       {!lectureSession && !loading && (
-        <SavedWorkBanner count={savedLectures.length} onOpen={() => setShowHistory(true)} />
+        <SavedWorkBanner count={savedLectures.length} />
       )}
 
       {error && <StaffErrorAlert message={error} />}
@@ -299,7 +299,12 @@ export default function LectureNotes() {
       {lectureSession && !loading && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
           <StaffPanel className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <p className={`text-[16px] font-bold line-clamp-2 ${STAFF_HEADING}`}>{lectureSession.topic}</p>
+            {/* Sarlavha interfeys tilida — sessiyada asl (o'zbekcha) matn turadi. */}
+            <p className={`text-[16px] font-bold line-clamp-2 ${STAFF_HEADING}`}>
+              {staffTopic && staffTopic.title && lectureSession.topic === globalTopic?.title
+                ? staffTopic.title
+                : lectureSession.topic}
+            </p>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => setIsEditing(!isEditing)} className={staffBtnGhost}>
                 <FileText size={15} />

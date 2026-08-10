@@ -14,7 +14,9 @@ export default function SavedWorkBanner({
   onOpen,
 }: {
   count: number;
-  onOpen: () => void;
+  /** Tugma faqat shu prop berilganda chiqadi — tepasida "Baza" tugmasi bor
+   * bo'limlarda ikkinchi tugma takrorlanmasligi uchun. */
+  onOpen?: () => void;
 }) {
   const { t } = useUiText();
   if (count <= 0) return null;
@@ -24,14 +26,16 @@ export default function SavedWorkBanner({
       <p className="text-[13px] text-sky-900/80 min-w-0">
         {t('common.savedWorkBanner', { count: String(count) })}
       </p>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-[13px] font-semibold text-sky-800 hover:bg-sky-50"
-      >
-        <History size={15} />
-        {t('common.database')}
-      </button>
+      {onOpen && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-[13px] font-semibold text-sky-800 hover:bg-sky-50"
+        >
+          <History size={15} />
+          {t('common.database')}
+        </button>
+      )}
     </div>
   );
 }
