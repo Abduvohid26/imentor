@@ -9,11 +9,17 @@ import {
   type StaffDirectoryEntry,
 } from '../../utils/staffDirectoryApi';
 import { fetchAdminSyllabusCatalogStats } from '../../utils/syllabusApi';
+import { fetchPublicKafedralar } from '../../utils/academicCatalogApi';
 import { HttpError } from '../../api/httpClient';
 import { roleLabel } from '../../i18n/translations';
 import { useUiText } from '../../i18n/useUiText';
 
-type DeptOption = { id: number; name: string; code: string };
+type DeptOption = { id: number | null; name: string; code: string };
+
+/** Select `value` — sillabus kafedralarida id bor, akademik katalogdan kelganlarida faqat nom. */
+function deptOptionValue(d: DeptOption): string {
+  return d.id != null ? String(d.id) : `name:${d.name}`;
+}
 
 function formatLastActive(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -86,17 +92,32 @@ export default function AdminStaffManagement() {
   }, [load]);
 
   useEffect(() => {
-    fetchAdminSyllabusCatalogStats()
-      .then((stats) => {
-        setDepartments(
-          (stats?.by_department || []).map((d) => ({
-            id: d.id,
-            name: d.name,
-            code: d.code || d.name,
-          })),
-        );
-      })
-      .catch(() => setDepartments([]));
+    // Sillabusdagi kafedralar + akademik katalogdagi barcha kafedralar birlashtiriladi,
+    // shunda hali sillabusi yo'q kafedra ham xodim qo'shishda tanlanadi.
+    void Promise.allSettled([fetchAdminSyllabusCatalogStats(), fetchPublicKafedralar()]).then(
+      ([statsRes, kafedraRes]) => {
+        const merged: DeptOption[] = [];
+        const seen = new Set<string>();
+        const push = (opt: DeptOption) => {
+          const key = opt.name.trim().toLocaleLowerCase();
+          if (!key || seen.has(key)) return;
+          seen.add(key);
+          merged.push(opt);
+        };
+        if (statsRes.status === 'fulfilled') {
+          for (const d of statsRes.value?.by_department || []) {
+            push({ id: d.id, name: d.name, code: d.code || d.name });
+          }
+        }
+        if (kafedraRes.status === 'fulfilled') {
+          for (const k of kafedraRes.value) {
+            push({ id: null, name: k.name, code: k.code || k.name });
+          }
+        }
+        merged.sort((a, b) => a.name.localeCompare(b.name));
+        setDepartments(merged);
+      },
+    );
   }, []);
 
   const startEdit = (u: StaffDirectoryEntry) => {
@@ -438,13 +459,19 @@ export default function AdminStaffManagement() {
                 {departments.length > 0 ? (
                   <select
                     className="w-full rounded-xl border border-black/10 px-3 py-2 text-[14px]"
-                    value={form.departmentId != null ? String(form.departmentId) : ''}
+                    value={
+                      form.departmentId != null
+                        ? String(form.departmentId)
+                        : form.department
+                          ? `name:${form.department}`
+                          : ''
+                    }
                     onChange={(e) => {
-                      const id = e.target.value ? Number(e.target.value) : null;
-                      const dept = departments.find((d) => d.id === id) || null;
+                      const raw = e.target.value;
+                      const dept = departments.find((d) => deptOptionValue(d) === raw) || null;
                       setForm((f) => ({
                         ...f,
-                        departmentId: id,
+                        departmentId: dept?.id ?? null,
                         department: dept?.name || '',
                       }));
                     }}
@@ -453,12 +480,10 @@ export default function AdminStaffManagement() {
                     {form.departmentId == null &&
                     form.department &&
                     !departments.some((d) => d.name === form.department) ? (
-                      <option disabled value="">
-                        {form.department}
-                      </option>
+                      <option value={`name:${form.department}`}>{form.department}</option>
                     ) : null}
                     {departments.map((d) => (
-                      <option key={d.id} value={d.id}>
+                      <option key={deptOptionValue(d)} value={deptOptionValue(d)}>
                         {d.name}
                       </option>
                     ))}

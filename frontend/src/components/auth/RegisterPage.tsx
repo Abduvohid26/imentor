@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Loader2, AlertCircle, Phone, Lock, Building2, Users, BookOpen } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -10,6 +10,7 @@ import {
 import { registerStaffWithBackend } from '../../utils/backendAuth';
 import { HttpError } from '../../api/httpClient';
 import { useUiText } from '../../i18n/useUiText';
+import { fetchPublicKafedralar, type PublicKafedra } from '../../utils/academicCatalogApi';
 
 const emptyRegisterDefaults = {
   phone: '+998',
@@ -52,6 +53,28 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
   const [direction, setDirection] = useState(demoDefaults.direction);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Kafedra ro'yxati backenddan keladi — xodim shundan tanlaydi.
+  const [kafedralar, setKafedralar] = useState<PublicKafedra[]>([]);
+  const [manualDepartment, setManualDepartment] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchPublicKafedralar()
+      .then((rows) => {
+        if (!alive) return;
+        setKafedralar(rows);
+        if (rows.length === 0) setManualDepartment(true);
+      })
+      .catch(() => {
+        if (alive) setManualDepartment(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const selectedKafedra = kafedralar.find((k) => k.name === department) || null;
+  const directionOptions = selectedKafedra?.directions ?? [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,24 +190,60 @@ export default function RegisterPage({ onSwitchToLogin, onBackToQr }: RegisterPa
             <label className="text-xs font-semibold text-black/55 flex items-center gap-1">
               <Users size={12} /> {t('auth.register.department')}
             </label>
-            <input
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
-              placeholder={t('auth.register.departmentPlaceholder')}
-            />
+            {manualDepartment ? (
+              <input
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
+                placeholder={t('auth.register.departmentPlaceholder')}
+              />
+            ) : (
+              <select
+                value={department}
+                onChange={(e) => {
+                  if (e.target.value === '__manual__') {
+                    setManualDepartment(true);
+                    setDepartment('');
+                    setDirection('');
+                    return;
+                  }
+                  setDepartment(e.target.value);
+                  setDirection('');
+                }}
+                className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
+              >
+                <option value="">{t('auth.register.departmentSelect')}</option>
+                {kafedralar.map((k) => (
+                  <option key={k.name} value={k.name}>{k.name}</option>
+                ))}
+                <option value="__manual__">{t('auth.register.departmentManual')}</option>
+              </select>
+            )}
           </div>
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-black/55 flex items-center gap-1">
               <BookOpen size={12} /> {t('auth.register.direction')}
             </label>
-            <input
-              value={direction}
-              onChange={(e) => setDirection(e.target.value)}
-              className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
-              placeholder={t('auth.register.directionPlaceholder')}
-            />
+            {directionOptions.length > 0 ? (
+              <select
+                value={direction}
+                onChange={(e) => setDirection(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
+              >
+                <option value="">{t('auth.register.directionSelect')}</option>
+                {directionOptions.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={direction}
+                onChange={(e) => setDirection(e.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium outline-none focus:ring-2 focus:ring-emerald-500/35"
+                placeholder={t('auth.register.directionPlaceholder')}
+              />
+            )}
           </div>
 
           <div className="space-y-1">

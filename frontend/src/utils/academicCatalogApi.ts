@@ -34,3 +34,17 @@ export async function fetchAcademicCatalog(opts?: { force?: boolean }): Promise<
   cachedAt = Date.now();
   return data;
 }
+
+/** Ro'yxatdan o'tish formasi uchun ochiq kafedra ro'yxati (token talab qilmaydi). */
+export type PublicKafedra = { id: number | null; name: string; code: string | null; directions: string[] };
+
+let cachedPublic: PublicKafedra[] | null = null;
+let cachedPublicAt = 0;
+
+export async function fetchPublicKafedralar(): Promise<PublicKafedra[]> {
+  if (cachedPublic && Date.now() - cachedPublicAt < CLIENT_CACHE_TTL_MS) return cachedPublic;
+  const rows = await httpJson<PublicKafedra[]>(`${apiBaseUrl()}/v1/public/kafedralar/`, { timeoutMs: 20000 });
+  cachedPublic = rows;
+  cachedPublicAt = Date.now();
+  return rows;
+}

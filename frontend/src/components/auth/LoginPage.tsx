@@ -218,12 +218,15 @@ export default function LoginPage({ onSwitchToRegister, onWantsHodimQr }: LoginP
           </button>
         </form>
 
-        <p className="mt-6 text-center text-[13px] text-black/50">
-          {t('auth.noAccount')}{' '}
-          <button type="button" onClick={onSwitchToRegister} className="font-semibold text-blue-600 hover:underline">
-            {t('auth.registerLink')}
-          </button>
-        </p>
+        {/* Ro'yxatdan o'tish faqat xodim uchun — talaba OnlineTest'dan keladi. */}
+        {loginMode === 'staff' && (
+          <p className="mt-6 text-center text-[13px] text-black/50">
+            {t('auth.noAccount')}{' '}
+            <button type="button" onClick={onSwitchToRegister} className="font-semibold text-blue-600 hover:underline">
+              {t('auth.registerLink')}
+            </button>
+          </p>
+        )}
       </div>
     </motion.div>
   );

@@ -146,3 +146,31 @@ def academic_catalog(auth: AuthContext = Depends(require_roles(*STAFF_ROLES, "st
         return otc.fetch_academic_catalog()
     except otc.OnlineTestAuthError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.get("/public/kafedralar/")
+def public_kafedralar() -> list[dict]:
+    """Ro'yxatdan o'tish formasi uchun kafedra ro'yxati — faqat nom/kod, talaba ma'lumotisiz."""
+    try:
+        catalog = otc.fetch_academic_catalog()
+    except otc.OnlineTestAuthError:
+        return []
+    rows: list[dict] = []
+    for kafedra in catalog.get("kafedralar") or []:
+        name = str(kafedra.get("name") or "").strip()
+        if not name:
+            continue
+        rows.append(
+            {
+                "id": kafedra.get("id"),
+                "name": name,
+                "code": kafedra.get("code"),
+                "directions": [
+                    str(d.get("name") or "").strip()
+                    for d in (kafedra.get("directions") or [])
+                    if str(d.get("name") or "").strip()
+                ],
+            }
+        )
+    rows.sort(key=lambda r: r["name"])
+    return rows

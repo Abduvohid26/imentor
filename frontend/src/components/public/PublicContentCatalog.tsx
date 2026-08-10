@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   BriefcaseMedical,
@@ -265,6 +265,7 @@ export default function PublicContentCatalog({
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<PublicCatalogItemDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
   const locale = localeForLanguage(language);
 
@@ -293,13 +294,21 @@ export default function PublicContentCatalog({
   const caseCount = useMemo(() => items.filter((i) => i.kind === 'case').length, [items]);
   const testCount = useMemo(() => items.filter((i) => i.kind === 'test').length, [items]);
 
+  // Bo'lim boshiga qaytaramiz — sahifa tepasiga sakramasligi uchun.
+  const scrollToSection = useCallback(() => {
+    const node = sectionRef.current;
+    if (!node) return;
+    const top = node.getBoundingClientRect().top + window.scrollY - 88;
+    window.scrollTo({ top: Math.max(top, 0), behavior: 'smooth' });
+  }, []);
+
   const openDetail = async (id: number) => {
     setDetailLoading(true);
     setDetail(null);
+    scrollToSection();
     try {
       const row = await fetchPublicCatalogItemDetail(id);
       setDetail(row);
-      window.scrollTo({ top: embedded ? 0 : document.getElementById('public-catalog')?.offsetTop ?? 0, behavior: 'smooth' });
     } finally {
       setDetailLoading(false);
     }
@@ -345,6 +354,7 @@ export default function PublicContentCatalog({
   return (
     <section
       id="public-catalog"
+      ref={sectionRef}
       className={
         embedded
           ? compact
@@ -496,7 +506,14 @@ export default function PublicContentCatalog({
       )}
 
       {detail && !detailLoading && (
-        <PublicCatalogDetail detail={detail} language={language} onClose={() => setDetail(null)} />
+        <PublicCatalogDetail
+          detail={detail}
+          language={language}
+          onClose={() => {
+            setDetail(null);
+            scrollToSection();
+          }}
+        />
       )}
 
       {!detail && loading && (

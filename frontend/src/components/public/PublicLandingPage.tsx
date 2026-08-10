@@ -7,10 +7,8 @@ import {
   ChevronUp,
   ClipboardList,
   FileText,
-  GraduationCap,
   MapPin,
   Presentation,
-  Shield,
   Sparkles,
   Users,
   X,
@@ -147,11 +145,6 @@ export default function PublicLandingPage({
     { num: '1', titleKey: 'publicLanding.step1Title' as const, descKey: 'publicLanding.step1Desc' as const, color: 'blue' as const },
     { num: '2', titleKey: 'publicLanding.step2Title' as const, descKey: 'publicLanding.step2Desc' as const, color: 'emerald' as const },
     { num: '3', titleKey: 'publicLanding.step3Title' as const, descKey: 'publicLanding.step3Desc' as const, color: 'violet' as const },
-  ];
-
-  const roles = [
-    { icon: Shield, titleKey: 'publicLanding.roleAdmin' as const, descKey: 'publicLanding.roleAdminDesc' as const, color: 'indigo' as const },
-    { icon: GraduationCap, titleKey: 'publicLanding.roleHodim' as const, descKey: 'publicLanding.roleHodimDesc' as const, color: 'emerald' as const },
   ];
 
   return (
@@ -379,41 +372,6 @@ export default function PublicLandingPage({
                   </div>
                   <h3 className="text-[15px] font-semibold text-slate-900 mb-2">{t(language, step.titleKey)}</h3>
                   <p className="text-[13px] text-slate-500 leading-relaxed">{t(language, step.descKey)}</p>
-                </motion.div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Roles */}
-        <section className="mx-auto max-w-5xl px-4 sm:px-6 py-16 lg:py-20">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-12"
-          >
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">{t(language, 'publicLanding.rolesTitle')}</h2>
-            <p className="text-[15px] text-slate-500 mt-3">{t(language, 'publicLanding.rolesSubtitle')}</p>
-          </motion.div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {roles.map((role, i) => {
-              const c = ICON_COLORS[role.color];
-              return (
-                <motion.div
-                  key={role.titleKey}
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.08 }}
-                  whileHover={{ y: -3 }}
-                  className="rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow"
-                >
-                  <div className={`w-10 h-10 rounded-xl ${c.bg} ${c.text} flex items-center justify-center mb-3`}>
-                    <role.icon size={18} />
-                  </div>
-                  <h3 className="text-[14px] font-semibold text-slate-900 mb-1">{t(language, role.titleKey)}</h3>
-                  <p className="text-[12px] text-slate-500 leading-relaxed">{t(language, role.descKey)}</p>
                 </motion.div>
               );
             })}
