@@ -921,6 +921,78 @@ function isTestTranslationAcceptable(
   return true;
 }
 
+/** Bitta so'rovda nechta savolga variant izohi so'raladi. */
+const OPTION_EXPLANATION_CHUNK = 10;
+
+/**
+ * Har variant uchun qisqa izoh (nega to'g'ri / nega xato) — generate'dan KEYIN,
+ * fonda. Asosiy generatsiyada so'ralmaydi: 5 ta izoh savol hajmini ~2 barobar
+ * oshiradi va katta partiyalarda (40+ savol) javob token limitiga urilib JSON
+ * kesilib qolardi. Alohida, bo'lak-bo'lak so'rov bunday xavfsiz — bir bo'lak
+ * yiqilsa qolganlari baribir izohli bo'ladi.
+ *
+ * Bu maydon OnlineTest natijalarida "Nega xato" qatorini to'ldiradi (tashqi API
+ * `optionExplanations` ni o'zgartirmasdan uzatadi) va iMentor test ekranida har
+ * variant ostida ko'rinadi.
+ */
+async function attachOptionExplanations(
+  session: TestSession,
+  language: AppLanguage,
+): Promise<TestSession> {
+  const questions = session.questions || [];
+  const pendingIdx = questions
+    .map((q, i) => i)
+    .filter((i) => !(questions[i].optionExplanations || []).some((e) => (e || '').trim()));
+  if (!pendingIdx.length) return session;
+
+  const outLang = languageName(language);
+  const merged = [...questions];
+  const chunks: number[][] = [];
+  for (let start = 0; start < pendingIdx.length; start += OPTION_EXPLANATION_CHUNK) {
+    chunks.push(pendingIdx.slice(start, start + OPTION_EXPLANATION_CHUNK));
+  }
+
+  await Promise.all(
+    chunks.map(async (idxs) => {
+      const source = idxs.map((i) => ({
+        id: i,
+        question: questions[i].question,
+        options: questions[i].options,
+        correctOptionIndex: questions[i].correctOptionIndex,
+      }));
+      try {
+        const parsed = await openaiJson<{ items?: { id?: number; optionExplanations?: string[] }[] }>({
+          model: OPENAI_FAST,
+          system:
+            `${SYS_MEDICAL} Har savolning HAR BIR variantiga bittadan qisqa izoh yoz: ` +
+            'to\'g\'ri variant uchun — nega aynan shu to\'g\'ri; qolganlari uchun — nega bu klinik ' +
+            'vaziyatda noto\'g\'ri. Har izoh 1 ta gap, 20 so\'zgacha. Savol matnini takrorlamang. ' +
+            'JSON: {items:[{id:<berilgan id>, optionExplanations:[...]}]}. optionExplanations uzunligi ' +
+            'options uzunligi bilan BIR XIL va TARTIBI bir xil bo\'lsin. ' +
+            `Til: ${outLang}. ${strictLanguageDirective(language)}`,
+          user: JSON.stringify(source),
+          maxTokens: Math.min(16000, idxs.length * 320 + 400),
+          temperature: 0.2,
+          parse: (t) => parseJSONSafe<{ items?: { id?: number; optionExplanations?: string[] }[] }>(t),
+        });
+        for (const item of parsed.items || []) {
+          const i = typeof item?.id === 'number' ? item.id : -1;
+          if (!merged[i]) continue;
+          const raw = Array.isArray(item?.optionExplanations) ? item.optionExplanations : [];
+          const cleaned = raw.map((e) => stripUnfilledSourceTemplate(String(e || '')).trim());
+          if (cleaned.length !== merged[i].options.length || !cleaned.some((e) => e)) continue;
+          merged[i] = { ...merged[i], optionExplanations: cleaned };
+        }
+      } catch (err) {
+        // Izohlar — qo'shimcha qiymat, majburiy emas: testni yiqitmaymiz.
+        console.warn('Variant izohlari olinmadi (bo\'lak o\'tkazib yuborildi):', err);
+      }
+    }),
+  );
+
+  return { ...session, questions: merged };
+}
+
 /** Tayyor testni boshqa tilga tarjima qiladi — faktlar/to'g'ri javob o'zgarmaydi, faqat matn. */
 async function translateTestSession(
   content: TestSessionContent,
@@ -956,7 +1028,18 @@ async function translateTestSession(
     user: JSON.stringify(source),
     // ~273 token/savol (30 ta uchun 8192 asosida o'lchangan) — gpt-4o-mini
     // max output (16000) dan oshmasin, katta partiyalarda (90 tagacha) tarjima kesilmasin.
-    maxTokens: Math.min(16000, Math.ceil(content.questions.length * 273) + 500),
+    // Variant izohlari (5 ta qisqa gap) savolni ~1.6 barobar kattalashtiradi —
+    // ular bor testda budjet ham shunga yarasha bo'lsin, aks holda tarjima
+    // o'rtasidan kesilib "incomplete questions" xatosi chiqadi.
+    maxTokens: Math.min(
+      16000,
+      Math.ceil(
+        content.questions.length *
+          (content.questions.some((q) => (q.optionExplanations || []).some((e) => (e || '').trim()))
+            ? 440
+            : 273),
+      ) + 500,
+    ),
     temperature: 0.1,
     parse: (t) => parseJSONSafe(t),
   });
@@ -1304,6 +1387,9 @@ export const aiService = {
           `${SYS_MEDICAL} ${GENERATION_UNIQUENESS_RULE} ${jsonReferencesRule(Boolean(bookContext))} ` +
           `${requestedCount} ta test JSON: ` +
           `{topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, references:[]}]}. ` +
+          // optionExplanations shu yerda so'ralmaydi — u `enrichTestSession`
+          // ichida, fonda, bo'lak-bo'lak olinadi (katta partiyalarda javob
+          // token limitiga urilib JSON kesilib qolmasligi uchun).
           'explanation — 1–2 qisqa gap (nega to\'g\'ri). optionExplanations YOZMANG. ' +
           `Til: ${outLang}. ${strictLanguageDirective(language)}`,
         user:
@@ -1356,9 +1442,12 @@ export const aiService = {
     subjectCode?: string,
   ): Promise<TestSession> {
     const primary = session.primaryLanguage || language;
+    // MUHIM tartib: variant izohlari TARJIMADAN OLDIN qo'shiladi — aks holda
+    // tarjima manbasida ular bo'lmaydi va ru/en versiyalar izohsiz qolardi.
+    const withOptionExplanations = await attachOptionExplanations(session, primary);
     const [withRefs, translated] = await Promise.all([
-      attachPerQuestionBookReferences(session, subjectCode),
-      attachTestTranslations(session, primary),
+      attachPerQuestionBookReferences(withOptionExplanations, subjectCode),
+      attachTestTranslations(withOptionExplanations, primary),
     ]);
     const translations = translated.translations
       ? Object.fromEntries(
