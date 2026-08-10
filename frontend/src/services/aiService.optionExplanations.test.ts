@@ -52,7 +52,13 @@ describe('enrichTestSession — variant izohlari', () => {
           items: [
             {
               id: 0,
-              optionExplanations: ['To\'g\'ri', 'Yuzaki akantoliz', 'Subepidermal', 'Allergik', 'Papula'],
+              explanations: [
+                { i: 0, text: 'To\'g\'ri' },
+                { i: 1, text: 'Yuzaki akantoliz' },
+                { i: 2, text: 'Subepidermal' },
+                { i: 3, text: 'Allergik' },
+                { i: 4, text: 'Papula' },
+              ],
             },
           ],
         };
@@ -73,9 +79,14 @@ describe('enrichTestSession — variant izohlari', () => {
   it('izohlar tarjimadan OLDIN qo\'shiladi — tarjimaga ham tushadi', async () => {
     const translateInputs: string[] = [];
     openaiJson.mockImplementation(async (opts: { model: string; user: string; system: string }) => {
-      if (opts.model === 'gpt-test-fast' && opts.system.includes('optionExplanations uzunligi')) {
+      if (opts.model === 'gpt-test-fast' && opts.system.includes('variantning berilgan i raqami')) {
         return {
-          items: [{ id: 0, optionExplanations: ['a', 'b', 'c', 'd', 'e'] }],
+          items: [
+            {
+              id: 0,
+              explanations: [0, 1, 2, 3, 4].map((i) => ({ i, text: `izoh-${i}` })),
+            },
+          ],
         };
       }
       translateInputs.push(opts.user);
@@ -88,39 +99,82 @@ describe('enrichTestSession — variant izohlari', () => {
     expect(translateInputs.every((u) => u.includes('optionExplanations'))).toBe(true);
   });
 
-  it('AI kam izoh qaytarsa — kelgani qoladi, qolgani bo\'sh bilan to\'ldiriladi', async () => {
+  it('AI kam izoh qaytarsa — kelgani o\'z o\'rnida qoladi, qolgani bo\'sh', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
       if (opts.model === 'gpt-test-fast') {
-        return { items: [{ id: 0, optionExplanations: ['faqat bitta'] }] };
+        return { items: [{ id: 0, explanations: [{ i: 2, text: 'faqat uchinchisi' }] }] };
       }
       throw new Error('tarjima kerak emas');
     });
 
     const out = await aiService.enrichTestSession(baseSession(), 'uz');
-    expect(out.questions[0].optionExplanations).toEqual(['faqat bitta', '', '', '', '']);
+    expect(out.questions[0].optionExplanations).toEqual(['', '', 'faqat uchinchisi', '', '']);
+  });
+
+  it('izoh o\'z variantiga tushadi — AI tartibni almashtirib yuborsa ham', async () => {
+    // Model ko'pincha TO'G'RI variant izohini birinchi qilib qaytaradi.
+    // `i` raqami bo'lgani uchun u baribir o'z o'rniga tushishi kerak.
+    openaiJson.mockImplementation(async (opts: { model: string }) => {
+      if (opts.model === 'gpt-test-fast') {
+        return {
+          items: [
+            {
+              id: 0,
+              explanations: [
+                { i: 2, text: 'uchinchi haqida' },
+                { i: 0, text: 'birinchi haqida' },
+                { i: 4, text: 'beshinchi haqida' },
+              ],
+            },
+          ],
+        };
+      }
+      throw new Error('tarjima kerak emas');
+    });
+
+    const out = await aiService.enrichTestSession(baseSession(), 'uz');
+    expect(out.questions[0].optionExplanations).toEqual([
+      'birinchi haqida',
+      '',
+      'uchinchi haqida',
+      '',
+      'beshinchi haqida',
+    ]);
+  });
+
+  it('raqamsiz izohlar ISHLATILMAYDI — noto\'g\'ri variantga tushgandan ko\'ra bo\'sh yaxshi', async () => {
+    openaiJson.mockImplementation(async (opts: { model: string }) => {
+      if (opts.model === 'gpt-test-fast') {
+        return { items: [{ id: 0, optionExplanations: ['eski shakl', 'b', 'c', 'd', 'e'] }] };
+      }
+      throw new Error('tarjima kerak emas');
+    });
+
+    const out = await aiService.enrichTestSession(baseSession(), 'uz');
+    expect(out.questions[0].optionExplanations).toBeUndefined();
   });
 
   it('model {items} o\'rniga sof massiv qaytarsa ham qabul qilinadi', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
       if (opts.model === 'gpt-test-fast') {
-        return [{ optionExplanations: ['a', 'b', 'c', 'd', 'e'] }];
+        return [{ explanations: [0, 1, 2, 3, 4].map((i) => ({ i, text: `x-${i}` })) }];
       }
       throw new Error('tarjima kerak emas');
     });
 
     const out = await aiService.enrichTestSession(baseSession(), 'uz');
-    expect(out.questions[0].optionExplanations).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(out.questions[0].optionExplanations).toEqual(['x-0', 'x-1', 'x-2', 'x-3', 'x-4']);
   });
 
   it('id yo\'q bo\'lsa — bo\'lakdagi tartib bo\'yicha biriktiriladi', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
       if (opts.model === 'gpt-test-fast') {
-        return { questions: [{ optionExplanations: ['x', 'y', 'z', 'w', 'v'] }] };
+        return { questions: [{ explanations: [0, 1, 2, 3, 4].map((i) => ({ i, text: `p-${i}` })) }] };
       }
       throw new Error('tarjima kerak emas');
     });
 
     const out = await aiService.enrichTestSession(baseSession(), 'uz');
-    expect(out.questions[0].optionExplanations).toEqual(['x', 'y', 'z', 'w', 'v']);
+    expect(out.questions[0].optionExplanations).toEqual(['p-0', 'p-1', 'p-2', 'p-3', 'p-4']);
   });
 });

@@ -55,6 +55,7 @@ import { listPreparedForTopicSynced, loadPreparedByIdSynced } from '../utils/pre
 import { normalizeCaseFocus } from '../utils/caseFocusLabels';
 import { type MedicalReference } from '../utils/medicalReferences';
 import { stripUnfilledSourceTemplate } from '../utils/sourceTemplate';
+import { stripOptionLetterPrefix } from '../utils/testOptionText';
 import { httpJson } from '../api/httpClient';
 import { ensureBackendAccessToken, getBackendAccessToken } from '../utils/backendAuth';
 
@@ -954,10 +955,17 @@ async function attachOptionExplanations(
 
   await Promise.all(
     chunks.map(async (idxs) => {
+      // Variantlar RAQAMLANGAN holda yuboriladi va model har izohga o'sha
+      // raqamni qaytarishi shart. Ilgari oddiy massiv so'ralardi va model
+      // ko'pincha TO'G'RI variant izohini birinchi qilib qo'yardi — natijada
+      // izohlar boshqa variantlar ostiga tushib qolardi (10 savoldan 5 tasida).
       const source = idxs.map((i) => ({
         id: i,
         question: questions[i].question,
-        options: questions[i].options,
+        options: questions[i].options.map((opt, oi) => ({
+          i: oi,
+          text: stripOptionLetterPrefix(opt, oi),
+        })),
         correctOptionIndex: questions[i].correctOptionIndex,
       }));
       try {
@@ -967,8 +975,10 @@ async function attachOptionExplanations(
             `${SYS_MEDICAL} Har savolning HAR BIR variantiga bittadan qisqa izoh yoz: ` +
             'to\'g\'ri variant uchun — nega aynan shu to\'g\'ri; qolganlari uchun — nega bu klinik ' +
             'vaziyatda noto\'g\'ri. Har izoh 1 ta gap, 20 so\'zgacha. Savol matnini takrorlamang. ' +
-            'JSON: {items:[{id:<berilgan id>, optionExplanations:[...]}]}. optionExplanations uzunligi ' +
-            'options uzunligi bilan BIR XIL va TARTIBI bir xil bo\'lsin. ' +
+            'JSON: {items:[{id:<berilgan id>, explanations:[{i:<variantning berilgan i raqami>, text:"..."}]}]}. ' +
+            'MUHIM: `i` — aynan o\'sha variantning berilgan raqami; izoh SHU variant haqida bo\'lsin. ' +
+            'To\'g\'ri variant izohini birinchi o\'ringa ko\'chirmang — har bir variant o\'z `i` si bilan qaytsin. ' +
+            'Har variant uchun bittadan yozing, birortasini tashlab ketmang. ' +
             `Til: ${outLang}. ${strictLanguageDirective(language)}`,
           user: JSON.stringify(source),
           maxTokens: Math.min(16000, idxs.length * 320 + 400),
@@ -978,7 +988,10 @@ async function attachOptionExplanations(
         // Model javob shaklini turlicha berishi mumkin: {items:[…]}, {questions:[…]}
         // yoki to'g'ridan-to'g'ri massiv. Uchalasini ham qabul qilamiz — aks holda
         // izohlar jimgina yo'qoladi va ekranda hech narsa ko'rinmaydi.
-        type OptionExplanationItem = { id?: number; optionExplanations?: string[] };
+        type OptionExplanationItem = {
+          id?: number;
+          explanations?: { i?: number; index?: number; text?: string }[];
+        };
         const box = (parsed || {}) as { items?: unknown; questions?: unknown };
         const items: OptionExplanationItem[] = (
           Array.isArray(parsed)
@@ -994,15 +1007,20 @@ async function attachOptionExplanations(
           const rawId = typeof item?.id === 'number' ? item.id : undefined;
           const i = rawId !== undefined ? rawId : (idxs[pos] ?? -1);
           if (!merged[i]) return;
-          const raw = Array.isArray(item?.optionExplanations) ? item.optionExplanations : [];
-          const cleaned = raw.map((e) => stripUnfilledSourceTemplate(String(e || '')).trim());
-          if (!cleaned.some((e) => e)) return;
-          // Uzunlik mos kelmasa tashlab yubormaymiz — kelganini qoldirib,
-          // yetmaganini bo'sh bilan to'ldiramiz (bo'sh izoh chizilmaydi).
-          const sized = Array.from(
-            { length: merged[i].options.length },
-            (_, k) => cleaned[k] || '',
-          );
+          const list = Array.isArray(item?.explanations) ? item.explanations : [];
+          const sized = new Array<string>(merged[i].options.length).fill('');
+          let filled = 0;
+          for (const row of list) {
+            const at = typeof row?.i === 'number' ? row.i : typeof row?.index === 'number' ? row.index : -1;
+            // Raqamsiz izohni ISHLATMAYMIZ: tartibiga ishonib bo'lmaydi, noto'g'ri
+            // variant ostida turgan izoh umuman izoh yo'qligidan ko'ra yomonroq.
+            if (at < 0 || at >= sized.length) continue;
+            const text = stripUnfilledSourceTemplate(String(row?.text || '')).trim();
+            if (!text) continue;
+            sized[at] = text;
+            filled += 1;
+          }
+          if (!filled) return;
           merged[i] = { ...merged[i], optionExplanations: sized };
         });
       } catch (err) {

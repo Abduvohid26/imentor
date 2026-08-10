@@ -285,6 +285,10 @@ export default function TestQuestions() {
   const serverSessionSyncedRef = useRef<string | null>(null);
   const participantKeyRef = useRef('');
   const enrichTokenRef = useRef<symbol | null>(null);
+  // Variant izohlari va tarjimalar test ko'ringandan KEYIN, fonda keladi.
+  // Bu ko'rsatkichsiz o'qituvchi bo'sh izohlarni ko'rib "ishlamayapti" deb
+  // o'ylaydi — aslida hali tayyorlanayotgan bo'ladi.
+  const [enriching, setEnriching] = useState(false);
 
   const mapServerSubmissions = React.useCallback(
     (rows: Array<{ firstName: string; lastName: string; answers: number[]; submittedAt: number }>) =>
@@ -626,6 +630,7 @@ export default function TestQuestions() {
       if (!sid) throw new Error('live-session-missing');
       setLoading(false);
 
+      setEnriching(true);
       void (async () => {
         const meta = buildPreparedContentMeta(globalTopic);
         try {
@@ -649,6 +654,7 @@ export default function TestQuestions() {
           }
         }
         if (enrichTokenRef.current !== enrichToken) return;
+        setEnriching(false);
         const nextList = await listPreparedForTopicSynced('test', globalTopic ?? topic);
         setVersions(nextList);
         setActiveVersionId(nextList[0]?.id ?? null);
@@ -1161,6 +1167,12 @@ export default function TestQuestions() {
               </div>
             ) : (
               <div className="space-y-6">
+                {enriching && (
+                  <div className="flex items-center gap-2.5 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-[13px] text-blue-900">
+                    <Loader2 size={16} className="animate-spin shrink-0" />
+                    <span>{t('test.enriching')}</span>
+                  </div>
+                )}
                 {displayedTest.questions.map((q, i) => (
                   <div key={i} className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100">
                     <div className="flex items-start gap-4 mb-6">
