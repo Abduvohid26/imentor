@@ -42,6 +42,15 @@ function t(lang: AppLanguage, key: Parameters<typeof translate>[1]) {
   return translate(lang, key);
 }
 
+/**
+ * Landing bo'limlarining umumiy o'rami.
+ *
+ * Ilgari `max-w-5xl` (1024px) edi — katta monitorda ikki yonda katta bo'sh
+ * joy qolardi. Endi kenglik cheklanmaydi, faqat ekran o'lchamiga qarab
+ * chetki bo'shliq o'sadi.
+ */
+const SHELL = 'mx-auto w-full px-4 sm:px-8 lg:px-14 2xl:px-24';
+
 const ICON_COLORS = {
   blue: { bg: 'bg-blue-100', text: 'text-blue-600', ring: 'ring-blue-200' },
   emerald: { bg: 'bg-emerald-100', text: 'text-emerald-600', ring: 'ring-emerald-200' },
@@ -162,7 +171,7 @@ export default function PublicLandingPage({
         style={{ backgroundColor: headerBackground }}
         className="fixed top-0 inset-x-0 z-50 border-b border-slate-200/0 backdrop-blur-xl [&:not(:first-child)]:border-slate-200/60"
       >
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
+        <div className={`flex items-center justify-between gap-3 py-3.5 ${SHELL}`}>
           <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2.5">
             <img src="/imentor-logo.png" alt="iMentor" className="h-9 w-9 rounded-xl object-cover shadow-sm ring-1 ring-slate-200/80" />
             <span className="font-semibold text-[16px] text-slate-900 tracking-tight">iMentor</span>
@@ -207,8 +216,8 @@ export default function PublicLandingPage({
 
       <main className="relative z-10">
         {/* Hero */}
-        <section className="mx-auto max-w-5xl px-4 sm:px-6 pt-28 pb-16 lg:pt-36 lg:pb-24">
-          <div className="text-center max-w-3xl mx-auto">
+        <section className={`${SHELL} pt-28 pb-16 lg:pt-36 lg:pb-24`}>
+          <div className="text-center max-w-4xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -234,7 +243,7 @@ export default function PublicLandingPage({
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="mt-6 text-[16px] sm:text-[17px] text-slate-500 leading-relaxed max-w-2xl mx-auto"
+              className="mt-6 text-[16px] sm:text-[17px] text-slate-500 leading-relaxed max-w-3xl mx-auto"
             >
               {t(language, 'publicLanding.heroSubtitle')}
             </motion.p>
@@ -265,7 +274,7 @@ export default function PublicLandingPage({
           </div>
 
           {/* Floating chips — desktop only */}
-          <div className="hidden lg:block relative h-32 mt-12 max-w-3xl mx-auto">
+          <div className="hidden lg:block relative h-32 mt-12 max-w-5xl mx-auto">
             <div className="absolute left-[5%] top-2">
               <FloatingChip icon={BookOpen} label={translate(language, 'welcome.featureSyllabus')} color="blue" />
             </div>
@@ -285,7 +294,7 @@ export default function PublicLandingPage({
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.45 }}
-            className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto"
+            className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl mx-auto"
           >
             {[
               { v: '8+', l: t(language, 'publicLanding.statModules'), c: 'text-blue-600' },
@@ -302,7 +311,7 @@ export default function PublicLandingPage({
         </section>
 
         {/* Institute trust */}
-        <section className="mx-auto max-w-5xl px-4 sm:px-6 pb-12">
+        <section className={`${SHELL} pb-12`}>
           <motion.div
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
@@ -318,7 +327,7 @@ export default function PublicLandingPage({
         </section>
 
         {/* Features */}
-        <section id="features" className="mx-auto max-w-5xl px-4 sm:px-6 py-16 lg:py-20">
+        <section id="features" className={`${SHELL} py-16 lg:py-20`}>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -330,7 +339,7 @@ export default function PublicLandingPage({
             </h2>
             <p className="text-[15px] text-slate-500 mt-3 max-w-xl mx-auto">{t(language, 'publicLanding.featuresSubtitle')}</p>
           </motion.div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {features.map((f, i) => (
               <FeatureCard
                 key={f.titleKey}
@@ -345,7 +354,7 @@ export default function PublicLandingPage({
         </section>
 
         {/* How it works */}
-        <section id="how-it-works" className="mx-auto max-w-5xl px-4 sm:px-6 py-16 lg:py-20">
+        <section id="how-it-works" className={`${SHELL} py-16 lg:py-20`}>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -355,7 +364,7 @@ export default function PublicLandingPage({
             <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">{t(language, 'publicLanding.howTitle')}</h2>
             <p className="text-[15px] text-slate-500 mt-3">{t(language, 'publicLanding.howSubtitle')}</p>
           </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 2xl:gap-8">
             {steps.map((step, i) => {
               const c = ICON_COLORS[step.color];
               return (
@@ -379,7 +388,7 @@ export default function PublicLandingPage({
         </section>
 
         {/* Compact catalog */}
-        <section id="public-catalog-section" className="mx-auto max-w-5xl px-4 sm:px-6 pb-16">
+        <section id="public-catalog-section" className={`${SHELL} pb-16`}>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -423,7 +432,7 @@ export default function PublicLandingPage({
         </section>
 
         {/* CTA */}
-        <section className="mx-auto max-w-5xl px-4 sm:px-6 pb-20">
+        <section className={`${SHELL} pb-20`}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -454,7 +463,7 @@ export default function PublicLandingPage({
 
         {/* Footer */}
         <footer className="border-t border-slate-200/80 bg-white">
-          <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className={`${SHELL} py-8 flex flex-col sm:flex-row items-center justify-between gap-4`}>
             <div className="flex items-center gap-2.5">
               <img src="/imentor-logo.png" alt="" className="h-8 w-8 rounded-lg" />
               <p className="text-[12px] text-slate-500">{t(language, 'welcome.footerInstitute')}</p>

@@ -54,6 +54,50 @@ def collect_topic_titles(syllabus) -> list[str]:
     return titles
 
 
+# ---------------------------------------------------------------- til nazorati
+
+_CYRILLIC = re.compile(r"[\u0400-\u04FF]")
+_LATIN = re.compile(r"[A-Za-z]")
+# Faqat o'zbek kirilida bor harflar — rus alifbosida yo'q.
+_UZ_ONLY_CYRILLIC = re.compile(r"[\u049B\u049A\u0493\u0492\u04B3\u04B2\u045E\u040E]")
+# Lotin yozuvidagi o'zbekchani ingliz tilidan ajratuvchi so'zlar.
+_UZ_LATIN_WORDS = (
+    " va ", " bilan ", "kasallik", "davolash", "tekshir", "asoslari", "usullari",
+    "belgilari", "tizimi", "haqida", "uchun", "o'quv", "ma'ruza", "amaliy",
+)
+
+
+def _letters(text: str) -> int:
+    return len(_CYRILLIC.findall(text)) + len(_LATIN.findall(text))
+
+
+def looks_wrong_language(text: str, lang: str) -> bool:
+    """Matn `lang` tilida EMASLIGI aniq bo'lsa True.
+
+    Ehtiyotkor: qisqa yoki harfsiz matnlarga (raqam, kod) tegmaydi — faqat
+    yozuv tizimi ochiq-oydin mos kelmasa rad etadi. Asosiy maqsad — model
+    rus tili so'ralganda inglizcha (yoki aksincha) qaytargan holatni tutish.
+    """
+    value = (text or "").strip()
+    if _letters(value) < 8:
+        return False
+    cyr = len(_CYRILLIC.findall(value))
+    lat = len(_LATIN.findall(value))
+    total = cyr + lat
+    if lang == "ru":
+        # Rus matni asosan kirilcha bo'ladi va o'zbek kiril harflari uchramaydi.
+        return cyr / total < 0.6 or bool(_UZ_ONLY_CYRILLIC.search(value))
+    if lang == "en":
+        if cyr / total > 0.15:
+            return True
+        low = f" {value.lower()} "
+        return any(w in low for w in _UZ_LATIN_WORDS)
+    if lang == "uz":
+        # O'zbekcha lotin yozuvida.
+        return cyr / total > 0.2
+    return False
+
+
 def _parse_translation_list(raw: str) -> list | None:
     """Model javobidan tarjimalar ro'yxatini ajratib oladi.
 
@@ -150,18 +194,42 @@ def _translate_batch(api_key: str, model: str, items: list[str], target: str) ->
             m = _NUM_PREFIX.match(dst)
             if m and not _NUM_PREFIX.match(src):
                 dst = m.group(1).strip()
-            if dst and dst != src:
-                out[src] = dst[:512]
+            if not dst or dst == src:
+                continue
+            if looks_wrong_language(dst, target):
+                # Model boshqa tilda qaytardi (masalan "ru" so'ralganda
+                # inglizcha) — bunday "tarjima" saqlansa, interfeys butunlay
+                # noto'g'ri tilda ko'rinadi. Saqlamaymiz: asl sarlavha qoladi.
+                logger.warning(
+                    "Tarjima %s tilida emas, tashlab yuborildi: %s", target, dst[:60]
+                )
+                continue
+            out[src] = dst[:512]
         return out
     except Exception:
         logger.warning("Tarjima xatosi (%s)", target, exc_info=True)
         return {}
 
 
+def _titles_look_foreign(titles: list[str], lang: str) -> bool:
+    """Sarlavhalarning ko'pchiligi `lang` tilida EMASmi?
+
+    `instruction_language` noto'g'ri bo'lsa (masalan ruscha sillabus "uz" deb
+    belgilangan), shu tekshiruv uni ushlaydi va tarjima baribir bajariladi.
+    """
+    checked = [t for t in titles if _letters(t) >= 8][:20]
+    if len(checked) < 3:
+        return False
+    wrong = sum(1 for t in checked if looks_wrong_language(t, lang))
+    return wrong > len(checked) * 0.6
+
+
 def ensure_syllabus_translations(db, syllabus, langs: tuple[str, ...] = SUPPORTED_LANGS) -> bool:
     """Yetishmayotgan tarjimalarni to'ldiradi. O'zgarish bo'lsa True.
 
-    Idempotent: mavjud tarjimalarga tegmaydi, faqat yangilarini qo'shadi.
+    Idempotent: to'g'ri tarjimalarga tegmaydi, faqat yetishmayotganini
+    qo'shadi. Bundan tashqari NOTO'G'RI TILDAGI eski yozuvlarni tozalaydi
+    (masalan "ru" katagida inglizcha matn) va ularni qaytadan tarjima qiladi.
     """
     settings = get_settings()
     api_key = (settings.openai_api_key or "").strip()
@@ -177,8 +245,28 @@ def ensure_syllabus_translations(db, syllabus, langs: tuple[str, ...] = SUPPORTE
     topics_i18n = {k: dict(v or {}) for k, v in (syllabus.topics_i18n or {}).items()}
     changed = False
 
+    # Saqlangan noto'g'ri tildagi tarjimalarni tozalaymiz — ular `instruction_language`
+    # xato bo'lgan sillabuslarda paydo bo'lgan (masalan "ru" katagida inglizcha matn).
+    for lang, mapping in list(topics_i18n.items()):
+        bad = [k for k, v in mapping.items() if looks_wrong_language(str(v or ""), lang)]
+        if bad:
+            logger.warning(
+                "Sillabus %s: %s ta noto'g'ri tildagi (%s) tarjima tozalandi",
+                syllabus.id, len(bad), lang,
+            )
+            for k in bad:
+                mapping.pop(k, None)
+            changed = True
+    for lang, value in list(name_i18n.items()):
+        if looks_wrong_language(str(value or ""), lang):
+            name_i18n.pop(lang, None)
+            changed = True
+
     for lang in langs:
-        if lang == source_lang:
+        # `instruction_language` ba'zan xato (PDF'dan aniqlangan). Shuning uchun
+        # asl sarlavhalar HAQIQATDAN shu tilda ekanini tekshiramiz — aks holda
+        # "asl til" deb o'tkazib yuborilsa, interfeys tarjimasiz qolardi.
+        if lang == source_lang and not _titles_look_foreign(titles, lang):
             continue  # asl til — tarjima kerak emas
 
         # --- fan nomi ---
