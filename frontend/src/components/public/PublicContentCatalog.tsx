@@ -43,6 +43,50 @@ function t(lang: AppLanguage, key: Parameters<typeof translate>[1], params?: Rec
   return translate(lang, key, params);
 }
 
+/** Bir qatordagi filtr tugmalari. Kafedra/fan ko'p bo'lsa panel cho'zilib
+ *  ketmasligi uchun boshida faqat bir qismi ko'rsatiladi — aks holda natijalar
+ *  ekrandan pastga tushib ketadi va filtr "ishlamayotgandek" tuyuladi. */
+function ChipRow({
+  label,
+  icon,
+  groupLabel,
+  chips,
+  moreLabel,
+  lessLabel,
+  visibleLimit = 8,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  groupLabel: string;
+  chips: React.ReactNode[];
+  moreLabel: (n: number) => string;
+  lessLabel: string;
+  visibleLimit?: number;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const hidden = Math.max(0, chips.length - visibleLimit);
+  const visible = showAll ? chips : chips.slice(0, visibleLimit);
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-black/40 flex items-center gap-1.5">
+        {icon} {label}
+      </p>
+      <div role="group" aria-label={groupLabel} className="flex flex-wrap gap-2">
+        {visible}
+        {hidden > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="inline-flex items-center gap-1 px-3.5 py-2 rounded-xl text-[13px] font-semibold border border-dashed border-[#0c5a7e]/40 text-[#0c5a7e] bg-white hover:bg-[#0c5a7e]/5"
+          >
+            {showAll ? lessLabel : moreLabel(hidden)}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Bir bosishli filtr tugmasi — nomi + shu filtrdagi material soni. */
 function FilterChip({
   active,
@@ -413,6 +457,20 @@ export default function PublicContentCatalog({
     setSubjectCode('');
   }, [subjectCode, subjectOptions]);
 
+  // Filtr paneli baland (qidiruv + 3 qator tugma) — chipni bosgach natijalar
+  // ekrandan pastda qolib ketardi va foydalanuvchi "filtr ishlamayapti" deb
+  // o'ylardi. Shuning uchun har filtrdan keyin ro'yxatga olib tushamiz.
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+  const applyFilter = useCallback((change: () => void) => {
+    change();
+    requestAnimationFrame(() => {
+      const node = resultsRef.current;
+      if (!node) return;
+      const top = node.getBoundingClientRect().top + window.scrollY - 96;
+      window.scrollTo({ top: Math.max(top, 0), behavior: 'smooth' });
+    });
+  }, []);
+
   const hasFilters = Boolean(kindFilter || departmentCode || subjectCode || search.trim());
   const clearFilters = () => {
     setKindFilter('');
@@ -592,7 +650,7 @@ export default function PublicContentCatalog({
             <button
               key={k || 'all'}
               type="button"
-              onClick={() => setKindFilter(k)}
+              onClick={() => applyFilter(() => setKindFilter(k))}
               className={`px-4 py-2 rounded-xl text-[13px] font-semibold border transition-colors ${
                 kindFilter === k
                   ? 'bg-[#083047] text-white border-[#083047]'
@@ -607,51 +665,57 @@ export default function PublicContentCatalog({
         {/* Kafedra — bir bosishli tugmalar. Uzun `select` ro'yxatidan ko'ra
             talaba uchun tezroq: qaysi kafedrada nechta material borligi ham
             darrov ko'rinadi. */}
-        <div className="space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-black/40 flex items-center gap-1.5">
-            <Building2 size={12} /> {t(language, 'catalog.stepDepartment')}
-          </p>
-          <div role="group" aria-label={t(language, 'catalog.filterDepartment')} className="flex flex-wrap gap-2">
+        <ChipRow
+          label={t(language, 'catalog.stepDepartment')}
+          icon={<Building2 size={12} />}
+          groupLabel={t(language, 'catalog.filterDepartment')}
+          moreLabel={(n) => t(language, 'catalog.showMore', { count: n })}
+          lessLabel={t(language, 'catalog.showLess')}
+          chips={[
             <FilterChip
+              key="__all__"
               active={!departmentCode}
               label={t(language, 'catalog.allDepartments')}
               count={departmentOptions.reduce((n, d) => n + d.count, 0)}
-              onClick={() => setDepartmentCode('')}
-            />
-            {departmentOptions.map((d) => (
+              onClick={() => applyFilter(() => setDepartmentCode(''))}
+            />,
+            ...departmentOptions.map((d) => (
               <FilterChip
                 key={d.key}
                 active={departmentCode === d.key}
                 label={d.name}
                 count={d.count}
-                onClick={() => setDepartmentCode((cur) => (cur === d.key ? '' : d.key))}
+                onClick={() => applyFilter(() => setDepartmentCode((cur) => (cur === d.key ? '' : d.key)))}
               />
-            ))}
-          </div>
-        </div>
+            )),
+          ]}
+        />
 
-        <div className="space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-black/40 flex items-center gap-1.5">
-            <Filter size={12} /> {t(language, 'catalog.stepSubject')}
-          </p>
-          <div role="group" aria-label={t(language, 'catalog.filterSubject')} className="flex flex-wrap gap-2">
+        <ChipRow
+          label={t(language, 'catalog.stepSubject')}
+          icon={<Filter size={12} />}
+          groupLabel={t(language, 'catalog.filterSubject')}
+          moreLabel={(n) => t(language, 'catalog.showMore', { count: n })}
+          lessLabel={t(language, 'catalog.showLess')}
+          chips={[
             <FilterChip
+              key="__all__"
               active={!subjectCode}
               label={t(language, 'catalog.allSubjects')}
               count={subjectOptions.reduce((n, s) => n + s.count, 0)}
-              onClick={() => setSubjectCode('')}
-            />
-            {subjectOptions.map((s) => (
+              onClick={() => applyFilter(() => setSubjectCode(''))}
+            />,
+            ...subjectOptions.map((s) => (
               <FilterChip
                 key={s.code}
                 active={subjectCode === s.code}
                 label={s.name}
                 count={s.count}
-                onClick={() => setSubjectCode((cur) => (cur === s.code ? '' : s.code))}
+                onClick={() => applyFilter(() => setSubjectCode((cur) => (cur === s.code ? '' : s.code)))}
               />
-            ))}
-          </div>
-        </div>
+            )),
+          ]}
+        />
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-black/5">
           <p className="text-[13px] font-semibold text-[#083047] pt-3">
@@ -700,6 +764,8 @@ export default function PublicContentCatalog({
           }}
         />
       )}
+
+      <div ref={resultsRef} className="scroll-mt-24" />
 
       {!detail && loading && (
         <div className="flex justify-center py-16">
