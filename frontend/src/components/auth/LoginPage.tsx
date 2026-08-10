@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, AlertCircle, Phone, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
-  isValidPhoneDigits,
   ensureDefaultRoleDemosExist,
+  isValidStaffLogin,
   logoutLocalStaff,
-  normalizePhoneDigits,
+  normalizeStaffLogin,
   normalizeUserRole,
 } from '../../utils/localStaffAuth';
 import {
@@ -60,13 +60,13 @@ export default function LoginPage({ onSwitchToRegister, onWantsHodimQr }: LoginP
       }
       return;
     }
-    const digits = normalizePhoneDigits(phone);
-    if (!isValidPhoneDigits(digits)) {
-      setError(t('auth.phoneRequired'));
+    // Xodim telefon raqami YOKI Xodim ID (tabel raqami) bilan kira oladi.
+    if (!isValidStaffLogin(phone)) {
+      setError(t('auth.staffLoginRequired'));
       return;
     }
     if (isDesktopBrowser()) {
-      const digits = normalizePhoneDigits(phone);
+      const digits = normalizeStaffLogin(phone);
       const users = JSON.parse(localStorage.getItem('salomatlik-local-staff-users-v1') || '[]') as { phoneDigits?: string; role?: string }[];
       const found = users.find((u) => u.phoneDigits === digits);
       if (found && (found.role === 'hodim' || !found.role)) {
@@ -157,16 +157,19 @@ export default function LoginPage({ onSwitchToRegister, onWantsHodimQr }: LoginP
             </div>
           ) : (
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-black/55 uppercase tracking-wide">{t('auth.phoneLabel')}</label>
+              <label className="text-xs font-semibold text-black/55 uppercase tracking-wide">
+                {t('auth.staffLoginLabel')}
+              </label>
               <div className="relative">
                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35" size={18} />
                 <input
-                  type="tel"
-                  autoComplete="tel"
+                  type="text"
+                  inputMode="text"
+                  autoComplete="username"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full rounded-xl border border-black/10 bg-white/70 py-3.5 pl-12 pr-4 text-[15px] font-medium text-black/90 outline-none focus:ring-2 focus:ring-blue-500/40"
-                  placeholder="+998 90 123 45 67"
+                  placeholder={t('auth.staffLoginPlaceholder')}
                 />
               </div>
             </div>

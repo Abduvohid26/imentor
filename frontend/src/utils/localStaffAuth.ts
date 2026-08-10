@@ -218,6 +218,30 @@ export function isValidPhoneDigits(digits: string): boolean {
   return digits.length === 12 && digits.startsWith('998');
 }
 
+/** Xodim ID uzunligi chegarasi — backend `app/core/staff_login.py` bilan bir xil. */
+const MIN_STAFF_ID_LEN = 4;
+const MAX_STAFF_ID_LEN = 32;
+
+/**
+ * Xodim login identifikatorini normallashtiradi.
+ *
+ * Xodim ikki xil identifikator bilan kiradi: telefon raqami (eski, qo'lda
+ * qo'shilgan hisoblar) yoki **Xodim ID** (kadrlar tabel raqami — ommaviy
+ * import qilingan hisoblar). Ikkalasi ham serverda `username` ustunida
+ * saqlanadi, shuning uchun tekshiruv backenddagi bilan bir xil bo'lishi kerak.
+ */
+export function normalizeStaffLogin(input: string): string {
+  const phone = normalizePhoneDigits(input || '');
+  if (isValidPhoneDigits(phone)) return phone;
+  return (input || '').replace(/[^0-9a-z]/gi, '').toUpperCase();
+}
+
+export function isValidStaffLogin(value: string): boolean {
+  const normalized = normalizeStaffLogin(value);
+  if (isValidPhoneDigits(normalized)) return true;
+  return normalized.length >= MIN_STAFF_ID_LEN && normalized.length <= MAX_STAFF_ID_LEN;
+}
+
 export function phoneDigitsToEmail(digits: string): string {
   return `phone_${digits}@local.staff`;
 }

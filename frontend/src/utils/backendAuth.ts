@@ -2,6 +2,7 @@ import {
   establishLocalSessionFromProfile,
   getCurrentLocalUser,
   normalizePhoneDigits,
+  normalizeStaffLogin,
   normalizeUserRole,
   phoneDigitsToEmail,
   registerLocalStaff,
@@ -226,7 +227,9 @@ function buildLocalUserFromBackendLogin(
   bundle: BackendTokenBundle,
   existing?: LocalStaffUser | null,
 ): LocalStaffUser {
-  const digits = normalizePhoneDigits(phoneInput);
+  // Xodim ID bilan kirilganda ham shu qiymat `phoneDigits` maydonida saqlanadi
+  // (u serverdagi `username` bilan bir xil bo'lishi shart).
+  const digits = normalizeStaffLogin(phoneInput);
   const now = Date.now();
   const firstName = existing?.firstName || bundle.first_name || '';
   const lastName = existing?.lastName || bundle.last_name || '';
@@ -269,7 +272,8 @@ export async function loginStaffWithBackendFallback(
   phoneInput: string,
   password: string,
 ): Promise<LocalStaffUser> {
-  const digits = normalizePhoneDigits(phoneInput);
+  // Telefon raqami YOKI Xodim ID — ikkalasi ham serverda `username`.
+  const digits = normalizeStaffLogin(phoneInput);
   try {
     const bundle = await performBackendLocalLogin({
       phone_digits: digits,

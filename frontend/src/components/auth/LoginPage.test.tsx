@@ -52,16 +52,17 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'Xodim' }));
   }
 
-  it('shows phone validation error for incomplete number', async () => {
+  it('shows validation error for too short login', async () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginPage onSwitchToRegister={() => {}} />);
     await switchToStaffLogin(user);
 
-    await user.type(screen.getByPlaceholderText('+998 90 123 45 67'), '123');
+    // 3 belgi — na telefon, na Xodim ID (min 4).
+    await user.type(screen.getByPlaceholderText(/Xodim ID|3442112068/i), '123');
     await user.click(screen.getByRole('button', { name: 'Kirish' }));
 
     expect(
-      screen.getByText("Telefon raqamini to'liq kiriting (masalan: +998 90 111 22 33)."),
+      screen.getByText("Telefon raqamini to'liq kiriting yoki Xodim ID ni yozing."),
     ).toBeInTheDocument();
     expect(loginMock).not.toHaveBeenCalled();
   });
@@ -71,7 +72,7 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage onSwitchToRegister={() => {}} />);
     await switchToStaffLogin(user);
 
-    await user.type(screen.getByPlaceholderText('+998 90 123 45 67'), '+998 90 111 22 33');
+    await user.type(screen.getByPlaceholderText(/Xodim ID|3442112068/i), '+998 90 111 22 33');
     await user.type(screen.getByPlaceholderText(/parol/i), 'StrongPass123');
     await user.click(screen.getByRole('button', { name: 'Kirish' }));
 
@@ -82,13 +83,27 @@ describe('LoginPage', () => {
     expect(syncMock).toHaveBeenCalled();
   });
 
+  it('accepts a staff ID as the login', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<LoginPage onSwitchToRegister={() => {}} />);
+    await switchToStaffLogin(user);
+
+    await user.type(screen.getByPlaceholderText(/Xodim ID|3442112068/i), '3442112068');
+    await user.type(screen.getByPlaceholderText(/parol/i), 'fjsti123');
+    await user.click(screen.getByRole('button', { name: 'Kirish' }));
+
+    await waitFor(() => {
+      expect(loginMock).toHaveBeenCalledWith('3442112068', 'fjsti123');
+    });
+  });
+
   it('shows wrong-credentials message on auth failure', async () => {
     loginMock.mockRejectedValue(new Error('wrong-password'));
     const user = userEvent.setup();
     renderWithProviders(<LoginPage onSwitchToRegister={() => {}} />);
     await switchToStaffLogin(user);
 
-    await user.type(screen.getByPlaceholderText('+998 90 123 45 67'), '+998 90 111 22 33');
+    await user.type(screen.getByPlaceholderText(/Xodim ID|3442112068/i), '+998 90 111 22 33');
     await user.type(screen.getByPlaceholderText(/parol/i), 'bad');
     await user.click(screen.getByRole('button', { name: 'Kirish' }));
 

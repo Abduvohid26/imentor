@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.staff_login import normalize_staff_login
+
 
 class LocalLoginRequest(BaseModel):
-    phone_digits: str = Field(max_length=20)
+    """`phone_digits` — telefon raqami YOKI Xodim ID (ikkalasi ham username)."""
+
+    phone_digits: str = Field(max_length=32)
     password: str = Field(min_length=6, max_length=128)
     role: str | None = None
     first_name: str = ""
@@ -13,11 +17,8 @@ class LocalLoginRequest(BaseModel):
 
     @field_validator("phone_digits")
     @classmethod
-    def _validate_phone(cls, value: str) -> str:
-        digits = "".join(ch for ch in value if ch.isdigit())
-        if len(digits) != 12 or not digits.startswith("998"):
-            raise ValueError("phone_digits must be Uzbekistan 12-digit number.")
-        return digits
+    def _validate_login(cls, value: str) -> str:
+        return normalize_staff_login(value)
 
     @field_validator("role")
     @classmethod

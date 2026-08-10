@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, Plus, Pencil, Trash2, Loader2, AlertCircle, Shield, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { normalizePhoneDigits, type UserRole } from '../../utils/localStaffAuth';
+import { normalizeStaffLogin, type UserRole } from '../../utils/localStaffAuth';
 import {
   fetchStaffDirectory,
   removeStaffMember,
@@ -147,7 +147,8 @@ export default function AdminStaffManagement() {
         setError(t('admin.error.passwordMin'));
         return;
       }
-      const phoneDigits = normalizePhoneDigits(form.phoneDisplay.trim());
+      // Telefon raqami yoki Xodim ID — ikkalasi ham username sifatida saqlanadi.
+      const phoneDigits = normalizeStaffLogin(form.phoneDisplay.trim());
       await upsertStaffMember({
         phone_digits: phoneDigits,
         password: form.password,

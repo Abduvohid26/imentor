@@ -4,12 +4,12 @@ import datetime as dt
 
 from pydantic import BaseModel, field_validator
 
+from app.core.staff_login import normalize_staff_login
+
 
 def _normalize_phone(value: str) -> str:
-    digits = "".join(ch for ch in value if ch.isdigit())
-    if len(digits) != 12 or not digits.startswith("998"):
-        raise ValueError("phone_digits must be Uzbekistan 12-digit number.")
-    return digits
+    """Telefon yoki Xodim ID — ikkalasi ham `auth_user.username`."""
+    return normalize_staff_login(value)
 
 
 class MeOut(BaseModel):
