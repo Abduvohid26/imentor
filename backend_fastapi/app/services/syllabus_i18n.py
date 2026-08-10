@@ -54,6 +54,47 @@ def collect_topic_titles(syllabus) -> list[str]:
     return titles
 
 
+def _parse_translation_list(raw: str) -> list | None:
+    """Model javobidan tarjimalar ro'yxatini ajratib oladi.
+
+    Kutilgani — `{"items": [...]}`. Eski javoblar (va JSON rejimini
+    qo'llab-quvvatlamaydigan modellar) oddiy massiv qaytarishi mumkin,
+    shuning uchun ikkalasi ham qabul qilinadi.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None
+
+    def _from_obj(value) -> list | None:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            for key in ("items", "translations", "result", "data"):
+                inner = value.get(key)
+                if isinstance(inner, list):
+                    return inner
+            # Bitta kalitli obyekt bo'lsa — o'sha qiymatni olamiz.
+            values = list(value.values())
+            if len(values) == 1 and isinstance(values[0], list):
+                return values[0]
+        return None
+
+    try:
+        return _from_obj(json.loads(text))
+    except json.JSONDecodeError:
+        pass
+
+    # Zaxira: matn ichidagi eng tashqi JSON bo'lagini qirqib olamiz.
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start, end = text.find(opener), text.rfind(closer)
+        if start >= 0 and end > start:
+            try:
+                return _from_obj(json.loads(text[start : end + 1]))
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
 def _translate_batch(api_key: str, model: str, items: list[str], target: str) -> dict[str, str]:
     """`items` ni `target` tiliga tarjima qiladi: {asl: tarjima}."""
     if not items:
@@ -72,8 +113,10 @@ def _translate_batch(api_key: str, model: str, items: list[str], target: str) ->
                         "(the same term must be translated the same way everywhere). "
                         "Keep topic codes, numbers, abbreviations and Latin anatomical terms as they are. "
                         "Do NOT add explanations. "
-                        "Input is a JSON array of strings. Return ONLY a JSON array of strings, "
-                        "same length and same order. Do not add numbering or any extra text."
+                        "Input is a JSON array of strings. Return ONLY a JSON object of the form "
+                        '{"items": ["...", "..."]} where "items" has the SAME length and SAME order '
+                        "as the input. Do not add numbering or any extra text. Every double quote "
+                        "inside a title must be escaped so that the JSON stays valid."
                     ),
                 },
                 {"role": "user", "content": payload},
@@ -82,14 +125,16 @@ def _translate_batch(api_key: str, model: str, items: list[str], target: str) ->
             max_tokens=8000,
             temperature=0.1,
             timeout_sec=180,
+            # JSON rejimi: model qaytargan matn har doim to'g'ri JSON bo'ladi.
+            # Ilgari oddiy matn so'ralardi va sarlavha ichidagi qo'shtirnoq
+            # javobni buzib, butun to'plam tarjimasiz qolardi.
+            response_format={"type": "json_object"},
         )
-        text = (raw or "").strip()
-        start, end = text.find("["), text.rfind("]")
-        if start < 0 or end <= start:
-            logger.warning("Tarjima javobida JSON massiv topilmadi (%s)", target)
+        arr = _parse_translation_list(raw or "")
+        if arr is None:
+            logger.warning("Tarjima javobidan JSON ro'yxat o'qib bo'lmadi (%s)", target)
             return {}
-        arr = json.loads(text[start : end + 1])
-        if not isinstance(arr, list) or len(arr) != len(items):
+        if len(arr) != len(items):
             logger.warning(
                 "Tarjima soni mos emas (%s): kutilgan %s, kelgan %s",
                 target,
