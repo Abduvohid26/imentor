@@ -138,11 +138,17 @@ Kafedra / fan / yo‘nalish / mavzu sonlari.
       "code": "fiziologiya",
       "name": "Fiziologiya kafedrasi",
       "sort_order": 1,
-      "subjects_count": 12
+      "subjects_count": 12,
+      "tests_count": 4
     }
   ]
 }
 ```
+
+| Maydon | Ma'nosi |
+|--------|---------|
+| `subjects_count` | Shu kafedra ochilganda **qaytadigan** fanlar soni (mavzusi bor sillabuslar). `.../subjects/` natijasi bilan doim mos. |
+| `tests_count` | Shu kafedrada e'lon qilingan testlar soni. `0` bo'lsa — kafedrani tanlashning ma'nosi yo'q, savol chiqmaydi. |
 
 ### 4.3 `GET /v1/external/catalog/departments/<department_code>/`
 

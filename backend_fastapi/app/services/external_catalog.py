@@ -79,22 +79,89 @@ def filter_external_subjects(stmt, params: dict):
     return stmt
 
 
+def published_test_counts_by_department(db: Session) -> dict[str, int]:
+    """Kafedra kodi → e'lon qilingan testlar soni.
+
+    Test kafedraga uch xil bog'lanishi mumkin, uchalasi ham hisobga olinadi:
+    syllabus orqali; `subject_code` to'g'ridan-to'g'ri kafedra kodi bo'lganda
+    (eski yozuvlar); yoki `kafedra__fan` ko'rinishidagi kod orqali.
+    """
+    from app.models.prepared_content import PreparedContent
+    from app.services import content_catalog as cc
+
+    dept_codes = {
+        code
+        for (code,) in db.execute(
+            select(AcademicDepartment.code).where(AcademicDepartment.is_active.is_(True))
+        ).all()
+        if code
+    }
+    counts: dict[str, int] = {}
+    items = (
+        db.execute(cc.published_catalog_stmt().where(PreparedContent.kind == "test")).scalars().all()
+    )
+    for item in items:
+        code = ""
+        syllabus = item.syllabus
+        if syllabus is not None and syllabus.department is not None:
+            code = (syllabus.department.code or "").strip()
+        if not code:
+            candidates = [(item.subject_code or "").strip()]
+            if syllabus is not None:
+                candidates.append((syllabus.subject_code or "").strip())
+            for raw in candidates:
+                if not raw:
+                    continue
+                if raw in dept_codes:
+                    code = raw
+                    break
+                prefix = raw.split("__", 1)[0].strip() if "__" in raw else ""
+                if prefix and prefix in dept_codes:
+                    code = prefix
+                    break
+        if not code:
+            continue
+        counts[code] = counts.get(code, 0) + 1
+    return counts
+
+
 def external_departments_list(db: Session) -> list[dict]:
-    rows = db.execute(
-        select(
-            AcademicDepartment.code,
-            AcademicDepartment.name,
-            AcademicDepartment.sort_order,
-            func.count(CourseSyllabus.id).filter(CourseSyllabus.is_active.is_(True)).label("subjects_count"),
+    """Kafedralar ro'yxati.
+
+    `subjects_count` — aynan shu kafedra ochilganda QAYTADIGAN fanlar soni
+    (mavzusi bor sillabuslar). Ilgari bu yerda barcha aktiv sillabuslar
+    sanalardi, `.../subjects/` esa mavzusizlarini tashlab yuborardi — natijada
+    "3 fan" deb ko'rsatilgan kafedra ochilganda bo'sh chiqishi mumkin edi.
+
+    `tests_count` — shu kafedrada e'lon qilingan testlar soni. Hamkor UI
+    kafedrani tanlashdan oldin unda umuman test bor-yo'qligini bilishi uchun.
+    """
+    departments = (
+        db.execute(
+            select(AcademicDepartment)
+            .where(AcademicDepartment.is_active.is_(True))
+            .order_by(AcademicDepartment.sort_order, AcademicDepartment.name)
         )
-        .select_from(AcademicDepartment)
-        .join(CourseSyllabus, CourseSyllabus.department_id == AcademicDepartment.id, isouter=True)
-        .where(AcademicDepartment.is_active.is_(True))
-        .group_by(AcademicDepartment.code, AcademicDepartment.name, AcademicDepartment.sort_order)
-        .order_by(AcademicDepartment.sort_order, AcademicDepartment.name)
-    ).all()
+        .scalars()
+        .all()
+    )
+    subjects_with_topics: dict[int, int] = {}
+    for obj in db.execute(active_syllabus_stmt()).scalars().all():
+        if obj.department_id is None:
+            continue
+        if external_catalog_subject_summary(obj)["topics_count"] > 0:
+            subjects_with_topics[obj.department_id] = subjects_with_topics.get(obj.department_id, 0) + 1
+
+    tests_by_dept = published_test_counts_by_department(db)
     return [
-        {"code": r.code, "name": r.name, "sort_order": r.sort_order, "subjects_count": r.subjects_count} for r in rows
+        {
+            "code": d.code,
+            "name": d.name,
+            "sort_order": d.sort_order,
+            "subjects_count": subjects_with_topics.get(d.id, 0),
+            "tests_count": tests_by_dept.get(d.code, 0),
+        }
+        for d in departments
     ]
 
 
