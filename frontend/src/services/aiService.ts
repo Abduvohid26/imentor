@@ -6,7 +6,13 @@ import {
   normalizePresentationContent,
   withPresentationReferences,
 } from '../utils/presentationContentSchema';
-import { qaPresentationContent } from '../utils/presentationQa';
+import { dedupePresentationSlides, qaPresentationContent } from '../utils/presentationQa';
+import {
+  cyrillicCharCount,
+  looksLikeUzbekText,
+  outputLanguageLooksWrong,
+  strictLanguageDirective,
+} from '../utils/outputLanguage';
 import { resolvePresentationImages } from '../utils/presentationImages';
 import {
   extractTopicsByRegex,
@@ -512,7 +518,7 @@ async function generateSingleCaseQuestion(
         'these keys: {"patient","complaints","history","lifestyle","examination","labs",' +
         '"diagnosis","differential","investigations","management","recommendations"}. ' +
         'Har bir kalit alohida, to\'liq yozilgan matn bo\'lsin — qisqartirilgan tezis emas. ' +
-        `Language: ${outLang}. focus="${focus}". ` +
+        `Language: ${outLang}. ${strictLanguageDirective(language)} focus="${focus}". ` +
         (hasContext
           ? 'MANBALAR (raqamlangan) sizga user xabarida berilgan — "answer" matnida HAR bir muhim klinik ' +
             'da\'vodan keyin mos manba raqamini [n] shaklida qo\'ying (masalan "...tavsiya etiladi [2]."). ' +
@@ -561,7 +567,7 @@ async function generateSingleCaseQuestion(
         'shart: umumiy ismlardan (Anvar, Nigora, Shirin, Gulnora, Madina, Iskandar, Odil, Otabek kabi juda ' +
         'ko\'p ishlatiladigan ismlardan) qoching, o\'ziga xos ism tanlang.\n' +
         (hasContext ? `\nMANBALAR:\n${contextText}\n` : '') +
-        (strict ? '\nStrict valid JSON only.' : ''),
+        (strict ? `\nStrict valid JSON only.\n${strictLanguageDirective(language)}` : ''),
       // 11 ta maydon (6 vaziyat + 5 yechim) bitta JSON'ga sig'ishi kerak.
       // 11000 token'da JSON oxiri kesilib, yechim bo'limlari bo'sh qolardi.
       maxTokens: 16000,
@@ -574,6 +580,20 @@ async function generateSingleCaseQuestion(
     raw = await request(false);
   } catch {
     raw = await request(true);
+  }
+
+  // Til nazorati: model so'ralgan til o'rniga o'zbekchani (ko'pincha kirilda)
+  // qaytarsa — bir marta qat'iyroq rejimda qayta so'raymiz.
+  if (outputLanguageLooksWrong(joinCaseSections(raw), language)) {
+    console.warn(`Case focus "${focus}": javob ${language} tilida emas, qayta urinilmoqda`);
+    try {
+      const retry = await request(true);
+      if (!outputLanguageLooksWrong(joinCaseSections(retry), language)) {
+        raw = retry;
+      }
+    } catch (err) {
+      console.warn('Case til bo\'yicha qayta urinish muvaffaqiyatsiz:', err);
+    }
   }
 
   const answer = joinCaseSections(raw);
@@ -818,59 +838,6 @@ function sourcesToMedicalReferences(sources: CaseSource[]): MedicalReference[] {
 
 const ALL_TEST_LANGUAGES: AppLanguage[] = ['uz', 'ru', 'en'];
 
-const UZ_TEXT_MARKERS = [
-  'bemor',
-  'yoshli',
-  'qaysi',
-  'ushbu',
-  'hisoblanadi',
-  'murojaat',
-  'aniqlanadi',
-  'tavsiya',
-  "bo'lib",
-  'shifokorga',
-  'davosida',
-  'maqbul',
-];
-
-/** O'zbek KIRIL matni markerlari — rus tilida uchramaydigan so'z va harflar.
- * Model ba'zan tarjima o'rniga o'zbekchani kirilga transliteratsiya qiladi
- * ("5 ёшли бола терисида қизил тошмалар...") — bu rus tili emas. */
-const UZ_CYRILLIC_MARKERS = [
-  'ёшли',
-  'бўлиб',
-  'бўлган',
-  'қайси',
-  'ушбу',
-  'билан',
-  'ҳисобланади',
-  'терисида',
-  'касаллиги',
-  'аниқланади',
-  'кузатилади',
-  'мустаҳкам',
-  'келди',
-];
-/** Faqat o'zbek kirilida bor harflar (rus alifbosida yo'q): қ ғ ҳ ў */
-const UZ_ONLY_CYRILLIC_LETTERS = /[қҚғҒҳҲўЎ]/;
-
-function looksLikeUzbekText(text: string): boolean {
-  const s = (text || '').toLowerCase();
-  const latin = UZ_TEXT_MARKERS.reduce((n, m) => n + (s.includes(m) ? 1 : 0), 0);
-  if (latin >= 2) return true;
-  if (UZ_ONLY_CYRILLIC_LETTERS.test(s)) return true;
-  return UZ_CYRILLIC_MARKERS.reduce((n, m) => n + (s.includes(m) ? 1 : 0), 0) >= 2;
-}
-
-function cyrillicCharCount(text: string): number {
-  let n = 0;
-  for (const ch of text || '') {
-    const code = ch.charCodeAt(0);
-    if (code >= 0x0400 && code <= 0x04ff) n += 1;
-  }
-  return n;
-}
-
 function toTestSessionContent(session: TestSessionContent): TestSessionContent {
   return {
     topic: session.topic,
@@ -1056,7 +1023,6 @@ async function requestPresentationDeckFromAi(params: {
   onProgress?: (rawTextSoFar: string) => void;
 }): Promise<PresentationContent> {
   assertOpenAiApiKey();
-  const outLang = languageName(params.language);
   const bookContext: BookContext | undefined = params.subjectCode
     ? { subjectCode: params.subjectCode, topicQuery: params.topicTitle }
     : undefined;
@@ -1093,11 +1059,16 @@ async function requestPresentationDeckFromAi(params: {
     'comparison_table yoki process_flow, case_study, image_focus, summary — aralashtir, ketma-ket bir xil bo\'lmasin. ' +
     'content_bullets / image_focus / case_study / two_column uchun image_query MAJBURIY ' +
     '(inglizcha tibbiy anatomiya/diagramma kalit so\'zi, masalan "human skin layers epidermis dermis diagram"). ' +
-    'summary (xulosa) slaydi FAQAT BITTA va ENG OXIRGI slayd bo\'lsin — o\'rtada xulosa yaratmang. '
+    'summary (xulosa) slaydi FAQAT BITTA va ENG OXIRGI slayd bo\'lsin — o\'rtada xulosa yaratmang. ' +
     'summary bulletlari "Sarlavha: tushuntirish" formatida bo\'lsin. ' +
     'ADABIYOTLAR/MANBALAR SLAYDI KERAK EMAS — references yoki "Foydalanilgan adabiyotlar" ' +
     'slaydini umuman yaratmang va matn ichida havola/iqtibos yozmang. ' +
-    `Til: ${outLang}. ` +
+    'HAR BIR SLAYD NOYOB bo\'lsin: bir xil sarlavhani yoki bir xil bulletlarni ikkinchi ' +
+    'marta qaytarmang, oldingi slaydni boshqacha so\'z bilan takrorlamang — har slayd ' +
+    'ma\'ruzaning YANGI qismini yoritsin. ' +
+    `${strictLanguageDirective(params.language)} Bu qoida butun JSON'ga tegishli: ` +
+    'presentation_title, sarlavhalar, bulletlar, speaker_notes. ' +
+    'image_query esa har doim inglizcha qoladi. ' +
     (bookContext
       ? 'Darslik parchalari qo\'shimcha kontekst; o\'ylab topilgan manba yozma.'
       : "O'ylab topilgan manba/havola qo'shma.");
@@ -1157,6 +1128,9 @@ async function requestPresentationDeckFromAi(params: {
     ...content,
     slides: content.slides.filter((s) => s.slide_type !== 'references'),
   };
+  // Takroriy slaydlarni olib tashlaymiz — model uzun matnda bir slaydni
+  // bir necha marta qaytarishi mumkin.
+  content = dedupePresentationSlides(content);
   qaPresentationContent(content);
   params.onProgress?.('Rasmlar…');
   content = await resolvePresentationImages(content);
@@ -1300,7 +1274,7 @@ export const aiService = {
           `${requestedCount} ta test JSON: ` +
           `{topic, references:[], questions:[{question, options[5], correctOptionIndex, explanation, references:[]}]}. ` +
           'explanation — 1–2 qisqa gap (nega to\'g\'ri). optionExplanations YOZMANG. ' +
-          `Til: ${outLang}.`,
+          `Til: ${outLang}. ${strictLanguageDirective(language)}`,
         user:
           `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 1–2 gap, 5 ta variant. ` +
           'explanation qisqa. Faqat valid JSON.',
@@ -1396,7 +1370,7 @@ export const aiService = {
               'belgilarini haqiqiy nom/raqam bilan almashtiring, "kitob nomi"/"sahifa-bet" so\'zlarini ' +
               'o\'zgarishsiz qoldirmang; aniq bilmasangiz manba qatorini butunlay tashlab keting.'
             : 'Tashqi havola yoki o\'ylab topilgan manba qo\'shmang.'
-          ) + ` ${textReferencesRule(Boolean(bookContext), language)} Til: ${outLang}.`,
+          ) + ` ${textReferencesRule(Boolean(bookContext), language)} Til: ${outLang}. ${strictLanguageDirective(language)}`,
         user:
           `Mavzu: "${topic}". Qo'shimcha: ${description || '—'}. ` +
           'UZUN va BATAFSIL ma\'ruza matni yozing — qisqa xulosa yoki tezislar emas. ' +

@@ -72,6 +72,69 @@ export function qaPresentationContent(content: PresentationContent): Presentatio
   return issues;
 }
 
+function normalizeForCompare(text: string): string {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/** Slaydning mazmun "barmoq izi" — sarlavha + bulletlar + asosiy matn. */
+function slideFingerprint(slide: PresentationContent['slides'][number]): string {
+  const body = slide.body || {};
+  const parts = [
+    slide.title,
+    slide.subtitle || '',
+    ...(body.bullets || []),
+    body.key_stat ? `${body.key_stat.number} ${body.key_stat.label}` : '',
+    body.quote_text || '',
+    ...(body.process_steps || []).map((s) => `${s.label} ${s.description}`),
+  ];
+  return normalizeForCompare(parts.join(' | '));
+}
+
+/**
+ * Takrorlangan slaydlarni olib tashlaydi.
+ *
+ * Model uzun ma'ruzani slaydlarga bo'lganda ba'zan bir xil slaydni bir necha
+ * marta qaytaradi — taqdimotda bir sahifa qayta-qayta ko'rinadi. Birinchi
+ * nusxa saqlanadi, qolganlari tashlanadi. Xulosa (summary) slaydi esa faqat
+ * bitta va eng oxirida bo'ladi.
+ */
+export function dedupePresentationSlides(content: PresentationContent): PresentationContent {
+  const seen = new Set<string>();
+  const kept: PresentationContent['slides'] = [];
+  const dropped: number[] = [];
+
+  content.slides.forEach((slide, idx) => {
+    const fp = slideFingerprint(slide);
+    // Mazmuni bo'sh slaydlar (masalan title) barmoq izi bo'yicha tekshirilmaydi.
+    if (fp && seen.has(fp)) {
+      dropped.push(idx + 1);
+      return;
+    }
+    if (fp) seen.add(fp);
+    kept.push(slide);
+  });
+
+  // Xulosa slaydi: oxirgisini qoldirib, qolganlarini olib tashlaymiz.
+  const summaryIdxs = kept
+    .map((s, i) => (s.slide_type === 'summary' ? i : -1))
+    .filter((i) => i >= 0);
+  let slides = kept;
+  if (summaryIdxs.length > 0) {
+    const lastSummaryIdx = summaryIdxs[summaryIdxs.length - 1];
+    const summary = kept[lastSummaryIdx];
+    slides = kept.filter((s) => s.slide_type !== 'summary');
+    slides.push(summary);
+  }
+
+  if (dropped.length) {
+    console.warn('[presentationQa] takroriy slaydlar olib tashlandi:', dropped);
+  }
+  return { ...content, slides };
+}
+
 /** Matn uzunligiga qarab shrift o'lchamini kichraytirish */
 export function autofitFontSize(
   text: string,

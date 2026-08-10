@@ -280,6 +280,8 @@ export default function PresentationMaterials() {
       return;
     }
 
+    if (!globalTopic) return;
+
     setHistoryBusyId(summary.id);
     try {
       const raw = await loadPreparedByIdSynced<unknown>('presentation', summary.id);
@@ -295,12 +297,22 @@ export default function PresentationMaterials() {
           variantLabel: globalTopic?.variantLabel,
         },
       });
-      const url = URL.createObjectURL(file);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file.name;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Bazadagi yozuvga hali fayl biriktirilmagan bo'lsa — yuklab OLMAYMIZ,
+      // balki serverga qo'yamiz va shu sahifada ko'rish oynasini ochamiz.
+      const shortTopic =
+        [globalTopic.id, globalTopic.title].filter(Boolean).join(' — ').slice(0, 240) ||
+        summary.topic;
+      await uploadPresentation({
+        topic: shortTopic,
+        file,
+        title: (deck.presentation_title || shortTopic).slice(0, 240),
+        context: globalTopic,
+      });
+      const rows = await fetchPresentationsForTopic(globalTopic);
+      setItems(rows);
+      const newIdx = rows.findIndex((r) => r.file_name === file.name);
+      setShowHistory(false);
+      setLightboxIndex(newIdx >= 0 ? newIdx : 0);
     } finally {
       setHistoryBusyId(null);
     }
