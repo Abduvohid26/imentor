@@ -223,6 +223,8 @@ export type StudentMySubmissionRow = {
   topic: string;
   subjectCode: string;
   subjectName: string;
+  /** Fan biriktirilgan kafedra (bo'sh bo'lishi mumkin). */
+  department: string;
   firstName: string;
   lastName: string;
   answers: number[];
@@ -243,6 +245,7 @@ export async function fetchMyLiveTestSubmissions(): Promise<StudentMySubmissionR
       topic: string;
       subject_code?: string;
       subject_name?: string;
+      department?: string;
       first_name: string;
       last_name: string;
       answers: number[];
@@ -262,6 +265,7 @@ export async function fetchMyLiveTestSubmissions(): Promise<StudentMySubmissionR
     topic: r.topic || '',
     subjectCode: r.subject_code || '',
     subjectName: r.subject_name || '',
+    department: r.department || '',
     firstName: r.first_name,
     lastName: r.last_name,
     answers: Array.isArray(r.answers) ? r.answers : [],

@@ -8,6 +8,7 @@ import {
   ClipboardList,
   FileText,
   Presentation,
+  Youtube,
   Sparkles,
   Users,
   X,
@@ -59,6 +60,7 @@ const ICON_COLORS = {
   cyan: { bg: 'bg-cyan-100', text: 'text-cyan-600', ring: 'ring-cyan-200' },
   amber: { bg: 'bg-amber-100', text: 'text-amber-600', ring: 'ring-amber-200' },
   indigo: { bg: 'bg-indigo-100', text: 'text-indigo-600', ring: 'ring-indigo-200' },
+  rose: { bg: 'bg-rose-100', text: 'text-rose-600', ring: 'ring-rose-200' },
 } as const;
 
 function FeatureCard({
@@ -146,6 +148,7 @@ export default function PublicLandingPage({
     { icon: BriefcaseMedical, titleKey: 'publicLanding.featureCases' as const, descKey: 'publicLanding.featureCasesDesc' as const, color: 'emerald' as const },
     { icon: ClipboardList, titleKey: 'publicLanding.featureTests' as const, descKey: 'publicLanding.featureTestsDesc' as const, color: 'violet' as const },
     { icon: Presentation, titleKey: 'publicLanding.featurePresentation' as const, descKey: 'publicLanding.featurePresentationDesc' as const, color: 'orange' as const },
+    { icon: Youtube, titleKey: 'publicLanding.featureVideos' as const, descKey: 'publicLanding.featureVideosDesc' as const, color: 'rose' as const },
   ];
 
   const steps = [

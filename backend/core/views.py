@@ -822,22 +822,26 @@ class LiveTestMySubmissionsView(APIView):
             .order_by('-submitted_at')[:100]
         )
         codes = {r.session.subject_code for r in rows if r.session.subject_code}
-        subject_names = dict(
-            CourseSyllabus.objects.filter(subject_code__in=codes).values_list('subject_code', 'subject_name')
-        )
+        # Fan -> (nom, kafedra) — talaba natijalarini kafedra kesimida ham ko'rsatish uchun.
+        subjects = {
+            syl.subject_code: (syl.subject_name, syl.department.name if syl.department else '')
+            for syl in CourseSyllabus.objects.filter(subject_code__in=codes).select_related('department')
+        }
         data = []
         for s in rows:
             payload = s.session.payload if isinstance(s.session.payload, dict) else {}
             questions = payload.get('questions', [])
             correct, total = _score_submission(questions if isinstance(questions, list) else [], s.answers)
             subject_code = s.session.subject_code or ''
+            subject_name, department = subjects.get(subject_code, ('', ''))
             data.append(
                 {
                     'id': s.id,
                     'session_key': s.session.session_key,
                     'topic': str(payload.get('topic') or ''),
                     'subject_code': subject_code,
-                    'subject_name': subject_names.get(subject_code, ''),
+                    'subject_name': subject_name,
+                    'department': department,
                     'first_name': s.first_name,
                     'last_name': s.last_name,
                     'answers': s.answers,
