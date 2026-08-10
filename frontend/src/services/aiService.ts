@@ -642,7 +642,11 @@ async function generateSingleCaseQuestion(
   };
 }
 
-function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudySession {
+function normalizeCaseSession(
+  topic: string,
+  data: CaseStudySession,
+  language: AppLanguage = 'uz',
+): CaseStudySession {
   const rawQuestions = [...(data.questions || [])].slice(0, 3);
   while (rawQuestions.length < 3) {
     const focus = CASE_STUDY_FOCUS_ORDER[rawQuestions.length];
@@ -652,18 +656,12 @@ function normalizeCaseSession(topic: string, data: CaseStudySession): CaseStudyS
   const cleanedQuestions = rawQuestions.map((q, i) => {
       const scenario = (q.scenario || '').trim();
       const answer = (q.answer || '').trim();
-      const fallbackScenario = [
-        `Klinik vaziyat ${i + 1}: ${topic} bo'yicha murakkab holat.`,
-        "Bemorning asosiy shikoyatlari, anamnezi va xavf omillari batafsil tahlil qilinadi.",
-        "Ko'rik topilmalari hamda laborator/instrumental natijalar asosida diagnostik qaror talab etiladi.",
-      ].join(' ');
-      const fallbackAnswer = [
-        "Bosqichma-bosqich yondashuv: (1) birlamchi baholash va xavfni stratifikatsiya qilish;",
-        "(2) differensial diagnostikani klinik dalillar bilan toraytirish;",
-        "(3) asosiy tashxisni asoslash;",
-        "(4) dalillarga asoslangan davolash rejasi va monitoring;",
-        "(5) bemor xavfsizligi hamda keyingi kuzatuv rejasi.",
-      ].join(' ');
+      // Zaxira matn ham interfeys tilida bo'lsin.
+      const fallbackScenario = translate(language, 'case.fallbackScenario', {
+        n: String(i + 1),
+        topic,
+      });
+      const fallbackAnswer = translate(language, 'case.fallbackAnswer');
       const focus = normalizeCaseFocus((q as CaseStudyQuestion).focus, i);
       const refs = (q as CaseStudyQuestion).references;
       return {
@@ -1117,7 +1115,7 @@ async function requestPresentationDeckFromAi(params: {
     'slides[].slide_type, title, subtitle, body{bullets,key_stat,stats,columns,comparison_rows,process_steps,quote_text,quote_author}, ' +
     'image_query, speaker_notes. Ishlatilmagan body maydonlari bo\'sh string/array.';
 
-  params.onProgress?.('Kontent generatsiya…');
+  params.onProgress?.(translate(params.language, 'ai.progress.content'));
 
   const responseFormat = {
     type: 'json_schema',
@@ -1149,7 +1147,7 @@ async function requestPresentationDeckFromAi(params: {
     });
   }
 
-  params.onProgress?.('Kontent normalizatsiya…');
+  params.onProgress?.(translate(params.language, 'ai.progress.normalize'));
   let content = normalizePresentationContent(raw, {
     title: fallbackTitle,
     subject: params.subjectName,
@@ -1165,7 +1163,7 @@ async function requestPresentationDeckFromAi(params: {
   // bir necha marta qaytarishi mumkin.
   content = dedupePresentationSlides(content);
   qaPresentationContent(content);
-  params.onProgress?.('Rasmlar…');
+  params.onProgress?.(translate(params.language, 'ai.progress.images'));
   content = await resolvePresentationImages(content);
   return content;
 }
@@ -1262,7 +1260,7 @@ export const aiService = {
         questions,
         references: [],
       };
-      const normalized = normalizeCaseSession(topic, data);
+      const normalized = normalizeCaseSession(topic, data, language);
       return keywords.length ? { ...normalized, keywords } : normalized;
     } catch (error) {
       console.error("Case study generation failed:", error);
@@ -1322,11 +1320,26 @@ export const aiService = {
       return normalizeTestSession(topic, parsed, requestedCount, bookReferences);
     };
 
+    /** Savol matnlari so'ralgan tilda ekanini tekshiradi. */
+    const sessionLanguageWrong = (s: TestSession): boolean =>
+      outputLanguageLooksWrong((s.questions || []).map((q) => q.question).join(' '), language);
+
     try {
       let data = await generate(safeCount);
       // Faqat juda buzilgan bo‘lsa qayta urin (kam savol) — weak sifat uchun ikkinchi to‘liq generate yo‘q
       if (!data.questions?.length || data.questions.length < Math.min(6, safeCount)) {
         data = await generate(Math.min(safeCount, 10));
+      }
+      // Til nazorati: model boshqa tilda (ko'pincha kirilcha o'zbekchada)
+      // qaytarsa — bir marta qayta so'raymiz.
+      if (sessionLanguageWrong(data)) {
+        console.warn(`Test ${language} tilida emas, qayta urinilmoqda`);
+        try {
+          const retry = await generate(safeCount);
+          if (retry.questions?.length && !sessionLanguageWrong(retry)) data = retry;
+        } catch (err) {
+          console.warn('Test tili bo\'yicha qayta urinish muvaffaqiyatsiz:', err);
+        }
       }
       return { ...normalizeTestSession(topic, data, safeCount), primaryLanguage: language };
     } catch (error) {
@@ -1387,7 +1400,7 @@ export const aiService = {
       assertOpenAiApiKey();
       const outLang = languageName(language);
       const bookContext: BookContext | undefined = subjectCode ? { subjectCode, topicQuery: topic } : undefined;
-      const content = await openaiTextStream({
+      const requestLecture = () => openaiTextStream({
         model: OPENAI_CHAT,
         system: `${SYS_MEDICAL} Ma'ruza faqat Markdown. HAJM: qisqa konspekt EMAS — real 60-90 daqiqalik ` +
           'universitet ma\'ruzasi (taxminan 3500-6000 so\'z yoki undan ko\'p). ' +
@@ -1417,6 +1430,19 @@ export const aiService = {
         bookContext,
         onDelta: onProgress ?? (() => {}),
       });
+
+      let content = await requestLecture();
+      // Til nazorati: model so'ralgan til o'rniga o'zbekchani (ko'pincha kirilda)
+      // qaytarsa — bir marta qayta so'raymiz.
+      if (outputLanguageLooksWrong(content || '', language)) {
+        console.warn(`Ma'ruza matni ${language} tilida emas, qayta urinilmoqda`);
+        try {
+          const retry = await requestLecture();
+          if (!outputLanguageLooksWrong(retry || '', language)) content = retry;
+        } catch (err) {
+          console.warn('Ma\'ruza tili bo\'yicha qayta urinish muvaffaqiyatsiz:', err);
+        }
+      }
 
       return {
         topic: topic,

@@ -1,4 +1,6 @@
 import { HttpError } from '../api/httpClient';
+import type { AppLanguage } from '../i18n/language';
+import { translate } from '../i18n/translations';
 
 /** API / AI xatolaridan foydalanuvchiga ko‘rinadigan qisqa matn. */
 function formatDrfBody(body: unknown): string | null {
@@ -21,24 +23,21 @@ function formatDrfBody(body: unknown): string | null {
   return fieldMsgs.length ? fieldMsgs.join(' ') : null;
 }
 
-export function apiErrorMessage(err: unknown, fallback: string): string {
+/**
+ * @param lang Xabar foydalanuvchi tilida chiqishi uchun — berilmasa o'zbekcha.
+ */
+export function apiErrorMessage(err: unknown, fallback: string, lang: AppLanguage = 'uz'): string {
   if (err instanceof HttpError) {
     const fromBody = formatDrfBody(err.body);
     if (fromBody) return fromBody;
-    if (err.status === 503) {
-      return 'OpenAI kaliti serverda sozlanmagan. Administrator bilan bog\'laning.';
-    }
-    if (err.status === 504) {
-      return 'AI javob berish vaqti tugadi. Biroz kutib qayta urinib ko\'ring.';
-    }
-    if (err.status === 502) {
-      return 'AI xizmati vaqtincha ishlamayapti. Celery worker va OPENAI kalitini tekshiring.';
-    }
+    if (err.status === 503) return translate(lang, 'api.error.openaiKey');
+    if (err.status === 504) return translate(lang, 'api.error.timeout');
+    if (err.status === 502) return translate(lang, 'api.error.unavailable');
     if (err.message?.trim()) return err.message.trim();
   }
   if (err instanceof Error) {
     const msg = err.message.trim();
-    if (msg === 'no-backend-token') return 'Tizimga qayta kiring.';
+    if (msg === 'no-backend-token') return translate(lang, 'api.error.reauth');
     if (msg) return msg;
   }
   return fallback;

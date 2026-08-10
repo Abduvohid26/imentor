@@ -79,18 +79,28 @@ function languageName(lang: AppLanguage): string {
   return 'Uzbek';
 }
 
-/** Modelga chiqish tilini qat'iy belgilaydigan promptga qo'shiladigan ko'rsatma. */
+/**
+ * Modelga chiqish tilini qat'iy belgilaydigan, promptga qo'shiladigan ko'rsatma.
+ *
+ * ATAYLAB INGLIZCHA: ko'rsatmaning o'zi o'zbekcha bo'lsa, model javobni ham
+ * o'zbekchaga tortadi. Shu sababli bu yerda o'zbekcha misol ham keltirilmaydi.
+ */
 export function strictLanguageDirective(targetLang: AppLanguage): string {
+  const name = languageName(targetLang);
   const base =
-    `MAJBURIY TIL: butun javob TO'LIQ ${languageName(targetLang)} tilida bo'lsin. ` +
-    'Boshqa tildagi jumla qoldirmang va so\'zlarni boshqa alifboga TRANSLITERATSIYA qilmang. ';
+    `LANGUAGE REQUIREMENT: write the ENTIRE output in ${name}. ` +
+    'Do not leave any sentence in another language, and never transliterate words ' +
+    'from one language into another alphabet. ';
   if (targetLang === 'ru') {
     return (
       base +
-      'Bu HAQIQIY rus tibbiy tili bo\'lsin ("Пациентка Лайло, 28 лет, обратилась в клинику…"), ' +
-      'kirilcha yozilgan o\'zbek tili EMAS ("Беморнинг исми Лайло, 28 ёшда…"). ' +
-      'Matnda қ, ғ, ҳ, ў harflari uchramasin.'
+      'The output must be genuine Russian medical prose as a Russian physician would write it. ' +
+      'Writing Uzbek words in Cyrillic letters is NOT Russian and is forbidden; ' +
+      'the letters қ, ғ, ҳ, ў must never appear.'
     );
+  }
+  if (targetLang === 'uz') {
+    return base + 'Use the Latin Uzbek alphabet; do not use Cyrillic letters.';
   }
   return base;
 }

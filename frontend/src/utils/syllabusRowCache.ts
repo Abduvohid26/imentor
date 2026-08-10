@@ -1,3 +1,4 @@
+import type { AppLanguage } from '../i18n/language';
 import type { CourseSyllabusRow } from './syllabusApi';
 
 /**
@@ -36,6 +37,24 @@ export function cacheSyllabusRows(list: CourseSyllabusRow[]): void {
 export function getCachedSyllabusRow(id: number | null | undefined): CourseSyllabusRow | null {
   if (id == null) return null;
   return rows.get(id) ?? null;
+}
+
+/**
+ * Sillabus ID'si noma'lum bo'lganda mavzu sarlavhasini tarjima qiladi.
+ *
+ * "Baza" ro'yxatida faqat asl sarlavha saqlanadi (u qidiruv kaliti), qaysi
+ * sillabusdan ekani esa yozilmaydi — shuning uchun keshdagi barcha qatorlar
+ * bo'ylab shu sarlavha tarjimasi qidiriladi.
+ */
+export function localizedTitleFromCache(title: string, lang: AppLanguage): string {
+  const original = (title || '').trim();
+  if (!original) return title;
+  for (const row of rows.values()) {
+    if ((row.instruction_language || 'uz') === lang) continue;
+    const hit = row.topics_i18n?.[lang]?.[original];
+    if (hit && hit.trim()) return hit.trim();
+  }
+  return title;
 }
 
 export function subscribeSyllabusRows(listener: () => void): () => void {

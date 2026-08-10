@@ -190,7 +190,7 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
             <div className="text-center text-white space-y-3">
               <Loader2 className="animate-spin mx-auto" size={40} />
               {item.kind !== 'pdf' ? (
-                <p className="text-[13px] text-white/70">PPTX ochilmoqda…</p>
+                <p className="text-[13px] text-white/70">{t('presentation.openingPptx')}</p>
               ) : null}
             </div>
           ) : previewUrl ? (
@@ -366,7 +366,7 @@ export default function PresentationMaterials() {
       await uploadPresentation({ topic: topicTitle, file, context: globalTopic });
       await loadItems();
     } catch (e) {
-      setError(apiErrorMessage(e, t('presentation.errorUpload')));
+      setError(apiErrorMessage(e, t('presentation.errorUpload'), language));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -446,13 +446,21 @@ export default function PresentationMaterials() {
         );
         // Muvaffaqiyat xabari saqlangandan KEYIN — aks holda saqlash
         // yiqilganda ham "tayyor" deb ko'rsatilardi.
-        pushAppNotification({ title: t('common.doneTitle'), body: t('presentation.readyToast'), level: 'success' });
+        pushAppNotification({
+          title: t('common.doneTitle'),
+          body: t('presentation.readyToast'),
+          titleKey: 'common.doneTitle',
+          bodyKey: 'presentation.readyToast',
+          level: 'success',
+        });
         refreshDeckHistory();
       } catch (histErr) {
         console.warn('Presentation history save skipped:', histErr);
         pushAppNotification({
           title: t('common.doneTitle'),
           body: t('common.saveFailedKeepWork'),
+          titleKey: 'common.doneTitle',
+          bodyKey: 'common.saveFailedKeepWork',
           level: 'warning',
         });
       }
@@ -466,7 +474,7 @@ export default function PresentationMaterials() {
       });
       await loadItems();
     } catch (e) {
-      const detail = apiErrorMessage(e, t('presentation.errorAiHint'));
+      const detail = apiErrorMessage(e, t('presentation.errorAiHint'), language);
       setError(`${t('presentation.errorAi')} ${detail}`);
     } finally {
       setAiLoading(false);

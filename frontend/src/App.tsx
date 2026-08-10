@@ -53,7 +53,7 @@ import {
   setAppLanguage as persistAppLanguage,
   languageLabel,
 } from './i18n/language';
-import { navLabel, navMobileLabel, roleLabel, translate } from './i18n/translations';
+import { navLabel, navMobileLabel, roleLabel, translate, type UiTextKey } from './i18n/translations';
 import { type AppNotificationEventDetail } from './utils/notifications';
 import AppToastHost from './components/AppToastHost';
 import { isPublicStudentTestUrl } from './utils/liveTestApi';
@@ -225,6 +225,9 @@ type AppNotification = {
   createdAt: number;
   read: boolean;
   level?: 'info' | 'success' | 'warning' | 'error';
+  /** Tarjima kalitlari — bo'lsa, tarix JORIY tilda ko'rsatiladi. */
+  titleKey?: UiTextKey;
+  bodyKey?: UiTextKey;
 };
 
 const NOTIFICATIONS_STORAGE_KEY = 'imentor-notifications-v1';
@@ -315,14 +318,16 @@ export default function App() {
     setLatestLectureContent(topicNorm ? readLectureForTopic(topicNorm) : '');
   }, [selectedTopic]);
 
-  const addNotification = useCallback((title: string, body: string, level: AppNotification['level'] = 'info') => {
+  const addNotification = useCallback((detail: AppNotificationEventDetail) => {
     const next: AppNotification = {
       id: `ntf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      title,
-      body,
+      title: detail.title,
+      body: detail.body,
       createdAt: Date.now(),
       read: false,
-      level,
+      level: detail.level ?? 'info',
+      ...(detail.titleKey ? { titleKey: detail.titleKey } : {}),
+      ...(detail.bodyKey ? { bodyKey: detail.bodyKey } : {}),
     };
     setNotifications((prev) => [next, ...prev].slice(0, 80));
   }, []);
@@ -348,7 +353,7 @@ export default function App() {
       const custom = event as CustomEvent<AppNotificationEventDetail>;
       const detail = custom.detail;
       if (!detail?.title || !detail?.body) return;
-      addNotification(detail.title, detail.body, detail.level);
+      addNotification(detail);
     };
     window.addEventListener('app:notify', onNotify as EventListener);
     return () => window.removeEventListener('app:notify', onNotify as EventListener);
@@ -388,13 +393,15 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    addNotification(
-      translate(language, 'shell.welcomeTitle'),
-      translate(language, 'shell.welcomeBody', {
+    addNotification({
+      title: translate(language, 'shell.welcomeTitle'),
+      // Ism ichida bo'lgani uchun kalit bilan qayta tarjima qilinmaydi.
+      body: translate(language, 'shell.welcomeBody', {
         name: user.displayName || translate(language, 'shell.staffDefaultName'),
       }),
-      'success',
-    );
+      titleKey: 'shell.welcomeTitle',
+      level: 'success',
+    });
   }, [user?.uid, user?.displayName, addNotification]);
 
   /** Kirishdan keyin JWT ni yangilash, server roli va profil rasmini sinxronlash */
@@ -494,14 +501,16 @@ export default function App() {
   const handleSelectTopic = (topic: SyllabusTopicContext) => {
     setSelectedTopic(topic);
     persistSelectedTopic(topic);
-    addNotification(
-      translate(language, 'shell.topicSelectedTitle'),
-      translate(language, 'shell.topicSelectedBody', {
+    addNotification({
+      title: translate(language, 'shell.topicSelectedTitle'),
+      // Mavzu nomi ichida — kalit bilan qayta tarjima qilinmaydi.
+      body: translate(language, 'shell.topicSelectedBody', {
         subject: topic.subjectName,
         id: topic.id,
         title: topic.title,
       }),
-    );
+      titleKey: 'shell.topicSelectedTitle',
+    });
   };
 
   const handleClearTopic = useCallback(() => {
@@ -847,8 +856,12 @@ export default function App() {
                       <div className="flex items-start gap-2">
                         {!n.read && <span className="mt-1.5 w-2 h-2 rounded-full bg-blue-500 shrink-0" />}
                         <div className="min-w-0">
-                          <p className="text-[12px] font-semibold text-black/80">{n.title}</p>
-                          <p className="text-[12px] text-black/60 mt-0.5 break-words">{n.body}</p>
+                          <p className="text-[12px] font-semibold text-black/80">
+                            {n.titleKey ? translate(language, n.titleKey) : n.title}
+                          </p>
+                          <p className="text-[12px] text-black/60 mt-0.5 break-words">
+                            {n.bodyKey ? translate(language, n.bodyKey) : n.body}
+                          </p>
                           <p className="text-[10px] text-black/35 mt-1">
                             {new Date(n.createdAt).toLocaleString(localeForLanguage(language))}
                           </p>

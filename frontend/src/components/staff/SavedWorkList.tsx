@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Trash2, User } from 'lucide-react';
 import type { PreparedContentSummary } from '../../utils/preparedContentStore';
 import { useUiText } from '../../i18n/useUiText';
+import { localizedTitleFromCache, subscribeSyllabusRows } from '../../utils/syllabusRowCache';
 
 const PAGE_SIZE = 20;
 
@@ -27,14 +28,18 @@ export default function SavedWorkList({
   onDelete?: (id: string) => void;
   emptyText?: string;
 }) {
-  const { t, locale } = useUiText();
+  const { t, locale, language } = useUiText();
   const [page, setPage] = useState(0);
+  // Sillabus keshi kechroq to'lsa, ro'yxat qayta chizilsin.
+  const [cacheTick, setCacheTick] = useState(0);
+  useEffect(() => subscribeSyllabusRows(() => setCacheTick((n) => n + 1)), []);
 
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
   const visible = useMemo(
     () => items.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
-    [items, safePage],
+    // `cacheTick` — sillabus keshi to'lganda sarlavhalar tarjimasi yangilansin.
+    [items, safePage, cacheTick],
   );
 
   if (!items.length) {
@@ -81,7 +86,7 @@ export default function SavedWorkList({
                     active ? 'text-blue-800' : 'text-black/85'
                   }`}
                 >
-                  {item.topic}
+                  {localizedTitleFromCache(item.topic, language)}
                 </p>
                 <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-black/50">
                   <span className="inline-flex items-center gap-1">

@@ -139,7 +139,13 @@ export default function CaseStudies() {
       applySession(data, null);
       try {
         await savePreparedContent('case', currentTopic, data, buildPreparedContentMeta(globalTopic));
-        pushAppNotification({ title: t('common.doneTitle'), body: t('case.readyToast'), level: 'success' });
+        pushAppNotification({
+          title: t('common.doneTitle'),
+          body: t('case.readyToast'),
+          titleKey: 'common.doneTitle',
+          bodyKey: 'case.readyToast',
+          level: 'success',
+        });
         const list = await listPreparedForTopicSynced('case', globalTopic ?? currentTopic);
         setVersions(list);
         applySession(data, list[0]?.id ?? null);

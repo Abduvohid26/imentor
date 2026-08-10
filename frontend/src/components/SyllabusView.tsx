@@ -105,6 +105,8 @@ export default function SyllabusView({
         pushAppNotification({
           title: t('common.doneTitle'),
           body: t('syllabus.translated'),
+          titleKey: 'common.doneTitle',
+          bodyKey: 'syllabus.translated',
           level: 'success',
         });
       }

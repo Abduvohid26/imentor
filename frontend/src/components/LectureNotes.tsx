@@ -145,7 +145,13 @@ export default function LectureNotes() {
       // foydalanuvchi tayyor matnni yo'qotdim deb o'ylaydi.
       try {
         await savePreparedContent('lecture', topic, data, buildPreparedContentMeta(globalTopic));
-        pushAppNotification({ title: t('common.doneTitle'), body: t('lecture.readyToast'), level: 'success' });
+        pushAppNotification({
+          title: t('common.doneTitle'),
+          body: t('lecture.readyToast'),
+          titleKey: 'common.doneTitle',
+          bodyKey: 'lecture.readyToast',
+          level: 'success',
+        });
         refreshHistory();
       } catch (saveErr) {
         console.error('Lecture save failed', saveErr);

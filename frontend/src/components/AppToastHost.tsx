@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { AppNotificationEventDetail, AppNotificationLevel } from '../utils/notifications';
+import { useUiText } from '../i18n/useUiText';
 
 /** Alert ekranda shuncha turadi, keyin o'zi yo'qoladi. */
 export const TOAST_TIMEOUT_MS = 5_000;
@@ -39,6 +40,7 @@ const STYLES: Record<AppNotificationLevel, { box: string; icon: typeof Info; ico
  * xabarni o'qib ulgurmay yo'qolib qolmasin.
  */
 export default function AppToastHost() {
+  const { t } = useUiText();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timers = useRef<Map<string, { id: number; endsAt: number }>>(new Map());
 
@@ -118,11 +120,15 @@ export default function AppToastHost() {
               <div className="flex items-start gap-2.5 p-3.5">
                 <Icon size={18} className={`mt-0.5 shrink-0 ${style.iconColor}`} />
                 <div className="min-w-0 flex-1">
-                  {toast.title && (
-                    <p className="text-[13.5px] font-bold leading-snug text-black/85">{toast.title}</p>
+                  {(toast.titleKey || toast.title) && (
+                    <p className="text-[13.5px] font-bold leading-snug text-black/85">
+                      {toast.titleKey ? t(toast.titleKey) : toast.title}
+                    </p>
                   )}
-                  {toast.body && (
-                    <p className="mt-0.5 text-[13px] leading-relaxed text-black/60">{toast.body}</p>
+                  {(toast.bodyKey || toast.body) && (
+                    <p className="mt-0.5 text-[13px] leading-relaxed text-black/60">
+                      {toast.bodyKey ? t(toast.bodyKey) : toast.body}
+                    </p>
                   )}
                 </div>
                 <button

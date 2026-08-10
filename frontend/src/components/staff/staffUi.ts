@@ -34,4 +34,6 @@ export const staffEyebrow =
   'text-[11px] font-bold uppercase tracking-wide text-[#083047]/70';
 
 export const staffProse =
-  'staff-prose prose prose-slate prose-base sm:prose-lg max-w-none text-[#083047] prose-headings:text-[#083047] prose-headings:font-bold prose-h2:mt-8 prose-h2:mb-3 prose-h2:pb-2 prose-h2:border-b prose-h2:border-black/5 prose-p:leading-relaxed prose-li:marker:text-[#083047]/60 prose-a:text-[#083047] hover:prose-a:text-[#0a4060]';
+  // prose-lg ning standart h1 o'lchami uzun tibbiy sarlavhalarda ekranni to'sib
+  // qo'yardi — h1 aniq o'lchamga bog'landi.
+  'staff-prose prose prose-slate prose-base sm:prose-lg max-w-none text-[#083047] prose-headings:text-[#083047] prose-headings:font-bold prose-h1:text-[22px] sm:prose-h1:text-[26px] prose-h1:leading-snug prose-h1:mt-0 prose-h1:mb-5 prose-h2:text-[18px] sm:prose-h2:text-[20px] prose-h2:mt-8 prose-h2:mb-3 prose-h2:pb-2 prose-h2:border-b prose-h2:border-black/5 prose-h3:text-[16px] sm:prose-h3:text-[17px] prose-p:leading-relaxed prose-li:marker:text-[#083047]/60 prose-a:text-[#083047] hover:prose-a:text-[#0a4060]';
