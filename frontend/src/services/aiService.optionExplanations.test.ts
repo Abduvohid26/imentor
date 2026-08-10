@@ -110,6 +110,44 @@ describe('enrichTestSession — variant izohlari', () => {
     expect(out.questions[0].explanation).toBe('Intraepidermal akantoliz pemfigus vulgarisga xosdir.');
   });
 
+  it('so\'rov bir marta yiqilsa — qayta urinib izohlarni oladi', async () => {
+    let calls = 0;
+    openaiJson.mockImplementation(async (opts: { model: string; system: string }) => {
+      if (opts.model === 'gpt-test-fast' && opts.system.includes('variantning berilgan i raqami')) {
+        calls += 1;
+        // Birinchi urinish uziladi (tarmoq/model xatosi), ikkinchisi ishlaydi.
+        if (calls === 1) throw new Error('tarmoq uzildi');
+        return {
+          items: [
+            {
+              id: 0,
+              analysis: 'Uzun tahlil. Ikkinchi gap. Uchinchi gap bilan yakunlanadi.',
+              explanations: [0, 1, 2, 3, 4].map((i) => ({ i, text: `r-${i}` })),
+            },
+          ],
+        };
+      }
+      throw new Error('tarjima kerak emas');
+    });
+
+    const out = await aiService.enrichTestSession(baseSession(), 'uz');
+    expect(calls).toBe(2);
+    expect(out.questions[0].optionExplanations).toEqual(['r-0', 'r-1', 'r-2', 'r-3', 'r-4']);
+  });
+
+  it('har ikki urinish ham yiqilsa — test baribir saqlanadi, izohsiz', async () => {
+    openaiJson.mockImplementation(async (opts: { model: string; system: string }) => {
+      if (opts.model === 'gpt-test-fast' && opts.system.includes('variantning berilgan i raqami')) {
+        throw new Error('doim yiqiladi');
+      }
+      throw new Error('tarjima kerak emas');
+    });
+
+    const out = await aiService.enrichTestSession(baseSession(), 'uz');
+    expect(out.questions[0].optionExplanations).toBeUndefined();
+    expect(out.questions[0].question).toContain('akantoliz');
+  });
+
   it('izohlar tarjimadan OLDIN qo\'shiladi — tarjimaga ham tushadi', async () => {
     const translateInputs: string[] = [];
     openaiJson.mockImplementation(async (opts: { model: string; user: string; system: string }) => {

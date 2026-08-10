@@ -922,8 +922,10 @@ function isTestTranslationAcceptable(
   return true;
 }
 
-/** Bitta so'rovda nechta savolga variant izohi so'raladi. */
-const OPTION_EXPLANATION_CHUNK = 10;
+/** Bitta so'rovda nechta savolga variant izohi so'raladi. Kichik bo'lak =
+ *  qisqaroq javob (JSON kesilish ehtimoli kam) va uzilish sodir bo'lganda
+ *  yo'qoladigan savollar soni ham kam. */
+const OPTION_EXPLANATION_CHUNK = 4;
 
 /**
  * Har variant uchun qisqa izoh (nega to'g'ri / nega xato) — generate'dan KEYIN,
@@ -953,8 +955,8 @@ async function attachOptionExplanations(
     chunks.push(pendingIdx.slice(start, start + OPTION_EXPLANATION_CHUNK));
   }
 
-  await Promise.all(
-    chunks.map(async (idxs) => {
+  const runChunk = async (idxs: number[]) => {
+    {
       // Variantlar RAQAMLANGAN holda yuboriladi va model har izohga o'sha
       // raqamni qaytarishi shart. Ilgari oddiy massiv so'ralardi va model
       // ko'pincha TO'G'RI variant izohini birinchi qilib qo'yardi — natijada
@@ -1048,8 +1050,27 @@ async function attachOptionExplanations(
         // Izohlar — qo'shimcha qiymat, majburiy emas: testni yiqitmaymiz.
         console.warn('Variant izohlari olinmadi (bo\'lak o\'tkazib yuborildi):', err);
       }
-    }),
-  );
+    }
+  };
+
+  const stillEmpty = (i: number) =>
+    !(merged[i].optionExplanations || []).some((e) => (e || '').trim());
+
+  await Promise.all(chunks.map(runChunk));
+
+  // 2-urinish. Bitta so'rovning uzilishi (tarmoq, model xatosi, buzuq JSON)
+  // butun bo'lakni izohsiz qoldiradi — prod'da aynan shu sodir bo'ldi:
+  // bir testda 10/10 izoh, keyingisida 0/10. Qolganlarini kichikroq
+  // bo'laklarda qayta so'raymiz.
+  const retryIdx = pendingIdx.filter(stillEmpty);
+  if (retryIdx.length) {
+    console.warn(`Variant izohlari ${retryIdx.length} ta savolda kelmadi — qayta urinilmoqda`);
+    const retryChunks: number[][] = [];
+    for (let start = 0; start < retryIdx.length; start += 2) {
+      retryChunks.push(retryIdx.slice(start, start + 2));
+    }
+    await Promise.all(retryChunks.map(runChunk));
+  }
 
   return { ...session, questions: merged };
 }
