@@ -44,6 +44,7 @@ import {
   type UserRole,
 } from './utils/localStaffAuth';
 import { clearBackendAuthTokens, getBackendAccessToken, setUnauthorizedHandler, syncSessionRoleFromServer, syncStaffPhotoFromServer } from './utils/backendAuth';
+import { clearSyllabusRowCache } from './utils/syllabusRowCache';
 import { resolveProfilePhotoUrl } from './utils/profilePhotoApi';
 import {
   type AppLanguage,
@@ -290,6 +291,7 @@ export default function App() {
       clearBackendAuthTokens();
       clearDesktopPairedSession(user?.uid);
       logoutLocalStaff();
+      clearSyllabusRowCache();
       // Interfeys tili ATAYLAB tiklanmaydi: u qurilma sozlamasi (localStorage),
       // hisobga bog'liq emas. Rus/ingliz tilida ishlaydigan o'qituvchi
       // sessiyasi tugaganda login sahifasini o'zbekchada ko'rmasligi kerak.
@@ -431,6 +433,7 @@ export default function App() {
     clearBackendAuthTokens();
     clearDesktopPairedSession(user?.uid);
     logoutLocalStaff();
+    clearSyllabusRowCache();
     // Tanlangan interfeys tili saqlanib qoladi (qurilma sozlamasi).
   };
 

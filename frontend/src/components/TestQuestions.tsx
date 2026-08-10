@@ -29,6 +29,7 @@ import {
 } from '../utils/preparedContentStore';
 import { buildPreparedContentMeta } from '../utils/preparedContentMeta';
 import ContentTopicToolbar, { StaffToolbarButton } from './staff/ContentTopicToolbar';
+import { useLocalizedTopic } from '../i18n/useLocalizedTopic';
 import StaffPageLayout from './staff/StaffPageLayout';
 import StaffErrorAlert from './staff/StaffErrorAlert';
 import StaffLoading from './staff/StaffLoading';
@@ -932,8 +933,9 @@ export default function TestQuestions() {
     );
   }
 
-  const staffTopic =
-    globalTopic && isTopicContextComplete(globalTopic) ? globalTopic : null;
+  const staffTopic = useLocalizedTopic(
+    globalTopic && isTopicContextComplete(globalTopic) ? globalTopic : null,
+  );
 
   return (
     <StaffPageLayout spacious>

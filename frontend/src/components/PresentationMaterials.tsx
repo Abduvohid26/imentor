@@ -49,6 +49,7 @@ import {
 import StaffPageLayout from './staff/StaffPageLayout';
 import SavedWorkBanner from './staff/SavedWorkBanner';
 import SavedWorkList from './staff/SavedWorkList';
+import { useLocalizedTopic } from '../i18n/useLocalizedTopic';
 import StaffTopicHeader from './staff/StaffTopicHeader';
 import StaffEmptyState from './staff/StaffEmptyState';
 import StaffErrorAlert from './staff/StaffErrorAlert';
@@ -236,6 +237,8 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
 export default function PresentationMaterials() {
   const { t } = useUiText();
   const globalTopic = useContext(GlobalTopicContext);
+  // Sarlavha interfeys tilida (kontekstda asl matn — u AI va saqlash kaliti).
+  const localizedTopic = useLocalizedTopic(globalTopic);
   const { language } = useContext(AppLanguageContext);
   const { openSyllabus } = useContext(AppNavigationContext);
   const [items, setItems] = useState<TopicPresentationItem[]>([]);
@@ -514,7 +517,7 @@ export default function PresentationMaterials() {
     <StaffPageLayout>
       <StaffTopicHeader
         moduleLabel={t('presentation.title')}
-        topic={globalTopic}
+        topic={localizedTopic}
         hint={items.length > 0 ? t('presentation.hintWithUpload') : t('presentation.hintAiGenerate')}
       >
         <div className="flex flex-wrap gap-2">

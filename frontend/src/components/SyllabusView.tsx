@@ -38,6 +38,7 @@ import {
   instructionLanguageBadge,
   resolveSyllabusInstructionLanguage,
 } from '../utils/syllabusInstructionLanguage';
+import { cacheSyllabusRows } from '../utils/syllabusRowCache';
 import { PAGE_ROOT } from '../layout/pageContainer';
 import { staffCardLg, STAFF_HEADING } from './staff/staffUi';
 
@@ -132,6 +133,9 @@ export default function SyllabusView({
     try {
       const mine = await fetchMyCourseSelections();
       setMySelections(mine);
+      // Boshqa sahifalar (Ma'ruza, Taqdimot, Keys, Test) tanlangan mavzu
+      // sarlavhasini interfeys tilida ko'rsatishi uchun shu qatorlar kerak.
+      cacheSyllabusRows(mine.map((s) => s.syllabus).filter(Boolean));
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (msg === 'no-backend-token') {
@@ -347,7 +351,8 @@ export default function SyllabusView({
                         {t('syllabus.selectedTopic')}
                       </p>
                       <p className="text-[12px] font-semibold text-gray-900 mt-0.5 leading-snug">
-                        <span className="text-blue-700">{selectedTopic.id}</span> — {selectedTopic.title}
+                        <span className="text-blue-700">{selectedTopic.id}</span>{' '}
+                        — {localizedTopicTitle(activeSyllabus, selectedTopic.title, language)}
                       </p>
                     </div>
                     <button

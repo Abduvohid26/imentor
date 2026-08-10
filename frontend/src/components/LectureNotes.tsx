@@ -30,6 +30,7 @@ import {
   savePreparedContent,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
+import { useLocalizedTopic } from '../i18n/useLocalizedTopic';
 import StaffPageLayout from './staff/StaffPageLayout';
 import SavedWorkBanner from './staff/SavedWorkBanner';
 import SavedWorkList from './staff/SavedWorkList';
@@ -74,7 +75,8 @@ export default function LectureNotes() {
   const setLectureContent = globalLecture.setContent;
 
   const topicFromSyllabus = Boolean(globalTopic && isTopicContextComplete(globalTopic));
-  const staffTopic = topicFromSyllabus && globalTopic ? globalTopic : null;
+  // Sarlavha interfeys tilida ko'rsatiladi (kontekstda asl matn turadi).
+  const staffTopic = useLocalizedTopic(topicFromSyllabus && globalTopic ? globalTopic : null);
 
   // Baza faqat TANLANGAN MAVZU bo'yicha (4 bo'limda bir xil qoida).
   const refreshHistory = useCallback(() => {
