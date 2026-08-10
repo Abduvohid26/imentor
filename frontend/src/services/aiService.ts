@@ -679,6 +679,33 @@ function normalizeCaseSession(
   };
 }
 
+/**
+ * Variantlarni aralashtiradi va to'g'ri javob indeksini (bor bo'lsa variant
+ * izohlarini ham) yangi tartibga moslaydi. To'g'ri javob har doim bir xil
+ * harfda turib qolmasligi uchun — bu testni ma'nosiz qilib qo'yadi.
+ */
+export function shuffleQuestionOptions(input: {
+  options: string[];
+  correctOptionIndex: number;
+  optionExplanations?: string[];
+}): { options: string[]; correctOptionIndex: number; optionExplanations?: string[] } {
+  const n = input.options.length;
+  if (n < 2) return { ...input };
+  const order = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  const nextCorrect = order.indexOf(input.correctOptionIndex);
+  return {
+    options: order.map((k) => input.options[k]),
+    correctOptionIndex: nextCorrect >= 0 ? nextCorrect : 0,
+    ...(input.optionExplanations
+      ? { optionExplanations: order.map((k) => input.optionExplanations?.[k] ?? '') }
+      : {}),
+  };
+}
+
 function normalizeTestSession(
   topic: string,
   data: TestSession,
@@ -702,12 +729,21 @@ function normalizeTestSession(
       // Avval savolda bor manba (per-question), keyin umumiy bookReferences.
       const existingRefs = Array.isArray(q.references) ? q.references.filter((r) => r && (r.title || r.url)) : [];
       const refs = existingRefs.length ? existingRefs : bookReferences;
+      // Model to'g'ri javobni deyarli DOIM A ga qo'yadi (kuzatilgan test:
+      // 10 savoldan 10 tasida correctOptionIndex=0). Bunday testda talaba
+      // hammasiga A belgilab 100% oladi. Variantlarni aralashtirib, to'g'ri
+      // javob o'rnini shu bilan birga qayta hisoblaymiz.
+      const shuffled = shuffleQuestionOptions({
+        options: options.map((o, oi) => stripOptionLetterPrefix((o || '').trim(), oi)),
+        correctOptionIndex,
+        optionExplanations: hasOptionExplanations ? optionExplanations : undefined,
+      });
       return {
         question: (q.question || '').trim(),
-        options: options.map((o) => (o || '').trim()),
+        options: shuffled.options,
         explanation: stripUnfilledSourceTemplate(q.explanation || ''),
-        correctOptionIndex,
-        ...(hasOptionExplanations ? { optionExplanations } : {}),
+        correctOptionIndex: shuffled.correctOptionIndex,
+        ...(shuffled.optionExplanations ? { optionExplanations: shuffled.optionExplanations } : {}),
         ...(refs.length ? { references: refs } : {}),
       };
     });
@@ -1476,7 +1512,8 @@ export const aiService = {
           `Til: ${outLang}. ${strictLanguageDirective(language)}`,
         user:
           `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 1–2 gap, 5 ta variant. ` +
-          'explanation qisqa. Faqat valid JSON.',
+          'Har savolni yozishdan oldin o\'zingizga savol bering: "to\'g\'ri javobim shu mavzuga kiradimi?" — ' +
+          'kirmasa, savolni almashtiring. explanation qisqa. Faqat valid JSON.',
         maxTokens: scaledMaxTokens,
         temperature: 0.45,
         bookContext,

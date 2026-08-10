@@ -45,16 +45,51 @@ const TEST_ANGLES = [
   'etika va bemor huquqlari',
 ];
 
+/**
+ * Mavzu sarlavhasini bo'limlarga ajratadi.
+ *
+ * Sillabus mavzulari odatda bir nechta mustaqil bo'limdan iborat bo'ladi
+ * ("Piodermiyalar. Dermatozoonozlar. Ter va yog' bezlari. Zamburug' kasallik.").
+ * Ularni ochiq ro'yxat qilib berish model savollarni shu bo'limlar bo'ylab
+ * taqsimlashiga yordam beradi — aks holda u bitta bo'limga yopishib qoladi
+ * yoki umuman mavzudan chiqib ketadi.
+ */
+export function topicSubThemes(topic: string): string[] {
+  return (topic || '')
+    .split(/[.;]\s+|\.$/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 2)
+    .slice(0, 8);
+}
+
 export function buildTestVarietyPrompt(topic: string, count: number): string {
-  const angles = pickRandom(TEST_ANGLES, 4);
+  // Yo'nalishlar — savolni QANDAY so'rash uslubi, mavzuning o'zi emas. Ilgari
+  // 4 ta tanlanardi va ular orasida "etika", "bemor xavfsizligi" kabi
+  // umumiy yo'nalishlar model e'tiborini mavzudan butunlay chalg'itardi.
+  const angles = pickRandom(TEST_ANGLES, 2);
+  const themes = topicSubThemes(topic);
+  const themeBlock =
+    themes.length > 1
+      ? `MAVZU BO'LIMLARI: ${themes.map((s, i) => `${i + 1}) ${s}`).join('; ')}. ` +
+        'Savollarni shu bo\'limlar bo\'ylab taqsimlang — har bo\'limdan kamida bittadan.'
+      : '';
   return [
     `Variatsiya ID: ${generationNonce()}.`,
     `Mavzu: "${topic}". ${count} ta NOYOB test savoli.`,
+    themeBlock,
+    // Eng muhim qoida: prod'da yaratilgan testda 10 savoldan 4 tasining to'g'ri
+    // javobi mavzuga umuman kirmaydigan tashxis edi (kontakt dermatit, fotodermatit).
+    'QAT\'IY QOIDA: har savolning TO\'G\'RI JAVOBI shu mavzuga kiradigan kasallik/holat/dori bo\'lsin. ' +
+      'Mavzuga kirmaydigan tashxis faqat DISTRAKTOR (noto\'g\'ri variant) sifatida ishlatilishi mumkin, ' +
+      'hech qachon to\'g\'ri javob bo\'lmasin.',
+    'To\'g\'ri javoblar takrorlanmasin — har savolda boshqa tashxis/dori to\'g\'ri bo\'lsin.',
     'Avvalgi generatsiyalardagi savollarni qayta ishlatmang — yangi klinik ssenariyalar yozing.',
-    `Asosiy yo'nalishlar: ${angles.join('; ')}.`,
+    `Savol uslublari (mavzu doirasida qoling): ${angles.join('; ')}.`,
     'To\'g\'ri javoblar A–E variantlari bo\'ylab teng taqsimlansin (faqat bir xil harfda emas).',
     'Har safar boshqacha bemorga, yoshga, shikoyatga va laboratoriya topilmalariga ega bo\'lsin.',
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 export function summarizeCaseForAvoid(session: CaseLike): string {
