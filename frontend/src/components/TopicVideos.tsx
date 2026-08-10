@@ -5,12 +5,79 @@ import { GlobalTopicContext, AppNavigationContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
 import { useLocalizedTopic } from '../i18n/useLocalizedTopic';
 import { fetchTopicVideos, type TopicVideo } from '../utils/topicVideoApi';
+import { useYoutubeTitle } from '../utils/youtubeTitle';
 import StaffPageLayout from './staff/StaffPageLayout';
 import StaffTopicHeader from './staff/StaffTopicHeader';
 import StaffEmptyState from './staff/StaffEmptyState';
 import StaffPanel from './staff/StaffPanel';
 import { staffBtnGhost } from './staff/staffUi';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
+
+function VideoCard({
+  video,
+  playing,
+  onPlay,
+}: {
+  video: TopicVideo;
+  playing: boolean;
+  onPlay: () => void;
+}) {
+  const { t } = useUiText();
+  // Admin sarlavha yozmagan bo'lsa — YouTube'dan asl nomi olinadi (ID emas).
+  const displayTitle = useYoutubeTitle(video.youtube_id, video.title);
+
+  return (
+    <motion.div layout className="ios-glass rounded-2xl border border-white/70 overflow-hidden shadow-sm">
+      <div className="relative w-full bg-black" style={{ aspectRatio: '16 / 9' }}>
+        {playing ? (
+          <iframe
+            src={`${video.embed_url}${video.embed_url.includes('?') ? '&' : '?'}autoplay=1`}
+            title={displayTitle || video.youtube_id}
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="absolute inset-0 w-full h-full border-0"
+          />
+        ) : (
+          // Sekin internetda 10 ta iframe birdan yuklanmasin — avval muqova,
+          // bosilganda plyer.
+          <button
+            type="button"
+            onClick={onPlay}
+            className="group absolute inset-0 w-full h-full"
+            aria-label={t('video.play')}
+          >
+            <img
+              src={`https://img.youtube.com/vi/${video.youtube_id}/hqdefault.jpg`}
+              alt=""
+              loading="lazy"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <span className="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/10 transition-colors">
+              <span className="w-14 h-14 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg">
+                <Youtube size={26} />
+              </span>
+            </span>
+          </button>
+        )}
+      </div>
+      <div className="p-3 space-y-1.5">
+        <p className="text-[13px] font-semibold text-black/85 line-clamp-2 leading-snug">
+          {displayTitle || t('video.untitled')}
+        </p>
+        <a
+          href={video.youtube_url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#083047]/70 hover:text-[#083047]"
+        >
+          <ExternalLink size={12} />
+          {t('video.openOnYoutube')}
+        </a>
+      </div>
+    </motion.div>
+  );
+}
 
 /**
  * O'qituvchi uchun "Videolar" bo'limi.
@@ -97,64 +164,14 @@ export default function TopicVideos() {
         </StaffPanel>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {videos.map((v) => {
-            const playing = activeId === v.id;
-            return (
-              <motion.div
-                key={v.id}
-                layout
-                className="ios-glass rounded-2xl border border-white/70 overflow-hidden shadow-sm"
-              >
-                <div className="relative w-full bg-black" style={{ aspectRatio: '16 / 9' }}>
-                  {playing ? (
-                    <iframe
-                      src={`${v.embed_url}${v.embed_url.includes('?') ? '&' : '?'}autoplay=1`}
-                      title={v.title || v.youtube_id}
-                      loading="lazy"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      className="absolute inset-0 w-full h-full border-0"
-                    />
-                  ) : (
-                    // Sekin internetda 10 ta iframe birdan yuklanmasin — avval
-                    // muqova, bosilganda plyer.
-                    <button
-                      type="button"
-                      onClick={() => setActiveId(v.id)}
-                      className="group absolute inset-0 w-full h-full"
-                      aria-label={t('video.play')}
-                    >
-                      <img
-                        src={`https://img.youtube.com/vi/${v.youtube_id}/hqdefault.jpg`}
-                        alt=""
-                        loading="lazy"
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/10 transition-colors">
-                        <span className="w-14 h-14 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg">
-                          <Youtube size={26} />
-                        </span>
-                      </span>
-                    </button>
-                  )}
-                </div>
-                <div className="p-3 space-y-1.5">
-                  <p className="text-[13px] font-semibold text-black/85 line-clamp-2 leading-snug">
-                    {v.title || v.youtube_id}
-                  </p>
-                  <a
-                    href={v.youtube_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#083047]/70 hover:text-[#083047]"
-                  >
-                    <ExternalLink size={12} />
-                    {t('video.openOnYoutube')}
-                  </a>
-                </div>
-              </motion.div>
-            );
-          })}
+          {videos.map((v) => (
+            <VideoCard
+              key={v.id}
+              video={v}
+              playing={activeId === v.id}
+              onPlay={() => setActiveId(v.id)}
+            />
+          ))}
         </div>
       )}
 

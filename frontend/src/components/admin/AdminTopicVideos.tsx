@@ -11,6 +11,54 @@ import {
   type TopicVideo,
 } from '../../utils/topicVideoApi';
 import { useUiText } from '../../i18n/useUiText';
+import { useYoutubeTitle } from '../../utils/youtubeTitle';
+
+function VideoRow({
+  video,
+  deleting,
+  onDelete,
+}: {
+  video: TopicVideo;
+  deleting: boolean;
+  onDelete: () => void;
+}) {
+  const { t } = useUiText();
+  // Sarlavha kiritilmagan bo'lsa — YouTube'dan asl nomi olinadi.
+  const displayTitle = useYoutubeTitle(video.youtube_id, video.title);
+
+  return (
+    <li className="flex items-center gap-3 px-4 py-2.5">
+      <img
+        src={`https://img.youtube.com/vi/${video.youtube_id}/default.jpg`}
+        alt=""
+        className="w-16 h-12 rounded-lg object-cover bg-slate-100 shrink-0"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold text-slate-800 truncate">
+          {displayTitle || video.youtube_id}
+        </p>
+        <a
+          href={video.youtube_url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[11px] text-indigo-500 hover:underline truncate block"
+        >
+          {video.youtube_url}
+        </a>
+      </div>
+      <button
+        type="button"
+        disabled={deleting}
+        onClick={onDelete}
+        className="p-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 shrink-0 disabled:opacity-50"
+        title={t('admin.delete')}
+        aria-label={t('admin.delete')}
+      >
+        {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+      </button>
+    </li>
+  );
+}
 
 export default function AdminTopicVideos() {
   const { t } = useUiText();
@@ -298,42 +346,14 @@ export default function AdminTopicVideos() {
                 <span className="text-[11px] text-slate-400"> · {g.fanName}</span>
               </div>
               <ul className="divide-y divide-slate-50">
-                {g.rows.map((v) => {
-                  const vid = Number(v.id);
-                  const isDeleting = deletingId === vid;
-                  return (
-                  <li key={vid} className="flex items-center gap-3 px-4 py-2.5">
-                    <img
-                      src={`https://img.youtube.com/vi/${v.youtube_id}/default.jpg`}
-                      alt=""
-                      className="w-16 h-12 rounded-lg object-cover bg-slate-100 shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold text-slate-800 truncate">
-                        {v.title || v.youtube_id}
-                      </p>
-                      <a
-                        href={v.youtube_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[11px] text-indigo-500 hover:underline truncate block"
-                      >
-                        {v.youtube_url}
-                      </a>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isDeleting}
-                      onClick={() => void removeVideo(vid)}
-                      className="p-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 shrink-0 disabled:opacity-50"
-                      title={t('admin.delete')}
-                      aria-label={t('admin.delete')}
-                    >
-                      {isDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                    </button>
-                  </li>
-                  );
-                })}
+                {g.rows.map((v) => (
+                  <VideoRow
+                    key={Number(v.id)}
+                    video={v}
+                    deleting={deletingId === Number(v.id)}
+                    onDelete={() => void removeVideo(Number(v.id))}
+                  />
+                ))}
               </ul>
             </li>
           ))}

@@ -788,6 +788,10 @@ class LiveTestSubmissionView(APIView):
         return Response({'ok': True}, status=status.HTTP_201_CREATED)
 
 
+# Fan kodi biriktirilmagan sessiyalar uchun sun'iy kod (frontend ham shu kalitni biladi).
+UNASSIGNED_SUBJECT_CODE = '__unassigned__'
+
+
 def _score_submission(questions: list, answers: list) -> tuple[int, int]:
     """To'g'ri javoblar sonini hisoblaydi (savol.correctOptionIndex bilan solishtirib)."""
     total = len(questions) if isinstance(questions, list) else 0
@@ -1381,9 +1385,15 @@ class AdminLiveTestSubmissionsView(APIView):
 
     def get(self, request):
         subject_code = (request.query_params.get('subject_code') or '').strip()
+        session_key = (request.query_params.get('session_key') or '').strip()
+        student_id = (request.query_params.get('student_id') or '').strip()
         qs = LiveTestSubmission.objects.select_related('session').order_by('-submitted_at')
         if subject_code:
             qs = qs.filter(session__subject_code=subject_code)
+        if session_key:
+            qs = qs.filter(session__session_key=session_key)
+        if student_id:
+            qs = qs.filter(student_id=student_id)
 
         codes = set(qs.values_list('session__subject_code', flat=True))
         subjects = dict(
@@ -1410,3 +1420,136 @@ class AdminLiveTestSubmissionsView(APIView):
             }
 
         return paginated_response(qs, request, default_page_size=50, max_page_size=200, mapper=_map)
+
+
+class AdminLiveTestSessionsView(APIView):
+    """Fan ichidagi har bir jonli test (mavzu + sana) — nechta talaba yechgani bilan."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request):
+        from django.db.models import Count
+
+        subject_code = (request.query_params.get('subject_code') or '').strip()
+        qs = LiveTestSession.objects.all()
+        if subject_code == UNASSIGNED_SUBJECT_CODE:
+            qs = qs.filter(subject_code='')
+        elif subject_code:
+            qs = qs.filter(subject_code=subject_code)
+        qs = qs.annotate(submission_count=Count('submissions')).order_by('-created_at')
+
+        results = []
+        for sess in qs:
+            payload = sess.payload if isinstance(sess.payload, dict) else {}
+            results.append(
+                {
+                    'session_key': sess.session_key,
+                    'topic': str(payload.get('topic') or ''),
+                    'created_at_ms': int(sess.created_at.timestamp() * 1000),
+                    'is_closed': bool(sess.is_closed),
+                    'submission_count': sess.submission_count,
+                }
+            )
+        return Response({'results': results})
+
+
+class AdminStudentLiveTestReportView(APIView):
+    """
+    Bitta talabaning to'liq test hisoboti: talaba ID -> fanlar -> darslar.
+
+    Har bir fan uchun o'sha fanda o'tkazilgan BARCHA testlar qaytariladi —
+    talaba yechganlari ball bilan, yechmaganlari `taken: false` bilan. Shu
+    tufayli "qaysi darsni yechgan, qaysinisini yechmagan" ko'rinib turadi.
+
+    Fanlar ro'yxati talaba kamida bitta test topshirgan fanlardan olinadi
+    (platformada talaba–fan biriktiruvi yo'q).
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request):
+        from django.db.models import Count
+
+        student_id = (request.query_params.get('student_id') or '').strip()
+        if not student_id:
+            return Response({'detail': 'student_id parametri kerak.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        own = list(
+            LiveTestSubmission.objects.filter(student_id=student_id)
+            .select_related('session')
+            .order_by('-submitted_at')
+        )
+        if not own:
+            return Response(
+                {'found': False, 'student_id': student_id, 'first_name': '', 'last_name': '', 'subjects': []}
+            )
+
+        latest = own[0]
+        # Fan kodlari: talaba qatnashgan fanlar (kodsiz sessiyalar alohida guruh).
+        subject_codes = {sub.session.subject_code or '' for sub in own}
+
+        sessions = (
+            LiveTestSession.objects.filter(subject_code__in=subject_codes)
+            .annotate(submission_count=Count('submissions'))
+            .order_by('-created_at')
+        )
+        names = dict(
+            CourseSyllabus.objects.filter(subject_code__in=[c for c in subject_codes if c]).values_list(
+                'subject_code', 'subject_name'
+            )
+        )
+
+        by_session = {sub.session.session_key: sub for sub in own}
+        grouped: dict[str, list[dict]] = {code: [] for code in subject_codes}
+
+        for sess in sessions:
+            payload = sess.payload if isinstance(sess.payload, dict) else {}
+            questions = payload.get('questions', [])
+            questions = questions if isinstance(questions, list) else []
+            sub = by_session.get(sess.session_key)
+            row = {
+                'session_key': sess.session_key,
+                'topic': str(payload.get('topic') or ''),
+                'created_at_ms': int(sess.created_at.timestamp() * 1000),
+                'is_closed': bool(sess.is_closed),
+                'question_count': len(questions),
+                'participant_count': sess.submission_count,
+                'taken': sub is not None,
+                'score': None,
+                'total': len(questions),
+                'submitted_at': None,
+            }
+            if sub is not None:
+                correct, total = _score_submission(questions, sub.answers)
+                row['score'] = correct
+                row['total'] = total
+                row['submitted_at'] = sub.submitted_at.isoformat()
+            grouped.setdefault(sess.subject_code or '', []).append(row)
+
+        subjects = []
+        for code, rows in grouped.items():
+            taken_rows = [r for r in rows if r['taken'] and r['total']]
+            pcts = [r['score'] / r['total'] * 100 for r in taken_rows]
+            subjects.append(
+                {
+                    'subject_code': code or UNASSIGNED_SUBJECT_CODE,
+                    'subject_name': names.get(code, ''),
+                    'total_sessions': len(rows),
+                    'taken_sessions': sum(1 for r in rows if r['taken']),
+                    'avg_score_pct': round(sum(pcts) / len(pcts), 1) if pcts else None,
+                    'sessions': rows,
+                }
+            )
+        subjects.sort(key=lambda x: (-x['taken_sessions'], x['subject_name'] or x['subject_code']))
+
+        return Response(
+            {
+                'found': True,
+                'student_id': student_id,
+                'first_name': latest.first_name,
+                'last_name': latest.last_name,
+                'subjects': subjects,
+            }
+        )

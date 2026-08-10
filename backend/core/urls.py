@@ -82,6 +82,8 @@ from .views import (
     AdminLiveTeachingStatusView,
     AdminLiveTestStatsView,
     AdminLiveTestSubmissionsView,
+    AdminLiveTestSessionsView,
+    AdminStudentLiveTestReportView,
     AdminStaffLocationAlertsView,
     AdminStaffLocationPingsView,
     AdminStaffScheduleBulkView,
@@ -234,4 +236,6 @@ urlpatterns = [
     path('v1/admin/live-teaching-status/', AdminLiveTeachingStatusView.as_view(), name='admin-live-teaching-status'),
     path('v1/admin/live-test-stats/', AdminLiveTestStatsView.as_view(), name='admin-live-test-stats'),
     path('v1/admin/live-test-submissions/', AdminLiveTestSubmissionsView.as_view(), name='admin-live-test-submissions'),
+    path('v1/admin/live-test-sessions/', AdminLiveTestSessionsView.as_view(), name='admin-live-test-sessions'),
+    path('v1/admin/student-live-test-report/', AdminStudentLiveTestReportView.as_view(), name='admin-student-live-test-report'),
 ]

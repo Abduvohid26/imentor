@@ -378,6 +378,7 @@ export type AdminLiveTestSubmissionRow = {
 export async function fetchAdminLiveTestSubmissions(params?: {
   subjectCode?: string;
   sessionKey?: string;
+  studentId?: string;
   page?: number;
   pageSize?: number;
 }): Promise<{ results: AdminLiveTestSubmissionRow[]; count: number; page: number; pageSize: number }> {
@@ -386,6 +387,7 @@ export async function fetchAdminLiveTestSubmissions(params?: {
   const query = new URLSearchParams();
   if (params?.subjectCode) query.set('subject_code', params.subjectCode);
   if (params?.sessionKey) query.set('session_key', params.sessionKey);
+  if (params?.studentId) query.set('student_id', params.studentId);
   if (params?.page) query.set('page', String(params.page));
   if (params?.pageSize) query.set('page_size', String(params.pageSize));
   const suffix = query.toString() ? `?${query.toString()}` : '';
@@ -465,4 +467,104 @@ export async function fetchAdminLiveTestSessions(subjectCode: string): Promise<A
     isClosed: Boolean(r.is_closed),
     submissionCount: r.submission_count,
   }));
+}
+
+export type StudentReportSessionRow = {
+  sessionKey: string;
+  topic: string;
+  createdAtMs: number;
+  isClosed: boolean;
+  questionCount: number;
+  participantCount: number;
+  /** Talaba shu darsning testini topshirganmi. */
+  taken: boolean;
+  score: number | null;
+  total: number;
+  submittedAt: number | null;
+};
+
+export type StudentReportSubjectRow = {
+  subjectCode: string;
+  subjectName: string;
+  totalSessions: number;
+  takenSessions: number;
+  avgScorePct: number | null;
+  sessions: StudentReportSessionRow[];
+};
+
+export type StudentLiveTestReport = {
+  found: boolean;
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  subjects: StudentReportSubjectRow[];
+};
+
+/**
+ * Admin: bitta talabaning to'liq hisoboti — fanlar, ular ichida har bir dars
+ * testi (yechgan/yechmagan va ball bilan).
+ */
+export async function fetchStudentLiveTestReport(studentId: string): Promise<StudentLiveTestReport> {
+  const token = await getBackendAccessToken();
+  const empty: StudentLiveTestReport = {
+    found: false,
+    studentId,
+    firstName: '',
+    lastName: '',
+    subjects: [],
+  };
+  if (!token || !studentId.trim()) return empty;
+  const data = await httpJson<{
+    found: boolean;
+    student_id: string;
+    first_name: string;
+    last_name: string;
+    subjects: Array<{
+      subject_code: string;
+      subject_name: string;
+      total_sessions: number;
+      taken_sessions: number;
+      avg_score_pct: number | null;
+      sessions: Array<{
+        session_key: string;
+        topic: string;
+        created_at_ms: number;
+        is_closed: boolean;
+        question_count: number;
+        participant_count: number;
+        taken: boolean;
+        score: number | null;
+        total: number;
+        submitted_at: string | null;
+      }>;
+    }>;
+  }>(`${apiBaseUrl()}/v1/admin/student-live-test-report/?student_id=${encodeURIComponent(studentId.trim())}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeoutMs: 30000,
+  });
+  return {
+    found: Boolean(data.found),
+    studentId: data.student_id || studentId,
+    firstName: data.first_name || '',
+    lastName: data.last_name || '',
+    subjects: (Array.isArray(data.subjects) ? data.subjects : []).map((s) => ({
+      subjectCode: s.subject_code,
+      subjectName: s.subject_name || '',
+      totalSessions: s.total_sessions ?? 0,
+      takenSessions: s.taken_sessions ?? 0,
+      avgScorePct: s.avg_score_pct,
+      sessions: (Array.isArray(s.sessions) ? s.sessions : []).map((r) => ({
+        sessionKey: r.session_key,
+        topic: r.topic || '',
+        createdAtMs: r.created_at_ms,
+        isClosed: Boolean(r.is_closed),
+        questionCount: r.question_count ?? 0,
+        participantCount: r.participant_count ?? 0,
+        taken: Boolean(r.taken),
+        score: r.score,
+        total: r.total ?? 0,
+        submittedAt: r.submitted_at ? Date.parse(r.submitted_at) : null,
+      })),
+    })),
+  };
 }
