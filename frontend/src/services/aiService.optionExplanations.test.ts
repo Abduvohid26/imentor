@@ -76,6 +76,40 @@ describe('enrichTestSession — variant izohlari', () => {
     ]);
   });
 
+  it('qisqa `explanation` o\'rniga to\'liq tahlil qo\'yiladi', async () => {
+    openaiJson.mockImplementation(async (opts: { model: string }) => {
+      if (opts.model === 'gpt-test-fast') {
+        return {
+          items: [
+            {
+              id: 0,
+              analysis: 'Bemorda intraepidermal akantoliz aniqlangan. Bu pemfigus vulgarisga xos. '
+                + 'Dyuring dermatitida esa subepidermal ajralish bo\'ladi. Shuning uchun tanlov aniq.',
+              explanations: [{ i: 0, text: 'To\'g\'ri' }],
+            },
+          ],
+        };
+      }
+      throw new Error('tarjima kerak emas');
+    });
+
+    const out = await aiService.enrichTestSession(baseSession(), 'uz');
+    expect(out.questions[0].explanation).toContain('subepidermal ajralish');
+    expect(out.questions[0].explanation!.length).toBeGreaterThan(120);
+  });
+
+  it('tahlil qisqaroq kelsa — mavjud izoh saqlanib qoladi', async () => {
+    openaiJson.mockImplementation(async (opts: { model: string }) => {
+      if (opts.model === 'gpt-test-fast') {
+        return { items: [{ id: 0, analysis: 'Juda qisqa.', explanations: [{ i: 0, text: 'a' }] }] };
+      }
+      throw new Error('tarjima kerak emas');
+    });
+
+    const out = await aiService.enrichTestSession(baseSession(), 'uz');
+    expect(out.questions[0].explanation).toBe('Intraepidermal akantoliz pemfigus vulgarisga xosdir.');
+  });
+
   it('izohlar tarjimadan OLDIN qo\'shiladi — tarjimaga ham tushadi', async () => {
     const translateInputs: string[] = [];
     openaiJson.mockImplementation(async (opts: { model: string; user: string; system: string }) => {

@@ -972,16 +972,27 @@ async function attachOptionExplanations(
         const parsed = await openaiJson<unknown>({
           model: OPENAI_FAST,
           system:
-            `${SYS_MEDICAL} Har savolning HAR BIR variantiga bittadan qisqa izoh yoz: ` +
-            'to\'g\'ri variant uchun — nega aynan shu to\'g\'ri; qolganlari uchun — nega bu klinik ' +
-            'vaziyatda noto\'g\'ri. Har izoh 1 ta gap, 20 so\'zgacha. Savol matnini takrorlamang. ' +
-            'JSON: {items:[{id:<berilgan id>, explanations:[{i:<variantning berilgan i raqami>, text:"..."}]}]}. ' +
+            `${SYS_MEDICAL} Har savol uchun IKKITA narsa yoz.\n` +
+            '1) `analysis` — to\'g\'ri javob tahlili, ANIQ 3 gap: (a) bemordagi qaysi ' +
+            'belgi/tekshiruv natijasi aynan shu tashxis yoki tanlovga olib keladi; (b) qisqacha ' +
+            'patofiziologiya; (c) tanlangan usul/dori nima qilishi va nega samarali ekani. ' +
+            'Savol matnini takrorlamang. Boshqa variantlarni bu yerda muhokama qilmang — ular ' +
+            'uchun alohida izoh bor. "Shuning uchun ... eng maqsadga muvofiq" kabi xulosa gapini ' +
+            'YOZMANG, u hech qanday ma\'lumot qo\'shmaydi.\n' +
+            '2) `explanations` — HAR BIR variantga bittadan qisqa izoh: to\'g\'ri variant uchun ' +
+            'nega aynan shu to\'g\'ri; qolganlari uchun nega bu klinik vaziyatda noto\'g\'ri. ' +
+            'Har izoh 1 ta gap, 20 so\'zgacha.\n' +
+            'JSON: {items:[{id:<berilgan id>, analysis:"...", explanations:[{i:<variantning berilgan i raqami>, text:"..."}]}]}. ' +
             'MUHIM: `i` — aynan o\'sha variantning berilgan raqami; izoh SHU variant haqida bo\'lsin. ' +
             'To\'g\'ri variant izohini birinchi o\'ringa ko\'chirmang — har bir variant o\'z `i` si bilan qaytsin. ' +
             'Har variant uchun bittadan yozing, birortasini tashlab ketmang. ' +
             `Til: ${outLang}. ${strictLanguageDirective(language)}`,
           user: JSON.stringify(source),
-          maxTokens: Math.min(16000, idxs.length * 320 + 400),
+          // ~600 token/savol. O'lchov: 3 gaplik tahlil + 5 ta izoh o'zbek tilida
+          // ~440 token yetadi, lekin bir o'lchovda javob kesilib izohlar yo'qolgan
+          // edi. Ishlatilmagan limit hech narsa turmaydi (faqat generatsiya qilingan
+          // tokenlar hisoblanadi), kesilish esa butun bo'lakni yo'qotadi — zaxira qoldiramiz.
+          maxTokens: Math.min(16000, idxs.length * 600 + 400),
           temperature: 0.2,
           parse: (t) => parseJSONSafe<unknown>(t),
         });
@@ -990,6 +1001,7 @@ async function attachOptionExplanations(
         // izohlar jimgina yo'qoladi va ekranda hech narsa ko'rinmaydi.
         type OptionExplanationItem = {
           id?: number;
+          analysis?: string;
           explanations?: { i?: number; index?: number; text?: string }[];
         };
         const box = (parsed || {}) as { items?: unknown; questions?: unknown };
@@ -1007,6 +1019,15 @@ async function attachOptionExplanations(
           const rawId = typeof item?.id === 'number' ? item.id : undefined;
           const i = rawId !== undefined ? rawId : (idxs[pos] ?? -1);
           if (!merged[i]) return;
+          // Kengaytirilgan tahlil. Generatsiyada `explanation` ataylab 1–2 gap
+          // (birinchi ko'rinish tez chiqishi uchun) — bu yerda to'liqrog'i
+          // bilan almashtiriladi. Qisqarib ketmasligi uchun faqat mavjudidan
+          // uzunroq bo'lsa yoziladi.
+          const analysis = stripUnfilledSourceTemplate(String(item?.analysis || '')).trim();
+          if (analysis.length > (merged[i].explanation || '').trim().length) {
+            merged[i] = { ...merged[i], explanation: analysis };
+          }
+
           const list = Array.isArray(item?.explanations) ? item.explanations : [];
           const sized = new Array<string>(merged[i].options.length).fill('');
           let filled = 0;
@@ -1076,7 +1097,7 @@ async function translateTestSession(
       Math.ceil(
         content.questions.length *
           (content.questions.some((q) => (q.optionExplanations || []).some((e) => (e || '').trim()))
-            ? 440
+            ? 500
             : 273),
       ) + 500,
     ),
