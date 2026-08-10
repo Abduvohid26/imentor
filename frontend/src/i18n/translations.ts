@@ -2,6 +2,14 @@ import type { AppLanguage } from './language';
 
 export const UI_TEXT = {
   uz: {
+    'profile.demoStaffName': 'Demo o\'qituvchi',
+    'profile.demoAdminName': 'Demo administrator',
+    'profile.demoFacultyMedical': 'Tibbiyot fakulteti',
+    'profile.demoFacultyAdmin': 'Administrator',
+    'profile.demoDeptInternal': 'Ichki kasalliklar kafedrasi',
+    'profile.demoDeptSystem': 'Tizim',
+    'profile.demoDirectionTherapy': 'Terapiya yo\'nalishi',
+    'profile.demoDirectionFullAccess': 'To\'liq kirish',
     'publicLanding.featureAiChip': 'AI yordamchi',
     'common.saveFailedKeepWork': 'Kontent tayyor, lekin bazaga saqlanmadi (tarmoq/server xatosi). Sahifani yopmang \u2014 matnni nusxalab oling yoki qayta urinib ko\'ring.',
     'shell.platformTitle': 'iMentor Platform',
@@ -1506,6 +1514,14 @@ export const UI_TEXT = {
 
   },
   ru: {
+    'profile.demoStaffName': 'Демо-преподаватель',
+    'profile.demoAdminName': 'Демо-администратор',
+    'profile.demoFacultyMedical': 'Медицинский факультет',
+    'profile.demoFacultyAdmin': 'Администратор',
+    'profile.demoDeptInternal': 'Кафедра внутренних болезней',
+    'profile.demoDeptSystem': 'Система',
+    'profile.demoDirectionTherapy': 'Терапия',
+    'profile.demoDirectionFullAccess': 'Полный доступ',
     'publicLanding.featureAiChip': '\u0418\u0418-\u043f\u043e\u043c\u043e\u0449\u043d\u0438\u043a',
     'common.saveFailedKeepWork': '\u041a\u043e\u043d\u0442\u0435\u043d\u0442 \u0433\u043e\u0442\u043e\u0432, \u043d\u043e \u043d\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d \u0432 \u0431\u0430\u0437\u0435 (\u0441\u0435\u0442\u044c/\u0441\u0435\u0440\u0432\u0435\u0440). \u041d\u0435 \u0437\u0430\u043a\u0440\u044b\u0432\u0430\u0439\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 \u2014 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0435\u0449\u0451 \u0440\u0430\u0437.',
     'shell.platformTitle': 'iMentor Platform',
@@ -3010,6 +3026,14 @@ export const UI_TEXT = {
 
   },
   en: {
+    'profile.demoStaffName': 'Demo teacher',
+    'profile.demoAdminName': 'Demo administrator',
+    'profile.demoFacultyMedical': 'Faculty of Medicine',
+    'profile.demoFacultyAdmin': 'Administrator',
+    'profile.demoDeptInternal': 'Department of Internal Medicine',
+    'profile.demoDeptSystem': 'System',
+    'profile.demoDirectionTherapy': 'Therapy',
+    'profile.demoDirectionFullAccess': 'Full access',
     'publicLanding.featureAiChip': 'AI assistant',
     'common.saveFailedKeepWork': 'Content is ready but was not saved to the database (network/server). Do not close the page \u2014 try saving again.',
     'shell.platformTitle': 'iMentor Platform',

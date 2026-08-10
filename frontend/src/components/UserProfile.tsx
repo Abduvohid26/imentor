@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import StaffTeachingSubjectsPicker from './staff/StaffTeachingSubjectsPicker';
 import { fetchMyCourseSelections, type CourseSyllabusRow } from '../utils/syllabusApi';
+import { localizedProfileValue } from '../utils/demoProfileI18n';
 import { localizedSubjectName } from '../utils/syllabusI18n';
 import { cacheSyllabusRows } from '../utils/syllabusRowCache';
 import {
@@ -300,7 +301,7 @@ export default function UserProfile() {
           <div className="flex-1 text-center md:text-left pt-2 w-full min-w-0">
             <div className="flex flex-wrap justify-center md:justify-start items-center gap-3 mb-2">
               <h1 className="text-2xl md:text-3xl font-bold text-black/90 tracking-tight">
-                {user?.displayName || t('profile.defaultName')}
+                {localizedProfileValue(user?.displayName, t) || t('profile.defaultName')}
               </h1>
               <span className="px-3 py-1 bg-sky-500/10 border border-sky-500/20 text-sky-700 text-[12px] font-semibold rounded-lg">
                 {t('common.role')}: {displayRole}
@@ -311,11 +312,14 @@ export default function UserProfile() {
             </div>
             {user?.faculty && (
               <p className="text-[14px] font-medium text-black/55 mb-2">
-                <span className="text-black/40">{t('profile.faculty')}</span> {user.faculty}
+                <span className="text-black/40">{t('profile.faculty')}</span>{' '}
+                {localizedProfileValue(user.faculty, t)}
                 <br />
-                <span className="text-black/40">{t('profile.department')}</span> {user.department}
+                <span className="text-black/40">{t('profile.department')}</span>{' '}
+                {localizedProfileValue(user.department, t)}
                 <br />
-                <span className="text-black/40">{t('profile.direction')}</span> {user.direction}
+                <span className="text-black/40">{t('profile.direction')}</span>{' '}
+                {localizedProfileValue(user.direction, t)}
               </p>
             )}
             <p className="text-[12px] font-mono text-black/40 break-all">
