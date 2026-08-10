@@ -16,7 +16,9 @@ import {
   Pencil,
 } from 'lucide-react';
 import StaffTeachingSubjectsPicker from './staff/StaffTeachingSubjectsPicker';
-import { fetchMyCourseSelections } from '../utils/syllabusApi';
+import { fetchMyCourseSelections, type CourseSyllabusRow } from '../utils/syllabusApi';
+import { localizedSubjectName } from '../utils/syllabusI18n';
+import { cacheSyllabusRows } from '../utils/syllabusRowCache';
 import {
   getCurrentLocalUser,
   logoutLocalStaff,
@@ -58,7 +60,7 @@ export default function UserProfile() {
   const [avatarMessage, setAvatarMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [editingSubjects, setEditingSubjects] = useState(false);
-  const [subjectNames, setSubjectNames] = useState<string[]>([]);
+  const [subjectRows, setSubjectRows] = useState<CourseSyllabusRow[]>([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
 
   const isGoogleAuth = false;
@@ -70,15 +72,18 @@ export default function UserProfile() {
     try {
       const rows = await fetchMyCourseSelections();
       const seen = new Set<number>();
-      const names: string[] = [];
+      const unique: CourseSyllabusRow[] = [];
       for (const row of rows) {
-        if (seen.has(row.syllabus.id)) continue;
+        if (!row.syllabus || seen.has(row.syllabus.id)) continue;
         seen.add(row.syllabus.id);
-        names.push(row.syllabus.subject_name);
+        unique.push(row.syllabus);
       }
-      setSubjectNames(names);
+      // Fan nomi XOM holda saqlanmaydi — til almashganda ham to'g'ri
+      // ko'rinishi uchun qator saqlanadi va render paytida o'giriladi.
+      setSubjectRows(unique);
+      cacheSyllabusRows(unique);
     } catch {
-      setSubjectNames([]);
+      setSubjectRows([]);
     } finally {
       setSubjectsLoading(false);
     }
@@ -182,9 +187,9 @@ export default function UserProfile() {
       } else if (code === 'too-large' || code === 'compress-failed') {
         setAvatarMessage({ text: t('profile.avatarTooLarge'), type: 'error' });
       } else if (code === 'no-backend-token') {
-        setAvatarMessage({ text: 'Serverga ulanish yo‘q. Qayta kiring.', type: 'error' });
+        setAvatarMessage({ text: t('profile.avatarNoToken'), type: 'error' });
       } else {
-        setAvatarMessage({ text: 'Rasmni yuklab bo‘lmadi.', type: 'error' });
+        setAvatarMessage({ text: t('profile.avatarUploadFailed'), type: 'error' });
       }
     } finally {
       setUploadingAvatar(false);
@@ -208,7 +213,7 @@ export default function UserProfile() {
       setAvatarMessage({ text: t('profile.avatarRemoved'), type: 'success' });
       setTimeout(() => setAvatarMessage(null), 3000);
     } catch {
-      setAvatarMessage({ text: 'Rasmni o‘chirib bo‘lmadi.', type: 'error' });
+      setAvatarMessage({ text: t('profile.avatarRemoveFailed'), type: 'error' });
     } finally {
       setUploadingAvatar(false);
     }
@@ -314,7 +319,7 @@ export default function UserProfile() {
               </p>
             )}
             <p className="text-[12px] font-mono text-black/40 break-all">
-              {t('profile.systemId')}: {user?.email || '—'}
+              {t('profile.systemId')} {user?.email || '—'}
             </p>
           </div>
         </div>
@@ -422,7 +427,7 @@ export default function UserProfile() {
                     <Loader2 size={18} className="animate-spin" />
                     {t('teachingSubjects.loading')}
                   </div>
-                ) : subjectNames.length === 0 ? (
+                ) : subjectRows.length === 0 ? (
                   <div className="space-y-3">
                     <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
                       {t('syllabus.noAssignedCoursesHint')}
@@ -439,15 +444,15 @@ export default function UserProfile() {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-black/45">
-                      {t('teachingSubjects.selectedCount', { count: subjectNames.length })}
+                      {t('teachingSubjects.selectedCount', { count: subjectRows.length })}
                     </p>
                     <ul className="flex flex-wrap gap-2">
-                      {subjectNames.map((name) => (
+                      {subjectRows.map((row) => (
                         <li
-                          key={name}
+                          key={row.id}
                           className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-slate-800"
                         >
-                          {name}
+                          {localizedSubjectName(row, language)}
                         </li>
                       ))}
                     </ul>
