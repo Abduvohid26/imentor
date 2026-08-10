@@ -433,3 +433,103 @@ def admin_live_test_submissions(
     page = paginate(rows, request, default_page_size=50, max_page_size=200)
     page["results"] = [_map(r) for r in page["results"]]
     return page
+
+
+@router.get("/admin/student-live-test-report/")
+def admin_student_live_test_report(
+    student_id: str = "",
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles("admin")),
+) -> dict:
+    """
+    Bitta talabaning to'liq test hisoboti: talaba ID → fanlar → darslar.
+
+    Har fan uchun o'sha fanda o'tkazilgan BARCHA testlar qaytariladi — talaba
+    yechganlari ball bilan, yechmaganlari `taken: false` bilan. Shu tufayli
+    "qaysi darsni yechgan, qaysinisini yechmagan" ko'rinib turadi.
+
+    Fanlar ro'yxati talaba kamida bitta test topshirgan fanlardan olinadi
+    (platformada talaba–fan biriktiruvi yo'q).
+    """
+    sid = (student_id or "").strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="student_id parametri kerak.")
+
+    own = (
+        db.execute(
+            select(LiveTestSubmission)
+            .join(LiveTestSession)
+            .where(LiveTestSubmission.student_id == sid)
+            .order_by(LiveTestSubmission.submitted_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    if not own:
+        return {"found": False, "student_id": sid, "first_name": "", "last_name": "", "subjects": []}
+
+    latest = own[0]
+    # Talaba qatnashgan fanlar; fan biriktirilmagan sessiyalar "" guruhida.
+    subject_codes = {sub.session.subject_code or "" for sub in own}
+
+    sessions = (
+        db.execute(
+            select(LiveTestSession, func.count(LiveTestSubmission.id).label("submission_count"))
+            .outerjoin(LiveTestSubmission, LiveTestSubmission.session_id == LiveTestSession.id)
+            .where(LiveTestSession.subject_code.in_(subject_codes))
+            .group_by(LiveTestSession.id)
+            .order_by(LiveTestSession.created_at.desc())
+        )
+        .all()
+    )
+    names = svc.subject_names_for_codes(db, {c for c in subject_codes if c})
+    by_session = {sub.session.session_key: sub for sub in own}
+
+    grouped: dict[str, list[dict]] = {code: [] for code in subject_codes}
+    for sess, submission_count in sessions:
+        payload = sess.payload if isinstance(sess.payload, dict) else {}
+        questions = payload.get("questions", [])
+        questions = questions if isinstance(questions, list) else []
+        sub = by_session.get(sess.session_key)
+        row = {
+            "session_key": sess.session_key,
+            "topic": str(payload.get("topic") or ""),
+            "created_at_ms": int(sess.created_at.timestamp() * 1000),
+            "is_closed": bool(sess.is_closed),
+            "question_count": len(questions),
+            "participant_count": int(submission_count or 0),
+            "taken": sub is not None,
+            "score": None,
+            "total": len(questions),
+            "submitted_at": None,
+        }
+        if sub is not None:
+            correct, total = svc.score_submission(questions, sub.answers)
+            row["score"] = correct
+            row["total"] = total
+            row["submitted_at"] = sub.submitted_at.isoformat()
+        grouped.setdefault(sess.subject_code or "", []).append(row)
+
+    subjects = []
+    for code, rows_ in grouped.items():
+        taken_rows = [r for r in rows_ if r["taken"] and r["total"]]
+        pcts = [r["score"] / r["total"] * 100 for r in taken_rows]
+        subjects.append(
+            {
+                "subject_code": code or UNASSIGNED_SUBJECT_KEY,
+                "subject_name": names.get(code, ""),
+                "total_sessions": len(rows_),
+                "taken_sessions": sum(1 for r in rows_ if r["taken"]),
+                "avg_score_pct": round(sum(pcts) / len(pcts), 1) if pcts else None,
+                "sessions": rows_,
+            }
+        )
+    subjects.sort(key=lambda x: (-x["taken_sessions"], x["subject_name"] or x["subject_code"]))
+
+    return {
+        "found": True,
+        "student_id": sid,
+        "first_name": latest.first_name,
+        "last_name": latest.last_name,
+        "subjects": subjects,
+    }

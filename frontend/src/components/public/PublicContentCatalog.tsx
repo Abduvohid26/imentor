@@ -14,6 +14,8 @@ import {
   FileText,
   KeyRound,
   Download,
+  Building2,
+  X,
 } from 'lucide-react';
 import type { AppLanguage } from '../../i18n/language';
 import { localeForLanguage } from '../../i18n/language';
@@ -23,9 +25,8 @@ import { downloadCaseAnswerKeyPdf, downloadCaseScenariosPdf } from '../../utils/
 import { downloadTestAnswerKeyPdf, downloadTestQuestionsPdf } from '../../utils/buildTestPdf';
 import type { CatalogPdfMeta } from '../../utils/catalogPdfVerification';
 import {
+  fetchAllPublicCatalogItems,
   fetchPublicCatalogItemDetail,
-  fetchPublicCatalogItems,
-  fetchPublicCatalogSubjects,
   type PublicCatalogItemDetail,
   type PublicCatalogItemSummary,
 } from '../../utils/publicContentCatalogApi';
@@ -40,6 +41,41 @@ type KindFilter = '' | 'case' | 'test';
 
 function t(lang: AppLanguage, key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
   return translate(lang, key, params);
+}
+
+/** Bir bosishli filtr tugmasi — nomi + shu filtrdagi material soni. */
+function FilterChip({
+  active,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold border transition-colors ${
+        active
+          ? 'bg-[#0c5a7e] text-white border-[#0c5a7e] shadow-sm'
+          : 'bg-white text-[#083047]/75 border-black/10 hover:border-[#0c5a7e]/30 hover:text-[#083047]'
+      }`}
+    >
+      <span className="truncate max-w-[15rem]">{label}</span>
+      <span
+        className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${
+          active ? 'bg-white/20 text-white' : 'bg-black/5 text-black/45'
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
 }
 
 function PublicCatalogDetail({
@@ -258,12 +294,11 @@ export default function PublicContentCatalog({
   };
   const [kindFilter, setKindFilter] = useState<KindFilter>('');
   const [subjectCode, setSubjectCode] = useState('');
+  const [departmentCode, setDepartmentCode] = useState('');
   const [search, setSearch] = useState('');
-  const [author, setAuthor] = useState('');
   const [sort, setSort] = useState<'subject' | 'topic' | 'newest'>('subject');
   const isCompactCollapsed = compact && !expanded;
-  const [items, setItems] = useState<PublicCatalogItemSummary[]>([]);
-  const [subjects, setSubjects] = useState<Awaited<ReturnType<typeof fetchPublicCatalogSubjects>>>([]);
+  const [allItems, setAllItems] = useState<PublicCatalogItemSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<PublicCatalogItemDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -271,30 +306,130 @@ export default function PublicContentCatalog({
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
   const locale = localeForLanguage(language);
 
+  // Butun katalog BIR MARTA olinadi, filtrlash esa brauzerda bo'ladi. Ilgari
+  // har harf yozilganda yangi so'rov ketardi (sekin, "sakrab" turadigan
+  // ro'yxat) va server faqat 1-sahifani (50 ta) qaytarardi — qolgan
+  // materiallar talabaga umuman ko'rinmasdi.
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [rows, subj] = await Promise.all([
-        fetchPublicCatalogItems({ kind: kindFilter, subjectCode, q: search, author, sort }),
-        fetchPublicCatalogSubjects(),
-      ]);
-      setItems(rows);
-      setSubjects(subj);
+      setAllItems(await fetchAllPublicCatalogItems());
     } finally {
       setLoading(false);
     }
-  }, [kindFilter, subjectCode, search, author, sort]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const grouped = useMemo(
-    () => groupCatalogBySubject(items as PublicCatalogItemSummary[], language),
-    [items, language],
+  const otherDepartmentLabel = t(language, 'catalog.otherDepartment');
+  const departmentNameOf = useCallback(
+    (row: PublicCatalogItemSummary) => (row.department_name || '').trim() || otherDepartmentLabel,
+    [otherDepartmentLabel],
   );
-  const caseCount = useMemo(() => items.filter((i) => i.kind === 'case').length, [items]);
-  const testCount = useMemo(() => items.filter((i) => i.kind === 'test').length, [items]);
+  /** Kafedrasi yo'q yozuvlar ham bitta guruhga tushishi uchun barqaror kalit. */
+  const departmentKeyOf = useCallback(
+    (row: PublicCatalogItemSummary) => (row.department_code || '').trim() || `name:${departmentNameOf(row)}`,
+    [departmentNameOf],
+  );
+
+  const matchesSearch = useCallback(
+    (row: PublicCatalogItemSummary) => {
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      return [row.topic, row.subject_name, row.department_name, row.author_display_name]
+        .some((v) => (v || '').toLowerCase().includes(q));
+    },
+    [search],
+  );
+
+  const matchesKind = useCallback(
+    (row: PublicCatalogItemSummary) => !kindFilter || row.kind === kindFilter,
+    [kindFilter],
+  );
+
+  const caseCount = useMemo(() => allItems.filter((i) => i.kind === 'case').length, [allItems]);
+  const testCount = useMemo(() => allItems.filter((i) => i.kind === 'test').length, [allItems]);
+
+  // Kafedra tugmalari — sanoq joriy tur/qidiruv doirasida hisoblanadi, ya'ni
+  // "0 ta" chiqadigan tugma ko'rinmaydi.
+  const departmentOptions = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; count: number }>();
+    for (const row of allItems) {
+      if (!matchesKind(row) || !matchesSearch(row)) continue;
+      const key = departmentKeyOf(row);
+      const entry = map.get(key) ?? { key, name: departmentNameOf(row), count: 0 };
+      entry.count += 1;
+      map.set(key, entry);
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'uz'));
+  }, [allItems, matchesKind, matchesSearch, departmentKeyOf, departmentNameOf]);
+
+  const subjectOptions = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; count: number }>();
+    for (const row of allItems) {
+      if (!matchesKind(row) || !matchesSearch(row)) continue;
+      if (departmentCode && departmentKeyOf(row) !== departmentCode) continue;
+      const code = (row.subject_code || '').trim() || `name:${row.subject_name}`;
+      const entry = map.get(code) ?? {
+        code,
+        name: (row.subject_name || '').trim() || t(language, 'catalog.otherTopics'),
+        count: 0,
+      };
+      entry.count += 1;
+      map.set(code, entry);
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'uz'));
+  }, [allItems, matchesKind, matchesSearch, departmentCode, departmentKeyOf, language]);
+
+  const items = useMemo(() => {
+    const rows = allItems.filter((row) => {
+      if (!matchesKind(row) || !matchesSearch(row)) return false;
+      if (departmentCode && departmentKeyOf(row) !== departmentCode) return false;
+      if (subjectCode) {
+        const code = (row.subject_code || '').trim() || `name:${row.subject_name}`;
+        if (code !== subjectCode) return false;
+      }
+      return true;
+    });
+    if (sort === 'newest') {
+      return rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+    if (sort === 'topic') {
+      return rows.sort((a, b) => a.topic.localeCompare(b.topic, 'uz'));
+    }
+    return rows.sort(
+      (a, b) =>
+        (a.subject_name || '').localeCompare(b.subject_name || '', 'uz') ||
+        a.topic.localeCompare(b.topic, 'uz'),
+    );
+  }, [allItems, matchesKind, matchesSearch, departmentCode, subjectCode, departmentKeyOf, sort]);
+
+  // Kafedra almashsa, boshqa kafedraning fani tanlangan bo'lib qolmasin.
+  useEffect(() => {
+    if (!subjectCode) return;
+    if (subjectOptions.some((s) => s.code === subjectCode)) return;
+    setSubjectCode('');
+  }, [subjectCode, subjectOptions]);
+
+  const hasFilters = Boolean(kindFilter || departmentCode || subjectCode || search.trim());
+  const clearFilters = () => {
+    setKindFilter('');
+    setDepartmentCode('');
+    setSubjectCode('');
+    setSearch('');
+  };
+
+  const grouped = useMemo(() => groupCatalogBySubject(items, language), [items, language]);
+  const departmentBySubjectName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of items) {
+      const key = (row.subject_name || '').trim() || t(language, 'catalog.otherTopics');
+      if (!map.has(key)) map.set(key, row.department_name || '');
+    }
+    return map;
+  }, [items, language]);
 
   // Bo'lim boshiga qaytaramiz — sahifa tepasiga sakramasligi uchun.
   const scrollToSection = useCallback(() => {
@@ -430,6 +565,28 @@ export default function PublicContentCatalog({
 
       {!isCompactCollapsed && (
       <div className="rounded-3xl border border-white/70 bg-white/75 backdrop-blur-xl p-5 sm:p-6 lg:p-7 space-y-5 shadow-lg">
+        {/* Qidiruv — eng katta va birinchi element: talaba ko'pincha shundan boshlaydi. */}
+        <div className="relative">
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t(language, 'catalog.searchPlaceholder')}
+            aria-label={t(language, 'catalog.filterSearch')}
+            className="w-full pl-11 pr-11 py-3.5 rounded-2xl border border-black/10 bg-white text-[15px] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#0c5a7e]/30"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label={t(language, 'catalog.clearFilters')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-black/40 hover:bg-black/5"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
         <div className="flex flex-wrap gap-2.5">
           {(['', 'case', 'test'] as KindFilter[]).map((k) => (
             <button
@@ -447,56 +604,82 @@ export default function PublicContentCatalog({
           ))}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 pt-1">
-          <label className="space-y-1">
-            <span className="text-[11px] font-semibold text-black/45 flex items-center gap-1">
-              <Filter size={12} /> {t(language, 'catalog.filterSubject')}
-            </span>
-            <select
-              value={subjectCode}
-              onChange={(e) => setSubjectCode(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-[13px]"
-            >
-              <option value="">{t(language, 'catalog.allSubjects')}</option>
-              {subjects.map((s) => (
-                <option key={s.subject_code || s.subject_name} value={s.subject_code}>
-                  {s.subject_name} ({s.total_count})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-[11px] font-semibold text-black/45 flex items-center gap-1">
-              <Search size={12} /> {t(language, 'catalog.filterSearch')}
-            </span>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t(language, 'catalog.searchPlaceholder')}
-              className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-[13px]"
+        {/* Kafedra — bir bosishli tugmalar. Uzun `select` ro'yxatidan ko'ra
+            talaba uchun tezroq: qaysi kafedrada nechta material borligi ham
+            darrov ko'rinadi. */}
+        <div className="space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-black/40 flex items-center gap-1.5">
+            <Building2 size={12} /> {t(language, 'catalog.stepDepartment')}
+          </p>
+          <div role="group" aria-label={t(language, 'catalog.filterDepartment')} className="flex flex-wrap gap-2">
+            <FilterChip
+              active={!departmentCode}
+              label={t(language, 'catalog.allDepartments')}
+              count={departmentOptions.reduce((n, d) => n + d.count, 0)}
+              onClick={() => setDepartmentCode('')}
             />
-          </label>
-          <label className="space-y-1">
-            <span className="text-[11px] font-semibold text-black/45">{t(language, 'catalog.filterAuthor')}</span>
-            <input
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder={t(language, 'catalog.authorPlaceholder')}
-              className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-[13px]"
+            {departmentOptions.map((d) => (
+              <FilterChip
+                key={d.key}
+                active={departmentCode === d.key}
+                label={d.name}
+                count={d.count}
+                onClick={() => setDepartmentCode((cur) => (cur === d.key ? '' : d.key))}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-black/40 flex items-center gap-1.5">
+            <Filter size={12} /> {t(language, 'catalog.stepSubject')}
+          </p>
+          <div role="group" aria-label={t(language, 'catalog.filterSubject')} className="flex flex-wrap gap-2">
+            <FilterChip
+              active={!subjectCode}
+              label={t(language, 'catalog.allSubjects')}
+              count={subjectOptions.reduce((n, s) => n + s.count, 0)}
+              onClick={() => setSubjectCode('')}
             />
-          </label>
-          <label className="space-y-1">
-            <span className="text-[11px] font-semibold text-black/45">{t(language, 'catalog.filterSort')}</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as typeof sort)}
-              className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-[13px]"
-            >
-              <option value="subject">{t(language, 'catalog.sortSubject')}</option>
-              <option value="topic">{t(language, 'catalog.sortTopic')}</option>
-              <option value="newest">{t(language, 'catalog.sortNewest')}</option>
-            </select>
-          </label>
+            {subjectOptions.map((s) => (
+              <FilterChip
+                key={s.code}
+                active={subjectCode === s.code}
+                label={s.name}
+                count={s.count}
+                onClick={() => setSubjectCode((cur) => (cur === s.code ? '' : s.code))}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-black/5">
+          <p className="text-[13px] font-semibold text-[#083047] pt-3">
+            {t(language, 'catalog.resultCount', { count: items.length })}
+          </p>
+          <div className="flex items-center gap-2 pt-3">
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/10 bg-white text-[12px] font-semibold text-black/60 hover:text-black/85 hover:border-black/20"
+              >
+                <X size={14} /> {t(language, 'catalog.clearFilters')}
+              </button>
+            )}
+            <label className="inline-flex items-center gap-2">
+              <span className="text-[12px] text-black/45">{t(language, 'catalog.filterSort')}</span>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as typeof sort)}
+                className="px-3 py-2 rounded-xl border border-black/10 bg-white text-[12px]"
+              >
+                <option value="subject">{t(language, 'catalog.sortSubject')}</option>
+                <option value="topic">{t(language, 'catalog.sortTopic')}</option>
+                <option value="newest">{t(language, 'catalog.sortNewest')}</option>
+              </select>
+            </label>
+          </div>
         </div>
       </div>
       )}
@@ -526,7 +709,25 @@ export default function PublicContentCatalog({
 
       {!detail && !loading && items.length === 0 && (
         <div className={`rounded-2xl border border-white/70 bg-white/70 text-center text-black/45 ${isCompactCollapsed ? 'p-8 text-[13px]' : 'p-12 text-[14px] rounded-3xl'}`}>
-          {isCompactCollapsed ? t(language, 'publicCatalog.previewEmpty') : t(language, 'catalog.empty')}
+          {isCompactCollapsed ? (
+            t(language, 'publicCatalog.previewEmpty')
+          ) : hasFilters ? (
+            // Baza bo'sh emas — shunchaki filtrga mos kelmadi. Talaba
+            // "material yo'q" deb o'ylab ketmasligi uchun chiqish yo'lini ham beramiz.
+            <div className="space-y-3">
+              <p className="text-black/60 font-semibold">{t(language, 'catalog.noMatch')}</p>
+              <p className="text-[13px]">{t(language, 'catalog.noMatchHint')}</p>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#083047] text-white text-[13px] font-semibold hover:bg-[#0c5a7e]"
+              >
+                <X size={14} /> {t(language, 'catalog.clearFilters')}
+              </button>
+            </div>
+          ) : (
+            t(language, 'catalog.empty')
+          )}
         </div>
       )}
 
@@ -552,7 +753,14 @@ export default function PublicContentCatalog({
                 >
                   <div className="flex items-center gap-3 text-left min-w-0">
                     <BookOpen size={18} className="text-indigo-600 shrink-0" />
-                    <span className="font-bold text-[#083047] truncate">{subjectName}</span>
+                    <div className="min-w-0">
+                      <span className="font-bold text-[#083047] truncate block">{subjectName}</span>
+                      {departmentBySubjectName.get(subjectName) && (
+                        <span className="text-[11px] text-black/40 truncate block">
+                          {departmentBySubjectName.get(subjectName)}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[12px] text-black/40 shrink-0">({rows.length})</span>
                   </div>
                   {isOpen ? <ChevronUp size={18} className="shrink-0 ml-3" /> : <ChevronDown size={18} className="shrink-0 ml-3" />}

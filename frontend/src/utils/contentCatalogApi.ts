@@ -14,6 +14,9 @@ export type CatalogItemSummary = {
   topic_norm: string;
   subject_name: string;
   subject_code: string;
+  /** Kafedra — public katalogda filtrlash uchun (API `catalog_item_summary` beradi). */
+  department_name?: string;
+  department_code?: string;
   variant_label: string;
   topic_code: string;
   syllabus_id: number | null;

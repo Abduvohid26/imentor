@@ -961,7 +961,7 @@ async function attachOptionExplanations(
         correctOptionIndex: questions[i].correctOptionIndex,
       }));
       try {
-        const parsed = await openaiJson<{ items?: { id?: number; optionExplanations?: string[] }[] }>({
+        const parsed = await openaiJson<unknown>({
           model: OPENAI_FAST,
           system:
             `${SYS_MEDICAL} Har savolning HAR BIR variantiga bittadan qisqa izoh yoz: ` +
@@ -973,16 +973,38 @@ async function attachOptionExplanations(
           user: JSON.stringify(source),
           maxTokens: Math.min(16000, idxs.length * 320 + 400),
           temperature: 0.2,
-          parse: (t) => parseJSONSafe<{ items?: { id?: number; optionExplanations?: string[] }[] }>(t),
+          parse: (t) => parseJSONSafe<unknown>(t),
         });
-        for (const item of parsed.items || []) {
-          const i = typeof item?.id === 'number' ? item.id : -1;
-          if (!merged[i]) continue;
+        // Model javob shaklini turlicha berishi mumkin: {items:[…]}, {questions:[…]}
+        // yoki to'g'ridan-to'g'ri massiv. Uchalasini ham qabul qilamiz — aks holda
+        // izohlar jimgina yo'qoladi va ekranda hech narsa ko'rinmaydi.
+        type OptionExplanationItem = { id?: number; optionExplanations?: string[] };
+        const box = (parsed || {}) as { items?: unknown; questions?: unknown };
+        const items: OptionExplanationItem[] = (
+          Array.isArray(parsed)
+            ? parsed
+            : Array.isArray(box.items)
+              ? box.items
+              : Array.isArray(box.questions)
+                ? box.questions
+                : []
+        ) as OptionExplanationItem[];
+        items.forEach((item, pos) => {
+          // `id` — biz bergan global indeks; yo'q bo'lsa bo'lak ichidagi tartib.
+          const rawId = typeof item?.id === 'number' ? item.id : undefined;
+          const i = rawId !== undefined ? rawId : (idxs[pos] ?? -1);
+          if (!merged[i]) return;
           const raw = Array.isArray(item?.optionExplanations) ? item.optionExplanations : [];
           const cleaned = raw.map((e) => stripUnfilledSourceTemplate(String(e || '')).trim());
-          if (cleaned.length !== merged[i].options.length || !cleaned.some((e) => e)) continue;
-          merged[i] = { ...merged[i], optionExplanations: cleaned };
-        }
+          if (!cleaned.some((e) => e)) return;
+          // Uzunlik mos kelmasa tashlab yubormaymiz — kelganini qoldirib,
+          // yetmaganini bo'sh bilan to'ldiramiz (bo'sh izoh chizilmaydi).
+          const sized = Array.from(
+            { length: merged[i].options.length },
+            (_, k) => cleaned[k] || '',
+          );
+          merged[i] = { ...merged[i], optionExplanations: sized };
+        });
       } catch (err) {
         // Izohlar — qo'shimcha qiymat, majburiy emas: testni yiqitmaymiz.
         console.warn('Variant izohlari olinmadi (bo\'lak o\'tkazib yuborildi):', err);
