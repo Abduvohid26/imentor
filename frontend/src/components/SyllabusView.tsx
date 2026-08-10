@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import TopicVideoPanel from './staff/TopicVideoPanel';
 import type { SyllabusTopic } from '../services/aiService';
 import { AppLanguageContext } from '../App';
 import { useUiText } from '../i18n/useUiText';
@@ -361,7 +360,6 @@ export default function SyllabusView({
                       <ArrowRight size={14} />
                     </button>
                   </div>
-                  <TopicVideoPanel topic={selectedTopic} />
                 </div>
               )}
 
