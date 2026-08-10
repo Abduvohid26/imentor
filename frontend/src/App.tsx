@@ -77,6 +77,8 @@ import { fetchMyCourseSelections } from './utils/syllabusApi';
 import TestQuestions from './components/TestQuestions';
 import StudentMyTests from './components/StudentMyTests';
 import LectureNotes from './components/LectureNotes';
+import TopicVideos from './components/TopicVideos';
+import HandoutMaterials from './components/HandoutMaterials';
 import AdminDashboardHome from './components/admin/AdminDashboardHome';
 import AdminStaffManagement from './components/admin/AdminStaffManagement';
 import AdminCasesLibrary from './components/admin/AdminCasesLibrary';
@@ -120,6 +122,8 @@ type View =
   | 'syllabus'
   | 'profile'
   | 'presentation'
+  | 'videos'
+  | 'handouts'
   | 'cases'
   | 'tests'
   | 'lectures'
@@ -145,6 +149,8 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   syllabus: BookOpen,
   lectures: FileText,
   presentation: Presentation,
+  videos: Youtube,
+  handouts: Files,
   'content-catalog': Library,
   cases: BriefcaseMedical,
   tests: ClipboardList,
@@ -152,7 +158,16 @@ const NAV_ICONS: Record<View, LucideIcon> = {
   'my-tests': ClipboardList,
 };
 
-const HODIM_NAV_IDS: View[] = ['syllabus', 'lectures', 'presentation', 'cases', 'tests', 'profile'];
+const HODIM_NAV_IDS: View[] = [
+  'syllabus',
+  'lectures',
+  'presentation',
+  'videos',
+  'handouts',
+  'cases',
+  'tests',
+  'profile',
+];
 const ADMIN_NAV_IDS: View[] = [
   'admin-dashboard',
   'admin-staff',
@@ -568,6 +583,10 @@ export default function App() {
         return <UserProfile />;
       case 'presentation':
         return <PresentationBuilder />;
+      case 'videos':
+        return <TopicVideos />;
+      case 'handouts':
+        return <HandoutMaterials />;
       case 'cases':
         return <CaseStudies />;
       case 'tests':
