@@ -2,10 +2,8 @@ import { type AppLanguage, inferPdfLanguage } from '../i18n/language';
 import { translate } from '../i18n/translations';
 import type { PresentationContent } from '../utils/presentationContentSchema';
 import {
-  MIN_SLIDES,
   PRESENTATION_JSON_SCHEMA,
   normalizePresentationContent,
-  normalizeSlideList,
   withPresentationReferences,
 } from '../utils/presentationContentSchema';
 import { dedupePresentationSlides, qaPresentationContent } from '../utils/presentationQa';
@@ -1241,85 +1239,6 @@ async function attachTestTranslations(session: TestSession, primaryLang: AppLang
 }
 
 
-/** Yetishmagan slaydlarni qo'shimcha so'rovlar bilan to'ldirish — necha marta. */
-const DECK_EXTEND_ATTEMPTS = 2;
-
-/**
- * Deckni `MIN_SLIDES` gacha to'ldiradi.
- *
- * Har urinishda modelga MAVJUD SARLAVHALAR ro'yxati beriladi va faqat
- * yoritilmagan bo'limlar so'raladi — shuning uchun qo'shilgan slaydlar
- * takror bo'lmaydi. Qo'shilgandan keyin dedupe qayta ishlaydi, xulosa
- * (summary) esa oxirida qoladi.
- */
-async function extendDeckToMinSlides(
-  content: PresentationContent,
-  opts: {
-    system: string;
-    baseUser: string;
-    bookContext?: BookContext;
-    language: AppLanguage;
-    onProgress?: (text: string) => void;
-  },
-): Promise<PresentationContent> {
-  let deck = content;
-  for (let attempt = 0; attempt < DECK_EXTEND_ATTEMPTS; attempt += 1) {
-    const missing = MIN_SLIDES - deck.slides.length;
-    if (missing <= 0) break;
-    opts.onProgress?.(translate(opts.language, 'ai.progress.content'));
-
-    const existingTitles = deck.slides.map((s, i) => `${i + 1}. ${s.title}`).join('\n');
-    const user =
-      `${opts.baseUser}\n\n` +
-      `TAQDIMOTDA HOZIR ${deck.slides.length} SLAYD BOR:\n${existingTitles}\n\n` +
-      `VAZIFA: shu taqdimotga QO'SHISH uchun yana ${missing + 2} ta YANGI slayd qaytaring. ` +
-      'Yuqoridagi sarlavhalardan birortasini takrorlamang va ularda aytilgan ' +
-      'ma\'lumotni boshqa so\'z bilan qayta yozmang — ma\'ruza matnining hali ' +
-      'yoritilmagan bo\'limlarini, tafsilotlarini va klinik misollarini oching. ' +
-      'title, agenda va summary slaydlari KERAK EMAS — faqat mazmun slaydlari. ' +
-      'JSON formati o\'sha: {"slides": [...]}.';
-
-    let extraRaw: Partial<PresentationContent> | null = null;
-    try {
-      extraRaw = await openaiJson<Partial<PresentationContent>>({
-        model: OPENAI_CHAT,
-        system: opts.system,
-        user,
-        maxTokens: 16000,
-        temperature: 0.4,
-        bookContext: opts.bookContext,
-        responseFormat: { type: 'json_schema', json_schema: PRESENTATION_JSON_SCHEMA },
-        parse: (t) => parseJSONSafe<Partial<PresentationContent>>(t),
-      });
-    } catch (err) {
-      console.warn('Deck extend attempt failed:', err);
-      break;
-    }
-
-    const extra = normalizeSlideList(extraRaw?.slides, deck.subject_area).filter(
-      (s) => !['title', 'agenda', 'references', 'summary'].includes(s.slide_type),
-    );
-    if (!extra.length) break;
-
-    // Xulosa slaydi oxirida qolishi uchun yangi slaydlar undan OLDIN qo'shiladi.
-    const summaryIdx = deck.slides.findIndex((s) => s.slide_type === 'summary');
-    const slides =
-      summaryIdx >= 0
-        ? [...deck.slides.slice(0, summaryIdx), ...extra, ...deck.slides.slice(summaryIdx)]
-        : [...deck.slides, ...extra];
-    const before = deck.slides.length;
-    deck = dedupePresentationSlides({ ...deck, slides });
-    // Model yangi narsa bermayotgan bo'lsa yana so'rash foydasiz.
-    if (deck.slides.length <= before) break;
-  }
-  if (deck.slides.length < MIN_SLIDES) {
-    console.warn(
-      `[presentation] ${deck.slides.length} slayd — MIN_SLIDES=${MIN_SLIDES} ga yetmadi.`,
-    );
-  }
-  return deck;
-}
-
 async function requestPresentationDeckFromAi(params: {
   topicTitle: string;
   topicId: string;
@@ -1444,17 +1363,6 @@ async function requestPresentationDeckFromAi(params: {
   // Takroriy slaydlarni olib tashlaymiz — model uzun matnda bir slaydni
   // bir necha marta qaytarishi mumkin.
   content = dedupePresentationSlides(content);
-  // Promptda "kamida 20 slayd" yozilgan bo'lsa ham model ko'pincha 10-12 ta
-  // qaytaradi, dedupe yana bir nechtasini olib tashlaydi. Shuning uchun
-  // yetishmagan qismini alohida so'rov bilan to'ldiramiz — ma'ruzaning
-  // yoritilmagan bo'limlaridan, mavjud sarlavhalarni takrorlamasdan.
-  content = await extendDeckToMinSlides(content, {
-    system,
-    baseUser: user,
-    bookContext,
-    language: params.language,
-    onProgress: params.onProgress,
-  });
   qaPresentationContent(content);
   params.onProgress?.(translate(params.language, 'ai.progress.images'));
   content = await resolvePresentationImages(content);
