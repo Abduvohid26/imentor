@@ -93,6 +93,24 @@ function slideFingerprint(slide: PresentationContent['slides'][number]): string 
   return normalizeForCompare(parts.join(' | '));
 }
 
+/** Ikki matnning so'zlar bo'yicha o'xshashligi (Jaccard, 0…1). */
+function similarity(a: string, b: string): number {
+  const setA = new Set(a.split(' ').filter((w) => w.length > 3));
+  const setB = new Set(b.split(' ').filter((w) => w.length > 3));
+  if (!setA.size || !setB.size) return 0;
+  let inter = 0;
+  for (const w of setA) if (setB.has(w)) inter += 1;
+  return inter / (setA.size + setB.size - inter);
+}
+
+/** Shu chegaradan yuqori o'xshashlik — aynan bir xil emas, lekin takror. */
+const NEAR_DUPLICATE_RATIO = 0.8;
+/** Bitta bullet takror hisoblanadigan chegara. */
+const DUPLICATE_BULLET_RATIO = 0.75;
+
+/** Bu turlarda bullet takrori tabiiy (reja/xulosa butun taqdimotni qaytaradi). */
+const BULLET_DEDUPE_EXEMPT = ['agenda', 'summary', 'title'];
+
 /**
  * Takrorlangan slaydlarni olib tashlaydi.
  *
@@ -100,21 +118,76 @@ function slideFingerprint(slide: PresentationContent['slides'][number]): string 
  * marta qaytaradi — taqdimotda bir sahifa qayta-qayta ko'rinadi. Birinchi
  * nusxa saqlanadi, qolganlari tashlanadi. Xulosa (summary) slaydi esa faqat
  * bitta va eng oxirida bo'ladi.
+ *
+ * Aynan mos nusxadan tashqari uch xil takror tutiladi:
+ *  - bir xil (normallashtirilgan) SARLAVHA;
+ *  - so'zlarining 80% i ustma-ust tushadigan YAQIN nusxa;
+ *  - boshqa slaydda aytilgan BULLET ning qayta ishlatilishi.
+ * Bulletlari butunlay takror bo'lib qolgan slayd ham tashlanadi.
  */
 export function dedupePresentationSlides(content: PresentationContent): PresentationContent {
   const seen = new Set<string>();
+  const seenTitles = new Set<string>();
+  const fingerprints: string[] = [];
+  const seenBullets: string[] = [];
   const kept: PresentationContent['slides'] = [];
   const dropped: number[] = [];
 
   content.slides.forEach((slide, idx) => {
     const fp = slideFingerprint(slide);
+    const titleKey = normalizeForCompare(slide.title);
     // Mazmuni bo'sh slaydlar (masalan title) barmoq izi bo'yicha tekshirilmaydi.
     if (fp && seen.has(fp)) {
       dropped.push(idx + 1);
       return;
     }
-    if (fp) seen.add(fp);
-    kept.push(slide);
+    if (titleKey && slide.slide_type !== 'title' && seenTitles.has(titleKey)) {
+      dropped.push(idx + 1);
+      return;
+    }
+    if (fp && fingerprints.some((prev) => similarity(prev, fp) >= NEAR_DUPLICATE_RATIO)) {
+      dropped.push(idx + 1);
+      return;
+    }
+
+    let next = slide;
+    const bullets = slide.body.bullets || [];
+    if (bullets.length && !BULLET_DEDUPE_EXEMPT.includes(slide.slide_type)) {
+      const fresh = bullets.filter((b) => {
+        const key = normalizeForCompare(b);
+        if (!key) return false;
+        if (seenBullets.some((prev) => similarity(prev, key) >= DUPLICATE_BULLET_RATIO)) {
+          return false;
+        }
+        seenBullets.push(key);
+        return true;
+      });
+      // Hamma bulleti takror bo'lsa va boshqa mazmuni (jadval, statistika,
+      // sxema) ham bo'lmasa — slaydda yangi ma'lumot qolmaydi.
+      const b = slide.body;
+      const hasOtherContent = Boolean(
+        b.stats?.length ||
+          b.key_stat ||
+          b.columns?.length ||
+          b.comparison_rows?.length ||
+          b.process_steps?.length ||
+          b.quote_text,
+      );
+      if (!fresh.length && !hasOtherContent) {
+        dropped.push(idx + 1);
+        return;
+      }
+      if (fresh.length !== bullets.length) {
+        next = { ...slide, body: { ...slide.body, bullets: fresh } };
+      }
+    }
+
+    if (fp) {
+      seen.add(fp);
+      fingerprints.push(fp);
+    }
+    if (titleKey) seenTitles.add(titleKey);
+    kept.push(next);
   });
 
   // Xulosa slaydi: oxirgisini qoldirib, qolganlarini olib tashlaymiz.

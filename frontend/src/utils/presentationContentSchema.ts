@@ -405,22 +405,23 @@ export const PRESENTATION_JSON_SCHEMA = {
   },
 } as const;
 
-export function normalizePresentationContent(
-  raw: Partial<PresentationContent> | null | undefined,
-  defaults: { title: string; subject: string; author?: string },
-): PresentationContent {
-  const presentation_title = String(raw?.presentation_title || defaults.title || 'Taqdimot')
-    .trim()
-    .slice(0, 120);
-  const subject_area = String(raw?.subject_area || defaults.subject || '')
-    .trim()
-    .slice(0, 80);
-  const author = String(raw?.author || defaults.author || 'iMentor')
-    .trim()
-    .slice(0, 80);
-
+/**
+ * Xom slaydlar ro'yxatini normallashtiradi — to'liq deck qurmasdan.
+ *
+ * `normalizePresentationContent` dan alohida turadi, chunki 20 slayd chegarasiga
+ * yetish uchun so'raladigan QO'SHIMCHA slaydlar to'plamiga deck qoidalari
+ * (birinchi slayd `title` bo'lsin, kam bo'lsa to'ldiruvchi qo'shilsin) tegishli
+ * emas — ular mavjud taqdimotga qo'shiladi, o'zi mustaqil taqdimot emas.
+ */
+export function normalizeSlideList(
+  rawSlides: unknown,
+  subjectArea: string,
+): ContentSlide[] {
+  const list = Array.isArray(rawSlides)
+    ? (rawSlides as Partial<ContentSlide>[])
+    : [];
   const mapped: ContentSlide[] = [];
-  for (const [i, s] of (Array.isArray(raw?.slides) ? raw!.slides! : []).entries()) {
+  for (const [i, s] of list.entries()) {
     const slide_type = asSlideType(s?.slide_type);
     const title = String(s?.title || `Slayd ${i + 1}`)
       .trim()
@@ -440,7 +441,7 @@ export function normalizePresentationContent(
     const image_query = s?.image_query
       ? String(s.image_query).trim().slice(0, 120)
       : IMAGE_SLIDE_TYPES.includes(slide_type)
-        ? defaultImageQuery(title, subject_area)
+        ? defaultImageQuery(title, subjectArea)
         : undefined;
     mapped.push({
       slide_type,
@@ -453,7 +454,24 @@ export function normalizePresentationContent(
       imageCredit: typeof s?.imageCredit === 'string' ? s.imageCredit : undefined,
     });
   }
-  let slides = mapped;
+  return mapped;
+}
+
+export function normalizePresentationContent(
+  raw: Partial<PresentationContent> | null | undefined,
+  defaults: { title: string; subject: string; author?: string },
+): PresentationContent {
+  const presentation_title = String(raw?.presentation_title || defaults.title || 'Taqdimot')
+    .trim()
+    .slice(0, 120);
+  const subject_area = String(raw?.subject_area || defaults.subject || '')
+    .trim()
+    .slice(0, 80);
+  const author = String(raw?.author || defaults.author || 'iMentor')
+    .trim()
+    .slice(0, 80);
+
+  let slides = normalizeSlideList(raw?.slides, subject_area);
 
   if (slides.length < MIN_SLIDES_WITH_FILLER) {
     const fb = fallbackSlides(presentation_title, subject_area);
