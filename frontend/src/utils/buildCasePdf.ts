@@ -34,7 +34,7 @@ function referencesBlock(refs: MedicalReference[] | undefined, title: string): s
     .join('');
   return `
     <div data-pdf-block style="margin:16px 0;padding:12px;background:#f9fafb;border-radius:8px;">
-      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#4b5563;text-transform:uppercase;">${escapeHtml(title)}</p>
+      <p data-pdf-keep-next style="margin:0 0 8px;font-size:12px;font-weight:700;color:#4b5563;text-transform:uppercase;">${escapeHtml(title)}</p>
       <ul style="margin:0;padding-left:18px;">${items}</ul>
     </div>
   `;
@@ -55,7 +55,7 @@ function buildScenariosHtml(session: CaseStudySession, lang: AppLanguage, meta?:
     .map(
       (q, i) => `
         <div data-pdf-block style="margin-bottom:28px;">
-          ${q.focus ? `<p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#047857;text-transform:uppercase;">${escapeHtml(caseFocusLabel(q.focus, lang))}</p>` : ''}
+          ${q.focus ? `<p data-pdf-keep-next style="margin:0 0 6px;font-size:11px;font-weight:700;color:#047857;text-transform:uppercase;">${escapeHtml(caseFocusLabel(q.focus, lang))}</p>` : ''}
           <p style="margin:0 0 10px;font-size:15px;font-weight:700;color:#111827;line-height:1.6;white-space:pre-wrap;">
             ${i + 1}. ${escapeHtml(q.scenario || '')}
           </p>
@@ -84,12 +84,12 @@ function buildAnswerKeyHtml(session: CaseStudySession, lang: AppLanguage, meta?:
       const refs = referencesBlock(q.references, t(lang, 'pdf.caseReferences'));
       return `
         <div data-pdf-block style="margin-bottom:32px;">
-          ${q.focus ? `<p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;">${escapeHtml(caseFocusLabel(q.focus, lang))}</p>` : ''}
+          ${q.focus ? `<p data-pdf-keep-next style="margin:0 0 6px;font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;">${escapeHtml(caseFocusLabel(q.focus, lang))}</p>` : ''}
           <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#374151;line-height:1.5;white-space:pre-wrap;">
             ${i + 1}. ${escapeHtml((q.scenario || '').slice(0, 180))}${(q.scenario || '').length > 180 ? '…' : ''}
           </p>
           <div style="margin-top:12px;padding:12px;background:#eff6ff;border-radius:8px;border-left:4px solid #3b82f6;">
-            <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#1d4ed8;text-transform:uppercase;">${escapeHtml(t(lang, 'pdf.caseAnswerLabel'))}</p>
+            <p data-pdf-keep-next style="margin:0 0 6px;font-size:12px;font-weight:700;color:#1d4ed8;text-transform:uppercase;">${escapeHtml(t(lang, 'pdf.caseAnswerLabel'))}</p>
             <p style="margin:0;font-size:14px;color:#1e3a8a;line-height:1.6;white-space:pre-wrap;">${escapeHtml(q.answer || '')}</p>
           </div>
           ${refs}

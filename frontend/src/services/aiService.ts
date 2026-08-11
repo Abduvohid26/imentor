@@ -1015,9 +1015,13 @@ async function attachOptionExplanations(
           model: OPENAI_FAST,
           system:
             `${SYS_MEDICAL} Har savol uchun IKKITA narsa yoz.\n` +
-            '1) `analysis` — to\'g\'ri javob tahlili, ANIQ 3 gap: (a) bemordagi qaysi ' +
-            'belgi/tekshiruv natijasi aynan shu tashxis yoki tanlovga olib keladi; (b) qisqacha ' +
-            'patofiziologiya; (c) tanlangan usul/dori nima qilishi va nega samarali ekani. ' +
+            '1) `analysis` — to\'g\'ri javob tahlili, ANIQ 5-6 gap (110-160 so\'z): (a) bemordagi qaysi ' +
+            'belgi/tekshiruv natijasi aynan shu tashxis yoki tanlovga olib keladi; (b) patofiziologiya — ' +
+            'qaysi ferment/hujayra/tizim buzilgani va bu belgilarni qanday keltirib chiqarishi; ' +
+            '(c) tashxisni TASDIQLOVCHI tekshiruv (skrining, laborator ko\'rsatkich, instrumental usul) ' +
+            'va undan kutiladigan natija; (d) tanlangan usul/dori nima qilishi va nega samarali ekani; ' +
+            '(e) o\'z vaqtida aniqlanmasa yuzaga keladigan asosiy asorat yoki prognoz. ' +
+            'Har gap YANGI ma\'lumot bersin — bir fikrni boshqacha so\'z bilan takrorlamang. ' +
             'Savol matnini takrorlamang. Boshqa variantlarni bu yerda muhokama qilmang — ular ' +
             'uchun alohida izoh bor. "Shuning uchun ... eng maqsadga muvofiq" kabi xulosa gapini ' +
             'YOZMANG, u hech qanday ma\'lumot qo\'shmaydi.\n' +
@@ -1030,11 +1034,11 @@ async function attachOptionExplanations(
             'Har variant uchun bittadan yozing, birortasini tashlab ketmang. ' +
             `Til: ${outLang}. ${strictLanguageDirective(language)}`,
           user: JSON.stringify(source),
-          // ~600 token/savol. O'lchov: 3 gaplik tahlil + 5 ta izoh o'zbek tilida
-          // ~440 token yetadi, lekin bir o'lchovda javob kesilib izohlar yo'qolgan
-          // edi. Ishlatilmagan limit hech narsa turmaydi (faqat generatsiya qilingan
-          // tokenlar hisoblanadi), kesilish esa butun bo'lakni yo'qotadi — zaxira qoldiramiz.
-          maxTokens: Math.min(16000, idxs.length * 600 + 400),
+          // ~900 token/savol: 5-6 gaplik tahlil + 5 ta variant izohi. Avval 600
+          // edi (3 gaplik tahlil uchun). Ishlatilmagan limit hech narsa turmaydi
+          // (faqat generatsiya qilingan tokenlar hisoblanadi), kesilish esa butun
+          // bo'lakni yo'qotadi — zaxira qoldiramiz.
+          maxTokens: Math.min(16000, idxs.length * 900 + 400),
           temperature: 0.2,
           parse: (t) => parseJSONSafe<unknown>(t),
         });
@@ -1153,13 +1157,16 @@ async function translateTestSession(
     // Variant izohlari (5 ta qisqa gap) savolni ~1.6 barobar kattalashtiradi —
     // ular bor testda budjet ham shunga yarasha bo'lsin, aks holda tarjima
     // o'rtasidan kesilib "incomplete questions" xatosi chiqadi.
+    // Izohlar uzaygach (3-5 gap, boyitilgandan keyin 5-6 gap) tarjima ham
+    // shunga yarasha ko'proq token oladi — avvalgi 273/500 bilan javob
+    // o'rtasidan kesilib "incomplete questions" xatosi chiqardi.
     maxTokens: Math.min(
       16000,
       Math.ceil(
         content.questions.length *
           (content.questions.some((q) => (q.optionExplanations || []).some((e) => (e || '').trim()))
-            ? 500
-            : 273),
+            ? 700
+            : 400),
       ) + 500,
     ),
     temperature: 0.1,
@@ -1513,10 +1520,11 @@ export const aiService = {
 
     const generate = async (requestedCount: number): Promise<TestSession> => {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
-      // ~210 token/savol (30 ta uchun 6144 asosida o'lchangan) — gpt-4o max
-      // output (16000) dan oshmasin, katta partiyalar (masalan 90 ta) kesilib
-      // qolmasin deb mos ravishda kengaytiramiz.
-      const scaledMaxTokens = Math.min(16000, Math.ceil(requestedCount * 210) + 500);
+      // ~300 token/savol: 3-5 gaplik `explanation` avvalgi 1-2 gapdan ~2.5
+      // barobar uzun, budjet ham shunga yarasha (avval 210 edi va uzun izoh
+      // bilan javob o'rtasidan kesilib qolardi). gpt-4o max output (16000) dan
+      // oshmasin — katta partiyalar (90 ta) uchun cheklab qo'yiladi.
+      const scaledMaxTokens = Math.min(16000, Math.ceil(requestedCount * 300) + 500);
       // OpenAI + server RAG: book_references completion javobidan olinadi.
       let bookReferences: MedicalReference[] = [];
       const parsed = await openaiJson({
@@ -1528,12 +1536,20 @@ export const aiService = {
           // optionExplanations shu yerda so'ralmaydi — u `enrichTestSession`
           // ichida, fonda, bo'lak-bo'lak olinadi (katta partiyalarda javob
           // token limitiga urilib JSON kesilib qolmasligi uchun).
-          'explanation — 1–2 qisqa gap (nega to\'g\'ri). optionExplanations YOZMANG. ' +
+          // Avval "1-2 qisqa gap" edi — ekranda bir qatorlik, hech narsa
+          // tushuntirmaydigan izoh chiqardi. Endi to'liq tahlil (fonda
+          // `enrichTestSession` uni yana kengaytiradi).
+          'explanation — KAMIDA 3, KO\'PI BILAN 5 to\'liq gap (60-100 so\'z): ' +
+          '(a) bemordagi qaysi belgi/tahlil natijasi aynan shu javobga olib keladi; ' +
+          '(b) qisqacha patofiziologiya (mexanizm); ' +
+          '(c) tashxisni tasdiqlovchi tekshiruv yoki tanlangan dori/usul nima qilishi. ' +
+          'Bir gaplik yoki savolni takrorlaydigan izoh XATO hisoblanadi. ' +
+          'optionExplanations YOZMANG. ' +
           `Til: ${outLang}. ${strictLanguageDirective(language)}`,
         user:
           `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 1–2 gap, 5 ta variant. ` +
           'Har savolni yozishdan oldin o\'zingizga savol bering: "to\'g\'ri javobim shu mavzuga kiradimi?" — ' +
-          'kirmasa, savolni almashtiring. explanation qisqa. Faqat valid JSON.',
+          'kirmasa, savolni almashtiring. explanation — 3-5 gaplik to\'liq tahlil. Faqat valid JSON.',
         maxTokens: scaledMaxTokens,
         temperature: 0.45,
         bookContext,

@@ -18,7 +18,9 @@ import { jsPDF } from 'jspdf';
  *      ya'ni harflar orasidagi bo'shliq.
  */
 
-const PAGE_MARGIN_MM = 6;
+/** Sahifa chekkalari (mm) — matn varaq qirrasiga yopishib qolmasin. */
+export const PAGE_MARGIN_Y_MM = 12;
+export const PAGE_MARGIN_X_MM = 8;
 /** Sahifaning kamida shuncha qismi to'lsin — juda kalta sahifa chiqmasin. */
 const MIN_PAGE_FILL = 0.35;
 /** 3-bosqichda toza qator qidiriladigan zona (canvas piksel). */
@@ -38,8 +40,12 @@ function collectBoundaries(container: HTMLElement, pxRatio: number): Boundaries 
   const blocks = unique(
     Array.from(container.querySelectorAll('[data-pdf-block]')).map(toCanvasY),
   );
+  // `data-pdf-keep-next` — sarlavha/yorliq: undan keyin kesilsa, sahifa oxirida
+  // yolg'iz "ЛЕЧЕНИЕ" turib qolardi, matni esa keyingi sahifada.
   const elements = unique(
-    Array.from(container.querySelectorAll('p, li, h1, h2, h3, div, tr')).map(toCanvasY),
+    Array.from(container.querySelectorAll('p, li, h1, h2, h3, div, tr'))
+      .filter((el) => !el.hasAttribute('data-pdf-keep-next'))
+      .map(toCanvasY),
   );
   return { blocks, elements };
 }
@@ -157,9 +163,10 @@ export async function renderHtmlToPdf(html: string, filename: string): Promise<v
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
-    // canvas piksel / mm
-    const pxPerMm = canvas.width / pdfWidth;
-    const usableMm = pdfHeight - PAGE_MARGIN_MM * 2;
+    // Kontent chekkalar ichiga joylashadi (chapdan/o'ngdan ham bo'sh joy qoladi).
+    const contentWidthMm = pdfWidth - PAGE_MARGIN_X_MM * 2;
+    const pxPerMm = canvas.width / contentWidthMm;
+    const usableMm = pdfHeight - PAGE_MARGIN_Y_MM * 2;
     const pagePx = Math.floor(usableMm * pxPerMm);
     const pxRatio = canvas.height / container.getBoundingClientRect().height;
     const { blocks, elements } = collectBoundaries(container, pxRatio);
@@ -180,9 +187,9 @@ export async function renderHtmlToPdf(html: string, filename: string): Promise<v
         pdf.addImage(
           imgData,
           'JPEG',
-          0,
-          PAGE_MARGIN_MM,
-          pdfWidth,
+          PAGE_MARGIN_X_MM,
+          PAGE_MARGIN_Y_MM,
+          contentWidthMm,
           (end - start) / pxPerMm,
         );
         pageIndex += 1;
