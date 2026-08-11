@@ -99,11 +99,11 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
   const [previewUrl, setPreviewUrl] = useState('');
   const [fileReady, setFileReady] = useState(false);
   const [previewError, setPreviewError] = useState(false);
-  if (!item) return null;
   const hasPrev = index > 0;
   const hasNext = index < items.length - 1;
 
   useEffect(() => {
+    if (!item) return;
     let cancelled = false;
     setDownloadUrl('');
     setPreviewUrl('');
@@ -135,7 +135,7 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
     return () => {
       cancelled = true;
     };
-  }, [item.id, item.kind]);
+  }, [item?.id, item?.kind]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -148,6 +148,10 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [index, hasPrev, hasNext, onClose, onIndexChange]);
+
+  // Hooks'dan KEYIN — erta return hook tartibini buzardi (React "rendered
+  // fewer hooks than expected" xatosi).
+  if (!item) return null;
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-black/92" role="dialog" aria-modal="true">
@@ -295,6 +299,7 @@ export default function PresentationMaterials() {
           subjectName: globalTopic?.subjectName || deck.subject_area,
           topicId: globalTopic?.id || 'T',
           variantLabel: globalTopic?.variantLabel,
+          language,
         },
       });
       // Bazadagi yozuvga hali fayl biriktirilmagan bo'lsa — yuklab OLMAYMIZ,
@@ -427,6 +432,7 @@ export default function PresentationMaterials() {
           subjectName: globalTopic.subjectName,
           topicId: globalTopic.id,
           variantLabel: globalTopic.variantLabel,
+          language,
         },
       });
       if (!file.size) {

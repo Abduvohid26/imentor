@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dedupePresentationSlides } from './presentationQa';
+import { dedupePresentationBullets, dedupePresentationSlides } from './presentationQa';
 import type { ContentSlide, PresentationContent } from './presentationContentSchema';
 
 function slide(partial: Partial<ContentSlide>): ContentSlide {
@@ -46,5 +46,64 @@ describe('dedupePresentationSlides', () => {
       slide({ title: 'B', body: { bullets: ['Ikki.'] } }),
     ];
     expect(dedupePresentationSlides(deck(slides)).slides).toHaveLength(3);
+  });
+});
+
+describe('dedupePresentationBullets', () => {
+  const deck = (slides: PresentationContent['slides']): PresentationContent => ({
+    presentation_title: 'T',
+    subject_area: 'S',
+    author: 'iMentor',
+    slides,
+  });
+
+  it('ikki slaydda takrorlangan bulletni ikkinchisidan olib tashlaydi', () => {
+    const out = dedupePresentationBullets(
+      deck([
+        {
+          slide_type: 'content_bullets',
+          title: 'O‘sma teri kasalliklari',
+          body: { bullets: ['Quyoshdan himoyalanish teri o‘smalarining oldini olishda muhimdir.', 'Melanoma erta metastaz beradi va tez tarqaladi.'] },
+        },
+        {
+          slide_type: 'content_bullets',
+          title: 'Profilaktika',
+          body: { bullets: ['Quyoshdan himoyalanish teri o‘smalarining oldini olishda muhimdir.', 'Gigiyena qoidalari infeksiya tarqalishini kamaytiradi.'] },
+        },
+      ]),
+    );
+    expect(out.slides[0].body.bullets).toHaveLength(2);
+    expect(out.slides[1].body.bullets).toEqual([
+      'Gigiyena qoidalari infeksiya tarqalishini kamaytiradi.',
+    ]);
+  });
+
+  it('sarlavhani qaytaradigan tavtologik bulletni tashlaydi', () => {
+    const out = dedupePresentationBullets(
+      deck([
+        {
+          slide_type: 'content_bullets',
+          title: 'Profilaktika choralari',
+          body: {
+            bullets: [
+              'Vaksinatsiya ba’zi infeksion teri kasalliklarining oldini olishda samarali hisoblanadi.',
+              'Profilaktika choralari profilaktikaga qaratilgan.',
+            ],
+          },
+        },
+      ]),
+    );
+    expect(out.slides[0].body.bullets).toEqual([
+      'Vaksinatsiya ba’zi infeksion teri kasalliklarining oldini olishda samarali hisoblanadi.',
+    ]);
+  });
+
+  it('hamma bullet tushib qolsa, kamida bittasini qoldiradi', () => {
+    const out = dedupePresentationBullets(
+      deck([
+        { slide_type: 'content_bullets', title: 'Tashxis', body: { bullets: ['Tashxis tashxisdir.'] } },
+      ]),
+    );
+    expect(out.slides[0].body.bullets).toHaveLength(1);
   });
 });

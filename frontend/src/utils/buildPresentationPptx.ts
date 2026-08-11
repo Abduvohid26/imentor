@@ -9,7 +9,7 @@ import {
   slidePreviewBullets,
 } from './presentationContentSchema';
 import { autofitFontSize } from './presentationQa';
-import { THEME, type PresentationBuildMeta } from './presentationTheme';
+import { THEME, buildLabels, type PresentationBuildMeta } from './presentationTheme';
 
 export type { PresentationContent, ContentSlide };
 export type PresentationDeck = PresentationContent;
@@ -25,29 +25,38 @@ function badgeLabel(meta: PresentationBuildMeta): string {
   const variant = meta.variantLabel?.trim();
   const subj = meta.subjectName.trim().slice(0, 40);
   const code = meta.topicId.trim().slice(0, 12);
-  return variant ? `${subj}(${variant}) · ${code}` : `${subj} · ${code}`;
+  // Fan nomida yo'nalish allaqachon bo'lishi mumkin ("Dermatovenerologiya(Stom)") —
+  // ikkinchi marta qo'shsak "Dermatovenerologiya(Stom)(Stom)" chiqib qolardi.
+  const hasVariant =
+    Boolean(variant) && subj.toLowerCase().includes(variant!.toLowerCase());
+  const head = variant && !hasVariant ? `${subj} (${variant})` : subj;
+  return code ? `${head} · ${code}` : head;
 }
 
 function addHeaderBadge(s: PptxSlide, meta: PresentationBuildMeta, dark = false): void {
   const label = badgeLabel(meta);
+  // Matn qutisi badge'dan tashqariga chiqmasin: ikkalasi bir xil kenglikdan hisoblanadi.
+  const w = Math.min(6.4, 0.095 * label.length + 0.5);
   s.addShape('roundRect', {
     x: M,
     y: 0.22,
-    w: Math.min(5.8, 0.12 * label.length + 1.2),
+    w,
     h: 0.34,
     fill: { color: dark ? C.secondary : C.primary },
     line: { type: 'none' },
   });
   s.addText(label, {
-    x: M + 0.1,
+    x: M,
     y: 0.22,
-    w: 5.5,
+    w,
     h: 0.34,
     fontSize: 10,
     bold: true,
     color: C.textLight,
     fontFace: F.body,
+    align: 'center',
     valign: 'middle',
+    fit: 'shrink',
   });
 }
 
@@ -80,56 +89,12 @@ function addFooter(
   });
 }
 
-/** Toza tibbiy ikonka paneli — ma'nosiz geometrik "art" emas. */
-function addMedicalIconPanel(
-  s: PptxSlide,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): void {
-  s.addShape('roundRect', {
-    x,
-    y,
-    w,
-    h,
-    fill: { color: C.soft },
-    line: { color: C.secondary, width: 1 },
-  });
-  const cx = x + w / 2;
-  const cy = y + h / 2 - 0.15;
-  const arm = Math.min(w, h) * 0.12;
-  // Tibbiy xoch
-  s.addShape('roundRect', {
-    x: cx - arm * 0.35,
-    y: cy - arm * 1.6,
-    w: arm * 0.7,
-    h: arm * 3.2,
-    fill: { color: C.primary },
-    line: { type: 'none' },
-  });
-  s.addShape('roundRect', {
-    x: cx - arm * 1.6,
-    y: cy - arm * 0.35,
-    w: arm * 3.2,
-    h: arm * 0.7,
-    fill: { color: C.primary },
-    line: { type: 'none' },
-  });
-  s.addText('Tibbiy illustratsiya', {
-    x: x + 0.2,
-    y: y + h - 0.55,
-    w: w - 0.4,
-    h: 0.35,
-    fontSize: 11,
-    color: C.muted,
-    align: 'center',
-    fontFace: F.body,
-  });
-}
-
-/** Rasm bo‘lsa qo‘yadi; bo‘lmasa — toza tibbiy ikonka (abstrakt shakllar yo‘q). */
-function addImageOrMedicalIcon(
+/**
+ * Rasmni qo‘yadi. Rasm bo‘lmasa HECH NARSA chizilmaydi — soxta "default"
+ * rasm/ikonka o‘rniga slayd to‘liq matnli bo‘lib qoladi (chaqiruvchi layout
+ * qaytgan `false` ga qarab kenglikni o‘zi hisoblaydi).
+ */
+function addSlideImage(
   s: PptxSlide,
   slide: ContentSlide,
   x: number,
@@ -137,34 +102,47 @@ function addImageOrMedicalIcon(
   w: number,
   h: number,
 ): boolean {
-  if (slide.imageUrl) {
-    try {
-      s.addImage({
-        data: slide.imageUrl,
+  if (!slide.imageUrl) return false;
+  const creditH = slide.imageCredit ? 0.24 : 0;
+  const imgH = h - creditH;
+  try {
+    // Oq kartochka: 'contain' da bo‘sh joy qolsa fon oqarib turadi (diagramma
+    // yozuvlari 'cover' da kesilib ketmasin).
+    s.addShape('roundRect', {
+      x,
+      y,
+      w,
+      h: imgH,
+      fill: { color: C.card },
+      line: { color: C.soft, width: 1 },
+    });
+    s.addImage({
+      data: slide.imageUrl,
+      x: x + 0.08,
+      y: y + 0.08,
+      w: w - 0.16,
+      h: imgH - 0.16,
+      sizing: { type: 'contain', w: w - 0.16, h: imgH - 0.16 },
+    });
+    if (slide.imageCredit) {
+      // Kredit rasm USTIGA emas, TAGIGA — avval diagramma yozuvlarini yopardi.
+      s.addText(slide.imageCredit.slice(0, 110), {
         x,
-        y,
+        y: y + imgH,
         w,
-        h,
-        sizing: { type: 'cover', w, h },
+        h: creditH,
+        fontSize: 7,
+        color: C.muted,
+        italic: true,
+        fontFace: F.body,
+        valign: 'middle',
+        fit: 'shrink',
       });
-      if (slide.imageCredit) {
-        s.addText(slide.imageCredit.slice(0, 100), {
-          x,
-          y: y + h - 0.28,
-          w,
-          h: 0.26,
-          fontSize: 7,
-          color: C.muted,
-          italic: true,
-        });
-      }
-      return true;
-    } catch {
-      /* icon fallback */
     }
+    return true;
+  } catch {
+    return false;
   }
-  addMedicalIconPanel(s, x, y, w, h);
-  return false;
 }
 
 function addNumberedBullets(
@@ -199,10 +177,13 @@ function addNumberedBullets(
       align: 'center',
       valign: 'middle',
     });
+    // Tor ustunda (rasmli layout) bir xil matn ko'proq qator egallaydi —
+    // shuning uchun "sig'ish chegarasi" quti kengligiga bog'liq.
+    const softMaxChars = Math.max(60, Math.round(box.w * 22));
     const fs = autofitFontSize(text, {
       base: baseFs,
-      min: 12,
-      softMaxChars: 140,
+      min: 11,
+      softMaxChars,
     });
     s.addText(text, {
       x: box.x + 0.55,
@@ -213,6 +194,8 @@ function addNumberedBullets(
       color: C.textDark,
       fontFace: F.body,
       valign: 'top',
+      // Oxirgi himoya: hisob-kitob adashsa ham matn qutidan toshib ketmasin.
+      fit: 'shrink',
     });
   });
 }
@@ -370,7 +353,7 @@ function layoutContentBullets(
     h: 5.25,
   });
   if (hasImage) {
-    addImageOrMedicalIcon(s, slide, 7.7, 0.85, 5.0, 5.7);
+    addSlideImage(s, slide, 7.7, 0.85, 5.0, 5.7);
   }
   addFooter(s, deckTitle, page, total);
 }
@@ -442,10 +425,14 @@ function layoutImageFocus(
   page: number,
   total: number,
 ): void {
-  // Rasm yo‘q bo‘lsa demote allaqachon content_bullets qiladi; shu yerda rasm yoki ikonka.
+  // Rasm yo‘q bo‘lsa — bo‘sh ramka emas, to‘liq matnli layout.
+  if (!slide.imageUrl) {
+    layoutContentBullets(s, slide, meta, deckTitle, page, total);
+    return;
+  }
   s.background = { color: C.bgLight };
   addHeaderBadge(s, meta);
-  addImageOrMedicalIcon(s, slide, M, 0.75, 7.4, 5.9);
+  addSlideImage(s, slide, M, 0.75, 7.4, 5.9);
   s.addText(slide.title, {
     x: 8.2,
     y: 0.85,
@@ -496,11 +483,12 @@ function layoutStatistics(
   const cardW = (12.2 - gap * (n - 1)) / n;
   stats.forEach((st, i) => {
     const x = M + i * (cardW + gap);
+    // Kartochkalar sahifa balandligini egallasin — pastda katta bo'sh joy qolmasin.
     s.addShape('roundRect', {
       x,
-      y: 2.0,
+      y: 1.7,
       w: cardW,
-      h: 3.6,
+      h: 4.6,
       fill: { color: C.card },
       line: { color: C.soft, width: 1 },
     });
@@ -517,7 +505,7 @@ function layoutStatistics(
     });
     s.addText(st.label, {
       x: x + 0.2,
-      y: 4.2,
+      y: 4.3,
       w: cardW - 0.4,
       h: 0.9,
       fontSize: 14,
@@ -549,21 +537,18 @@ function layoutComparison(
     color: C.primary,
     fontFace: F.heading,
   });
-  const rows = slide.body.comparison_rows?.length
-    ? slide.body.comparison_rows
-    : [
-        { criteria: 'Mezon', left: 'A', right: 'B' },
-        ...(slide.body.bullets || []).slice(0, 3).map((b) => ({
-          criteria: b,
-          left: '—',
-          right: '—',
-        })),
-      ];
+  // Ma'lumot yo'q bo'lsa bu turga umuman kelinmaydi (diversifyTypes filtri),
+  // shuning uchun "—" bilan to'ldirilgan soxta jadval endi qurilmaydi.
+  const rows = slide.body.comparison_rows || [];
+  const L = buildLabels(meta);
+  const headers = slide.body.comparison_headers;
+  const leftHead = headers?.left?.trim() || L.left;
+  const rightHead = headers?.right?.trim() || L.right;
   const tableRows = [
     [
-      { text: 'Mezon', options: { bold: true, color: C.textLight, fill: { color: C.primary } } },
-      { text: 'Chap', options: { bold: true, color: C.textLight, fill: { color: C.primary } } },
-      { text: 'Oʻng', options: { bold: true, color: C.textLight, fill: { color: C.primary } } },
+      { text: L.criteria, options: { bold: true, color: C.textLight, fill: { color: C.primary } } },
+      { text: leftHead, options: { bold: true, color: C.textLight, fill: { color: C.primary } } },
+      { text: rightHead, options: { bold: true, color: C.textLight, fill: { color: C.primary } } },
     ],
     ...rows.map((r, i) => {
       const fill = i % 2 === 0 ? C.card : C.zebra;
@@ -757,7 +742,7 @@ function layoutCaseStudy(
     line: { color: C.soft, width: 1 },
   });
   // Ichki dublikat sarlavha YO‘Q — faqat type badge (BUG 3)
-  s.addText('Case study', {
+  s.addText(buildLabels(meta).caseStudy, {
     x: M + 0.25,
     y: 1.5,
     w: 2.2,
@@ -774,7 +759,7 @@ function layoutCaseStudy(
     h: 4.3,
   });
   if (hasImage) {
-    addImageOrMedicalIcon(s, slide, 8.0, 1.35, 4.7, 5.15);
+    addSlideImage(s, slide, 8.0, 1.35, 4.7, 5.15);
   }
   addFooter(s, deckTitle, page, total);
 }
@@ -806,30 +791,34 @@ function layoutSummary(
     const split = b.match(/^([^:—–-]{4,48})[:—–-]\s*(.+)$/);
     const head = split ? split[1].trim() : b.slice(0, 48);
     const tail = split ? split[2].trim() : '';
+    // "1." 0.45" ga sig'may, nuqta pastki qatorga tushib ketardi — quti kengaytirildi
+    // va o'ralish o'chirildi.
     s.addText(`${i + 1}.`, {
       x: M,
       y,
-      w: 0.45,
+      w: 0.7,
       h: 0.4,
       fontSize: 18,
       bold: true,
       color: C.accent,
       fontFace: F.heading,
+      wrap: false,
     });
     s.addText(head, {
-      x: M + 0.55,
+      x: M + 0.75,
       y,
-      w: 11.6,
+      w: 11.4,
       h: 0.35,
       fontSize: 16,
       bold: true,
       color: C.textDark,
       fontFace: F.heading,
+      fit: 'shrink',
     });
     s.addText(tail || b, {
-      x: M + 0.55,
+      x: M + 0.75,
       y: y + 0.35,
-      w: 11.6,
+      w: 11.4,
       h: rowH - 0.42,
       fontSize: 13,
       color: C.muted,

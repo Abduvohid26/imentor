@@ -6,7 +6,11 @@ import {
   normalizePresentationContent,
   withPresentationReferences,
 } from '../utils/presentationContentSchema';
-import { dedupePresentationSlides, qaPresentationContent } from '../utils/presentationQa';
+import {
+  dedupePresentationBullets,
+  dedupePresentationSlides,
+  qaPresentationContent,
+} from '../utils/presentationQa';
 import {
   cyrillicCharCount,
   looksLikeUzbekText,
@@ -1284,13 +1288,21 @@ async function requestPresentationDeckFromAi(params: {
     'Har slaydda MAX 5 bullet. HAR bullet MINIMUM 15, MAXIMUM 36 so\'z: ' +
     'faqat atama emas — nima ekanligi, qanday ishlashi yoki klinik ahamiyati tushuntirilsin. ' +
     'Qisqa 2–4 so\'zli tezislar TAQIQLANGAN. ' +
-    'MAJBURIY HAJM: KAMIDA 20, KO\'PI BILAN 30 slayd. Mavzu qanchalik keng bo\'lsa, ' +
+    'MAJBURIY HAJM: KAMIDA 20, KO\'PI BILAN 25 slayd. Mavzu qanchalik keng bo\'lsa, ' +
     'shuncha ko\'p slayd. 20 tadan kam qaytarish XATO hisoblanadi — ma\'ruza matnini ' +
     'bo\'limlarga bo\'lib, har bir muhim bo\'limga alohida slayd ajrating. ' +
-    'slide_type: title, agenda, content_bullets (ko\'pchiligi), statistics, ' +
-    'comparison_table yoki process_flow, case_study, image_focus, summary — aralashtir, ketma-ket bir xil bo\'lmasin. ' +
-    'content_bullets / image_focus / case_study / two_column uchun image_query MAJBURIY ' +
-    '(inglizcha tibbiy anatomiya/diagramma kalit so\'zi, masalan "human skin layers epidermis dermis diagram"). ' +
+    'SLAYD TURLARI KVOTASI (majburiy, taqdimot bir xil bo\'lib qolmasin): ' +
+    '1 ta title, 1 ta agenda, 1 ta summary (oxirgi), KAMIDA 2 ta statistics (body.stats — ' +
+    'real raqamlar bilan), KAMIDA 2 ta comparison_table (body.comparison_rows + ' +
+    'body.comparison_headers, masalan left="Birlamchi toshma", right="Ikkilamchi toshma" — ' +
+    '"chap/o\'ng" kabi ma\'nosiz nom YOZMA), KAMIDA 1 ta process_flow (body.process_steps), ' +
+    'KAMIDA 1 ta case_study (real klinik holat), KAMIDA 1 ta two_column (body.columns). ' +
+    'Qolganlari content_bullets / image_focus. MUHIM: qaysi turni tanlasang, o\'sha turning ' +
+    'body maydonini TO\'LDIR — statistics deb yozib stats\'ni bo\'sh qoldirma. ' +
+    'HAR SLAYDDA image_query MAJBURIY va HAR BIRI BOSHQACHA bo\'lsin: inglizcha ANIQ ' +
+    'atama — kasallik/anatomik tuzilma/protsedura nomi (masalan "impetigo", "psoriasis plaque", ' +
+    '"skin biopsy procedure", "melanoma ABCDE"). Umumiy so\'rovlar ("skin", "medicine", ' +
+    '"human anatomy") TAQIQLANGAN — ular butun taqdimotga bitta bir xil rasm keltiradi. ' +
     'summary (xulosa) slaydi FAQAT BITTA va ENG OXIRGI slayd bo\'lsin — o\'rtada xulosa yaratmang. ' +
     'summary bulletlari "Sarlavha: tushuntirish" formatida bo\'lsin. ' +
     'ADABIYOTLAR/MANBALAR SLAYDI KERAK EMAS — references yoki "Foydalanilgan adabiyotlar" ' +
@@ -1298,6 +1310,11 @@ async function requestPresentationDeckFromAi(params: {
     'HAR BIR SLAYD NOYOB bo\'lsin: bir xil sarlavhani yoki bir xil bulletlarni ikkinchi ' +
     'marta qaytarmang, oldingi slaydni boshqacha so\'z bilan takrorlamang — har slayd ' +
     'ma\'ruzaning YANGI qismini yoritsin. ' +
+    'TAVTOLOGIYA TAQIQLANGAN: bullet sarlavhani boshqa so\'z bilan qaytarmasin ' +
+    '("Profilaktika choralarini ko\'rish oldini olishga qaratilgan" kabi bo\'sh jumlalar ' +
+    'yozma). Har bullet YANGI fakt bersin: mexanizm, aniq belgi, preparat/doza guruhi, ' +
+    'muddat yoki raqam. Bitta jumlani ikki slaydda takrorlash XATO. ' +
+    'Agar 5 ta mazmunli bullet chiqmasa — 3-4 ta yozing, "suv quymang". ' +
     `${strictLanguageDirective(params.language)} Bu qoida butun JSON'ga tegishli: ` +
     'presentation_title, sarlavhalar, bulletlar, speaker_notes. ' +
     'image_query esa har doim inglizcha qoladi. ' +
@@ -1309,11 +1326,11 @@ async function requestPresentationDeckFromAi(params: {
     `Fan: ${params.subjectName}. Yo'nalish: ${params.variantLabel}. ` +
     `Mavzu ${params.topicId} (${kind}): ${params.topicTitle}.\n${sourceBlock}\n` +
     (lecture
-      ? 'VAZIFA: yuqoridagi ma\'ruza matnini 20-30 slaydlik dars taqdimotiga aylantiring. ' +
+      ? 'VAZIFA: yuqoridagi ma\'ruza matnini 20-25 slaydlik dars taqdimotiga aylantiring. ' +
         'Matnni qisqartirib tashlamang — har bo\'lim va kichik bo\'lim slaydlarda aks etsin.\n'
-      : 'VAZIFA: mavzu bo\'yicha 20-30 slaydlik dars taqdimoti yarating.\n') +
+      : 'VAZIFA: mavzu bo\'yicha 20-25 slaydlik dars taqdimoti yarating.\n') +
     'JSON: presentation_title, subject_area, author, slides[]. ' +
-    'slides[].slide_type, title, subtitle, body{bullets,key_stat,stats,columns,comparison_rows,process_steps,quote_text,quote_author}, ' +
+    'slides[].slide_type, title, subtitle, body{bullets,key_stat,stats,columns,comparison_headers,comparison_rows,process_steps,quote_text,quote_author}, ' +
     'image_query, speaker_notes. Ishlatilmagan body maydonlari bo\'sh string/array.';
 
   params.onProgress?.(translate(params.language, 'ai.progress.content'));
@@ -1363,6 +1380,9 @@ async function requestPresentationDeckFromAi(params: {
   // Takroriy slaydlarni olib tashlaymiz — model uzun matnda bir slaydni
   // bir necha marta qaytarishi mumkin.
   content = dedupePresentationSlides(content);
+  // Bullet darajasidagi takror: bir jumla ikki slaydda yoki sarlavhaning
+  // qayta aytilishi (slayd darajasidagi dedupe buni ushlamaydi).
+  content = dedupePresentationBullets(content);
   qaPresentationContent(content);
   params.onProgress?.(translate(params.language, 'ai.progress.images'));
   content = await resolvePresentationImages(content);

@@ -93,6 +93,64 @@ function slideFingerprint(slide: PresentationContent['slides'][number]): string 
   return normalizeForCompare(parts.join(' | '));
 }
 
+/** Bullet uchun taqqoslash kaliti — birinchi 10 so'z (kichik tahrir sezilmasin). */
+function bulletKey(text: string): string {
+  return normalizeForCompare(text).split(' ').slice(0, 10).join(' ');
+}
+
+function tokenSet(text: string): Set<string> {
+  return new Set(normalizeForCompare(text).split(' ').filter((w) => w.length > 3));
+}
+
+/** Bullet sarlavhaning boshqacha aytilishi bo'lsa — yangi ma'lumot bermaydi. */
+function restatesTitle(bullet: string, title: string): boolean {
+  const titleTokens = tokenSet(title);
+  if (!titleTokens.size) return false;
+  const bulletTokens = tokenSet(bullet);
+  if (bulletTokens.size < 2) return false;
+  let shared = 0;
+  titleTokens.forEach((t) => {
+    if (bulletTokens.has(t)) shared += 1;
+  });
+  // Sarlavhaning deyarli hamma so'zi bor va bullet o'zi ham qisqa → tavtologiya.
+  // (Mazmunli bullet 15+ so'zdan iborat bo'lishi kerak, ya'ni bu chegaradan
+  // ancha uzun — shuning uchun to'g'ri bulletlar tushib qolmaydi.)
+  return shared / titleTokens.size >= 0.8 && bulletTokens.size <= titleTokens.size + 4;
+}
+
+/**
+ * Butun taqdimot bo'ylab TAKRORLANGAN bulletlarni olib tashlaydi.
+ *
+ * Slayd darajasidagi dedupe yetmaydi: model bir xil jumlani turli slaydlarda
+ * qayta ishlatadi (masalan "Quyoshdan himoyalanish … muhimdir." 9- va
+ * 16-slaydda) yoki oxirgi bulletda shunchaki sarlavhani qaytaradi.
+ */
+export function dedupePresentationBullets(content: PresentationContent): PresentationContent {
+  const seen = new Set<string>();
+  let removed = 0;
+  const slides = content.slides.map((slide) => {
+    const bullets = slide.body.bullets || [];
+    if (!bullets.length) return slide;
+    const kept = bullets.filter((b) => {
+      const key = bulletKey(b);
+      if (!key) return false;
+      if (seen.has(key) || restatesTitle(b, slide.title)) {
+        removed += 1;
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+    // Hammasi olib tashlansa — hech bo'lmasa bittasi qolsin (bo'sh slayd chiqmasin).
+    const finalBullets = kept.length ? kept : bullets.slice(0, 1);
+    return { ...slide, body: { ...slide.body, bullets: finalBullets } };
+  });
+  if (removed) {
+    console.warn(`[presentationQa] ${removed} ta takroriy/tavtologik bullet olib tashlandi`);
+  }
+  return { ...content, slides };
+}
+
 /**
  * Takrorlangan slaydlarni olib tashlaydi.
  *

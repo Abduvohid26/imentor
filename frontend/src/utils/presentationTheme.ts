@@ -33,4 +33,17 @@ export type PresentationBuildMeta = {
   subjectName: string;
   topicId: string;
   variantLabel?: string;
+  /** Layout ichidagi qat'iy yozuvlar (jadval sarlavhasi va h.k.) shu tilda. */
+  language?: 'uz' | 'ru' | 'en';
 };
+
+/** Design Layer'ning o'z yozuvlari — AI matniga aloqasi yo'q. */
+const BUILD_LABELS = {
+  uz: { criteria: 'Mezon', left: 'A variant', right: 'B variant', caseStudy: 'Klinik holat' },
+  ru: { criteria: 'Критерий', left: 'Вариант A', right: 'Вариант B', caseStudy: 'Клинический случай' },
+  en: { criteria: 'Criterion', left: 'Option A', right: 'Option B', caseStudy: 'Case study' },
+} as const;
+
+export function buildLabels(meta: PresentationBuildMeta) {
+  return BUILD_LABELS[meta.language || 'uz'] || BUILD_LABELS.uz;
+}

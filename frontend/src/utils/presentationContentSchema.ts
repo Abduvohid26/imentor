@@ -22,6 +22,8 @@ export type SlideBody = {
   bullets?: string[];
   key_stat?: { number: string; label: string };
   columns?: { heading: string; points: string[] }[];
+  /** Taqqoslash jadvali ustun sarlavhalari — "Chap/O'ng" o'rniga mazmunli nom. */
+  comparison_headers?: { left: string; right: string };
   comparison_rows?: { criteria: string; left: string; right: string }[];
   process_steps?: { step_number: number; label: string; description: string }[];
   quote_text?: string;
@@ -65,7 +67,7 @@ export const MAX_REFERENCE_WORDS = 48;
 export const MIN_WORDS_PER_BULLET = 15;
 export const MAX_WORDS_PER_BULLET = 36;
 export const MIN_SLIDES = 20;
-export const MAX_SLIDES = 30;
+export const MAX_SLIDES = 25;
 /** Model kamroq slayd qaytarsa, umumiy "to'ldiruvchi" slaydlar shu chegaragacha
  *  qo'shiladi. MIN_SLIDES gacha to'ldirish sifatni buzardi — 20 ta slaydning
  *  yarmi mavzuga aloqasiz shablon bo'lib qolardi. */
@@ -155,6 +157,13 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
     });
   }
 
+  if (b.comparison_headers && typeof b.comparison_headers === 'object') {
+    const h = b.comparison_headers as Record<string, unknown>;
+    const left = clipWords(String(h.left || ''), 6);
+    const right = clipWords(String(h.right || ''), 6);
+    if (left || right) body.comparison_headers = { left, right };
+  }
+
   if (Array.isArray(b.comparison_rows)) {
     body.comparison_rows = b.comparison_rows.slice(0, 6).map((row) => {
       const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
@@ -183,18 +192,63 @@ function normalizeBody(raw: unknown, slideType: SlideType): SlideBody {
   return body;
 }
 
-/** Faqat bullet/rasm tip larini almashtir — statistics/agenda ga majburan o'tkazma. */
-function diversifyTypes(slides: ContentSlide[]): ContentSlide[] {
-  if (slides.length < 2) return slides;
-  const swappable: SlideType[] = ['content_bullets', 'image_focus', 'two_column', 'case_study'];
-  const out = [...slides];
-  for (let i = 1; i < out.length; i++) {
-    if (out[i].slide_type !== out[i - 1].slide_type) continue;
-    if (!swappable.includes(out[i].slide_type)) continue;
-    const alt = swappable.find((t) => t !== out[i].slide_type);
-    if (alt) out[i] = { ...out[i], slide_type: alt };
+/** Slaydda shu tur uchun HAQIQIY ma'lumot bormi? */
+function hasDataForType(slide: ContentSlide, type: SlideType): boolean {
+  const b = slide.body;
+  switch (type) {
+    case 'statistics':
+      return (b.stats?.length || 0) >= 2 || Boolean(b.key_stat?.number);
+    case 'comparison_table':
+      return (b.comparison_rows?.length || 0) >= 2;
+    case 'process_flow':
+      return (b.process_steps?.length || 0) >= 3;
+    case 'two_column':
+      return (b.columns?.length || 0) >= 2;
+    case 'quote':
+      return Boolean(b.quote_text?.trim());
+    default:
+      return true;
   }
-  return out;
+}
+
+/**
+ * Slayd turlarini MA'LUMOTGA qarab belgilaydi.
+ *
+ * Avval bu funksiya faqat ketma-ket bir xil turlarni almashtirardi va natijada
+ * 20 slaydning 17 tasi bir xil "5 ta bullet" layoutida chiqardi. Endi:
+ *  - model e'lon qilgan tur uchun ma'lumot bo'lmasa (masalan `statistics`,
+ *    lekin raqam yo'q) — layout soxta "—" chizmasin deb content_bullets;
+ *  - aksincha, ma'lumot bo'lsa — mos maxsus tur majburan qo'yiladi;
+ *  - qolgan matnli slaydlarda ritm: har 3-chisi image_focus (bir xil
+ *    ko'rinish ketma-ket takrorlanmasin).
+ */
+function diversifyTypes(slides: ContentSlide[]): ContentSlide[] {
+  const fixed: SlideType[] = ['title', 'agenda', 'summary', 'references'];
+  const dataTypes: SlideType[] = [
+    'comparison_table',
+    'process_flow',
+    'statistics',
+    'two_column',
+    'quote',
+  ];
+  let textRun = 0;
+  return slides.map((slide) => {
+    if (fixed.includes(slide.slide_type)) return slide;
+
+    // 1) Ma'lumotga mos maxsus tur (model turini noto'g'ri belgilagan bo'lsa ham).
+    const matched = dataTypes.find((t) => hasDataForType(slide, t));
+    if (matched) {
+      textRun = 0;
+      return slide.slide_type === matched ? slide : { ...slide, slide_type: matched };
+    }
+
+    // 2) Qolganlari matnli: content_bullets / case_study (agar model shunday degan
+    //    bo'lsa) va har 3-chisida image_focus.
+    const base: SlideType = slide.slide_type === 'case_study' ? 'case_study' : 'content_bullets';
+    textRun += 1;
+    const type: SlideType = textRun % 3 === 0 ? 'image_focus' : base;
+    return slide.slide_type === type ? slide : { ...slide, slide_type: type };
+  });
 }
 
 function fallbackSlides(title: string, subject: string): ContentSlide[] {
@@ -305,10 +359,12 @@ export const PRESENTATION_JSON_SCHEMA = {
       presentation_title: { type: 'string' },
       subject_area: { type: 'string' },
       author: { type: 'string' },
+      // DIQQAT: OpenAI strict Structured Outputs `minItems`/`maxItems` ni
+      // QO'LLAMAYDI — ular bo'lsa so'rov 400 bilan yiqilib, har generatsiya
+      // sxemasiz prompt-fallback'ga tushib qolardi. Slaydlar soni promptda
+      // va normalizatsiyada (MIN_SLIDES..MAX_SLIDES) nazorat qilinadi.
       slides: {
         type: 'array',
-        minItems: MIN_SLIDES,
-        maxItems: MAX_SLIDES,
         items: {
           type: 'object',
           additionalProperties: false,
@@ -354,6 +410,15 @@ export const PRESENTATION_JSON_SCHEMA = {
                     required: ['heading', 'points'],
                   },
                 },
+                comparison_headers: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    left: { type: 'string' },
+                    right: { type: 'string' },
+                  },
+                  required: ['left', 'right'],
+                },
                 comparison_rows: {
                   type: 'array',
                   items: {
@@ -388,6 +453,7 @@ export const PRESENTATION_JSON_SCHEMA = {
                 'key_stat',
                 'stats',
                 'columns',
+                'comparison_headers',
                 'comparison_rows',
                 'process_steps',
                 'quote_text',
