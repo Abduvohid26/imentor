@@ -271,16 +271,27 @@ def admin_delete_handout(
 def list_presentations(
     request: Request,
     topic_norm: list[str] = Query(default=[]),
+    mine: bool = Query(default=False),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
 ) -> list[TopicPresentationOut]:
+    """Mavzu bo'yicha taqdimotlar.
+
+    `mine=1` — faqat shu foydalanuvchi yuklaganlari. O'qituvchining ish
+    sahifasi shu rejimda ishlaydi: u yerda boshqa hodimlarning taqdimotlari
+    chiqib qolsa, o'qituvchi ularni o'chira olmaydi (huquqi yo'q) va ro'yxat
+    begona ishlar bilan to'lib ketadi. Umumiy ro'yxat "Baza" bo'limida qoladi.
+    """
     norms = _resolve_norms(request, topic_norm)
     if not norms:
         raise HTTPException(status_code=400, detail="topic_norm parametri kerak.")
     cond = tn.topic_norm_query(TopicPresentation.topic_norm, norms)
     if cond is None:
         return []
-    rows = db.execute(select(TopicPresentation).where(cond).distinct()).scalars().all()
+    stmt = select(TopicPresentation).where(cond)
+    if mine:
+        stmt = stmt.where(TopicPresentation.owner_key == auth.user.username)
+    rows = db.execute(stmt.distinct()).scalars().all()
     return [_presentation_out(p, auth) for p in rows]
 
 

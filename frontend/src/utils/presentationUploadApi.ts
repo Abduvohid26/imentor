@@ -84,8 +84,16 @@ export function normPresentationTopic(topic: string): string {
   return normTopicKey(topic);
 }
 
+/**
+ * Mavzu bo'yicha taqdimotlar.
+ *
+ * `onlyMine` (standart: true) — o'qituvchining ish sahifasida faqat O'ZI
+ * yaratgan/yuklagan taqdimotlar ko'rinadi. Avval boshqa hodimlarnikilar ham
+ * chiqib qolardi va ularni o'chirib bo'lmasdi (o'chirish tugmasi yo'q edi).
+ */
 export async function fetchPresentationsForTopic(
   topic: string | SyllabusTopicContext,
+  options?: { onlyMine?: boolean },
 ): Promise<TopicPresentationItem[]> {
   const token = await getBackendAccessToken();
   if (!token) throw new Error('no-backend-token');
@@ -107,6 +115,7 @@ export async function fetchPresentationsForTopic(
   for (const norm of norms) {
     query.append('topic_norm', norm);
   }
+  if (options?.onlyMine !== false) query.set('mine', '1');
   const res = await fetchWithTimeout(`${apiBaseUrl()}/v1/presentations/?${query.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });

@@ -256,6 +256,11 @@ export default function PresentationMaterials() {
   const [savedDecks, setSavedDecks] = useState<PreparedContentSummary[]>([]);
   const [historyBusyId, setHistoryBusyId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Kartochkalarda FAQAT shu seansda yaratilgan/yuklangan taqdimotlar ko'rinadi.
+  // Avvalgilari (o'zining ham) "Baza" bo'limida turadi — sahifa har ochilganda
+  // eski ishlar bilan to'lib ketmasin. `items` esa to'liq ro'yxat bo'lib qoladi:
+  // AI "PDF asosida to'ldirish" rejimi yuklangan PDF'ni shundan topadi.
+  const [sessionIds, setSessionIds] = useState<Set<number>>(() => new Set());
 
   // Baza faqat TANLANGAN MAVZU bo'yicha (4 bo'limda bir xil qoida).
   const refreshDeckHistory = useCallback(() => {
@@ -274,13 +279,16 @@ export default function PresentationMaterials() {
   /** Baza: HTML preview yo‘q — mavjud PPTX ni ochadi yoki shu deckdan PPTX yuklaydi. */
   const openHistoryDeck = async (summary: PreparedContentSummary) => {
     const topicNorm = (summary.topic || '').trim().toLowerCase();
-    const matchIdx = items.findIndex((i) => {
+    const match = items.find((i) => {
       const title = (i.title || '').trim().toLowerCase();
       return title === topicNorm || title.includes(topicNorm) || topicNorm.includes(title);
     });
-    if (matchIdx >= 0) {
+    if (match) {
+      // Bazadan ochilgan taqdimot shu seansda ko'rinadigan bo'lib qoladi.
+      const nextIds = new Set(sessionIds).add(match.id);
+      setSessionIds(nextIds);
       setShowHistory(false);
-      setLightboxIndex(matchIdx);
+      setLightboxIndex(items.filter((i) => nextIds.has(i.id)).findIndex((i) => i.id === match.id));
       return;
     }
 
@@ -307,7 +315,7 @@ export default function PresentationMaterials() {
       const shortTopic =
         [globalTopic.id, globalTopic.title].filter(Boolean).join(' — ').slice(0, 240) ||
         summary.topic;
-      await uploadPresentation({
+      const created = await uploadPresentation({
         topic: shortTopic,
         file,
         title: (deck.presentation_title || shortTopic).slice(0, 240),
@@ -315,9 +323,14 @@ export default function PresentationMaterials() {
       });
       const rows = await fetchPresentationsForTopic(globalTopic);
       setItems(rows);
-      const newIdx = rows.findIndex((r) => r.file_name === file.name);
+      const createdRow = rows.find((r) => r.id === created?.id) ?? rows.find((r) => r.file_name === file.name);
+      const nextIds = new Set(sessionIds);
+      if (createdRow) nextIds.add(createdRow.id);
+      setSessionIds(nextIds);
+      const visible = rows.filter((r) => nextIds.has(r.id));
+      const newIdx = visible.findIndex((r) => r.id === createdRow?.id);
       setShowHistory(false);
-      setLightboxIndex(newIdx >= 0 ? newIdx : 0);
+      setLightboxIndex(visible.length ? (newIdx >= 0 ? newIdx : 0) : null);
     } finally {
       setHistoryBusyId(null);
     }
@@ -329,21 +342,22 @@ export default function PresentationMaterials() {
   const topicKey = topicContextKey(globalTopic);
   const requestSeq = useRef(0);
 
-  const loadItems = useCallback(async () => {
+  const loadItems = useCallback(async (): Promise<TopicPresentationItem[]> => {
     if (!topicReady || !globalTopic || !topicKey) {
       setItems([]);
       setLoading(false);
-      return;
+      return [];
     }
     const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     try {
       const rows = await fetchPresentationsForTopic(globalTopic);
-      if (seq !== requestSeq.current) return;
+      if (seq !== requestSeq.current) return [];
       setItems(rows);
+      return rows;
     } catch (e) {
-      if (seq !== requestSeq.current) return;
+      if (seq !== requestSeq.current) return [];
       setItems([]);
       setError(
         e instanceof Error && e.message === 'no-backend-token'
@@ -353,11 +367,29 @@ export default function PresentationMaterials() {
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
+    return [];
   }, [topicReady, topicKey, globalTopic, t]);
 
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  // Mavzu almashsa — seans ro'yxati ham tozalanadi.
+  useEffect(() => {
+    setSessionIds(new Set());
+    setLightboxIndex(null);
+  }, [topicKey]);
+
+  const visibleItems = items.filter((i) => sessionIds.has(i.id));
+  // Tugma yozuvi ("yaratish" yoki "to'ldirish") kartochkalar soniga emas,
+  // yuklangan PDF manba borligiga bog'liq — u kartochkada ko'rinmasa ham
+  // AI uchun kontekst bo'lib qolaveradi.
+  const hasPdfSource = items.some((i) => i.kind === 'pdf');
+
+  /** Yangi yaratilgan/yuklangan taqdimotni seans ro'yxatiga qo'shadi. */
+  const markAsSessionItem = (id: number) => {
+    setSessionIds((prev) => new Set(prev).add(id));
+  };
 
   const handleUpload = async (file: File) => {
     if (!topicReady || !globalTopic) return;
@@ -368,7 +400,8 @@ export default function PresentationMaterials() {
     setUploading(true);
     setError(null);
     try {
-      await uploadPresentation({ topic: topicTitle, file, context: globalTopic });
+      const created = await uploadPresentation({ topic: topicTitle, file, context: globalTopic });
+      if (created?.id) markAsSessionItem(created.id);
       await loadItems();
     } catch (e) {
       setError(apiErrorMessage(e, t('presentation.errorUpload'), language));
@@ -472,12 +505,13 @@ export default function PresentationMaterials() {
       }
       const shortTopic =
         [globalTopic.id, globalTopic.title].filter(Boolean).join(' — ').slice(0, 240) || topicTitle;
-      await uploadPresentation({
+      const created = await uploadPresentation({
         topic: shortTopic,
         file,
         title: (deck.presentation_title || shortTopic).slice(0, 240),
         context: globalTopic,
       });
+      if (created?.id) markAsSessionItem(created.id);
       await loadItems();
     } catch (e) {
       const detail = apiErrorMessage(e, t('presentation.errorAiHint'), language);
@@ -544,7 +578,7 @@ export default function PresentationMaterials() {
       <StaffTopicHeader
         moduleLabel={t('presentation.title')}
         topic={localizedTopic}
-        hint={items.length > 0 ? t('presentation.hintWithUpload') : t('presentation.hintAiGenerate')}
+        hint={hasPdfSource ? t('presentation.hintWithUpload') : t('presentation.hintAiGenerate')}
       >
         <div className="flex flex-wrap gap-2">
           <input
@@ -575,7 +609,7 @@ export default function PresentationMaterials() {
             {aiLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
             {aiLoading
               ? t('common.loading')
-              : items.length > 0
+              : hasPdfSource
                 ? t('presentation.aiEnhance')
                 : t('presentation.aiGenerate')}
           </button>
@@ -630,13 +664,17 @@ export default function PresentationMaterials() {
         <div className="flex justify-center py-16">
           <Loader2 className="animate-spin text-[#083047]/60" size={36} />
         </div>
-      ) : items.length === 0 ? (
-        <StaffPanel className="py-12 text-center text-black/45 text-[14px]">
-          {t('presentation.empty')}
+      ) : visibleItems.length === 0 ? (
+        <StaffPanel className="py-12 text-center text-black/45 text-[14px] space-y-1.5">
+          <p>{t('presentation.empty')}</p>
+          {/* Eski ishlar yo'qolmagan — ular "Baza"da. */}
+          {(items.length > 0 || savedDecks.length > 0) && (
+            <p className="text-[12.5px] text-black/35">{t('presentation.emptySavedHint')}</p>
+          )}
         </StaffPanel>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-          {items.map((item, idx) => (
+          {visibleItems.map((item, idx) => (
             <motion.div
               key={item.id}
               layout
@@ -675,9 +713,9 @@ export default function PresentationMaterials() {
       )}
 
       <AnimatePresence>
-        {lightboxIndex !== null && items[lightboxIndex] && (
+        {lightboxIndex !== null && visibleItems[lightboxIndex] && (
           <PresentationLightbox
-            items={items}
+            items={visibleItems}
             index={lightboxIndex}
             onClose={() => setLightboxIndex(null)}
             onIndexChange={setLightboxIndex}
