@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
+ * Eslatma: variant izohlari + klinik tahlil OPENAI_CHAT ('gpt-test') da,
+ * tarjima esa OPENAI_FAST ('gpt-test-fast') da so'raladi — mock shu bo'yicha
+ * ajratadi.
+ *
  * `enrichTestSession` har variantga izoh (`optionExplanations`) biriktirishini
  * va bu izohlar tarjimalarga ham yetib borishini tekshiradi — test ekranida
  * "nega to'g'ri / nega xato" aynan shu maydondan chiqadi.
@@ -47,7 +51,7 @@ describe('enrichTestSession — variant izohlari', () => {
 
   it('har variantga izoh qo\'shadi', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
-      if (opts.model === 'gpt-test-fast') {
+      if (opts.model === 'gpt-test') {
         return {
           items: [
             {
@@ -78,7 +82,7 @@ describe('enrichTestSession — variant izohlari', () => {
 
   it('qisqa `explanation` o\'rniga to\'liq tahlil qo\'yiladi', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
-      if (opts.model === 'gpt-test-fast') {
+      if (opts.model === 'gpt-test') {
         return {
           items: [
             {
@@ -100,7 +104,7 @@ describe('enrichTestSession — variant izohlari', () => {
 
   it('tahlil qisqaroq kelsa — mavjud izoh saqlanib qoladi', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
-      if (opts.model === 'gpt-test-fast') {
+      if (opts.model === 'gpt-test') {
         return { items: [{ id: 0, analysis: 'Juda qisqa.', explanations: [{ i: 0, text: 'a' }] }] };
       }
       throw new Error('tarjima kerak emas');
@@ -113,7 +117,7 @@ describe('enrichTestSession — variant izohlari', () => {
   it('so\'rov bir marta yiqilsa — qayta urinib izohlarni oladi', async () => {
     let calls = 0;
     openaiJson.mockImplementation(async (opts: { model: string; system: string }) => {
-      if (opts.model === 'gpt-test-fast' && opts.system.includes('variantning berilgan i raqami')) {
+      if (opts.model === 'gpt-test' && opts.system.includes('variantning berilgan i raqami')) {
         calls += 1;
         // Birinchi urinish uziladi (tarmoq/model xatosi), ikkinchisi ishlaydi.
         if (calls === 1) throw new Error('tarmoq uzildi');
@@ -137,7 +141,7 @@ describe('enrichTestSession — variant izohlari', () => {
 
   it('har ikki urinish ham yiqilsa — test baribir saqlanadi, izohsiz', async () => {
     openaiJson.mockImplementation(async (opts: { model: string; system: string }) => {
-      if (opts.model === 'gpt-test-fast' && opts.system.includes('variantning berilgan i raqami')) {
+      if (opts.model === 'gpt-test' && opts.system.includes('variantning berilgan i raqami')) {
         throw new Error('doim yiqiladi');
       }
       throw new Error('tarjima kerak emas');
@@ -151,7 +155,7 @@ describe('enrichTestSession — variant izohlari', () => {
   it('izohlar tarjimadan OLDIN qo\'shiladi — tarjimaga ham tushadi', async () => {
     const translateInputs: string[] = [];
     openaiJson.mockImplementation(async (opts: { model: string; user: string; system: string }) => {
-      if (opts.model === 'gpt-test-fast' && opts.system.includes('variantning berilgan i raqami')) {
+      if (opts.model === 'gpt-test' && opts.system.includes('variantning berilgan i raqami')) {
         return {
           items: [
             {
@@ -173,7 +177,7 @@ describe('enrichTestSession — variant izohlari', () => {
 
   it('AI kam izoh qaytarsa — kelgani o\'z o\'rnida qoladi, qolgani bo\'sh', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
-      if (opts.model === 'gpt-test-fast') {
+      if (opts.model === 'gpt-test') {
         return { items: [{ id: 0, explanations: [{ i: 2, text: 'faqat uchinchisi' }] }] };
       }
       throw new Error('tarjima kerak emas');
@@ -187,7 +191,7 @@ describe('enrichTestSession — variant izohlari', () => {
     // Model ko'pincha TO'G'RI variant izohini birinchi qilib qaytaradi.
     // `i` raqami bo'lgani uchun u baribir o'z o'rniga tushishi kerak.
     openaiJson.mockImplementation(async (opts: { model: string }) => {
-      if (opts.model === 'gpt-test-fast') {
+      if (opts.model === 'gpt-test') {
         return {
           items: [
             {
@@ -216,7 +220,7 @@ describe('enrichTestSession — variant izohlari', () => {
 
   it('raqamsiz izohlar ISHLATILMAYDI — noto\'g\'ri variantga tushgandan ko\'ra bo\'sh yaxshi', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
-      if (opts.model === 'gpt-test-fast') {
+      if (opts.model === 'gpt-test') {
         return { items: [{ id: 0, optionExplanations: ['eski shakl', 'b', 'c', 'd', 'e'] }] };
       }
       throw new Error('tarjima kerak emas');
@@ -228,7 +232,7 @@ describe('enrichTestSession — variant izohlari', () => {
 
   it('model {items} o\'rniga sof massiv qaytarsa ham qabul qilinadi', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
-      if (opts.model === 'gpt-test-fast') {
+      if (opts.model === 'gpt-test') {
         return [{ explanations: [0, 1, 2, 3, 4].map((i) => ({ i, text: `x-${i}` })) }];
       }
       throw new Error('tarjima kerak emas');
@@ -240,7 +244,7 @@ describe('enrichTestSession — variant izohlari', () => {
 
   it('id yo\'q bo\'lsa — bo\'lakdagi tartib bo\'yicha biriktiriladi', async () => {
     openaiJson.mockImplementation(async (opts: { model: string }) => {
-      if (opts.model === 'gpt-test-fast') {
+      if (opts.model === 'gpt-test') {
         return { questions: [{ explanations: [0, 1, 2, 3, 4].map((i) => ({ i, text: `p-${i}` })) }] };
       }
       throw new Error('tarjima kerak emas');

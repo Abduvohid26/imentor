@@ -981,6 +981,7 @@ const OPTION_EXPLANATION_CHUNK = 4;
 async function attachOptionExplanations(
   session: TestSession,
   language: AppLanguage,
+  subjectCode?: string,
 ): Promise<TestSession> {
   const questions = session.questions || [];
   const pendingIdx = questions
@@ -989,6 +990,12 @@ async function attachOptionExplanations(
   if (!pendingIdx.length) return session;
 
   const outLang = languageName(language);
+  // MUHIM: eng uzun matn (klinik tahlil) aynan shu yerda yoziladi, shuning
+  // uchun DARSLIK parchalari ham shu so'rovga ulanadi. Avval bu chaqiruvda
+  // bookContext yo'q edi va tahlil manbasiz, faqat model xotirasidan chiqardi.
+  const bookContext: BookContext | undefined = subjectCode?.trim()
+    ? { subjectCode: subjectCode.trim(), topicQuery: session.topic }
+    : undefined;
   const merged = [...questions];
   const chunks: number[][] = [];
   for (let start = 0; start < pendingIdx.length; start += OPTION_EXPLANATION_CHUNK) {
@@ -1012,16 +1019,29 @@ async function attachOptionExplanations(
       }));
       try {
         const parsed = await openaiJson<unknown>({
-          model: OPENAI_FAST,
+          // Klinik fikrlash zanjiri va darslikka tayanish uchun kuchli model.
+          // Avval OPENAI_FAST (mini) edi — u qisqa, umumiy javob berardi.
+          // Bo'lak 4 tadan va parallel ketadi, shuning uchun vaqt sezilarli
+          // uzaymaydi.
+          model: OPENAI_CHAT,
           system:
             `${SYS_MEDICAL} Har savol uchun IKKITA narsa yoz.\n` +
-            '1) `analysis` — to\'g\'ri javob tahlili, ANIQ 5-6 gap (110-160 so\'z): (a) bemordagi qaysi ' +
-            'belgi/tekshiruv natijasi aynan shu tashxis yoki tanlovga olib keladi; (b) patofiziologiya — ' +
-            'qaysi ferment/hujayra/tizim buzilgani va bu belgilarni qanday keltirib chiqarishi; ' +
-            '(c) tashxisni TASDIQLOVCHI tekshiruv (skrining, laborator ko\'rsatkich, instrumental usul) ' +
-            'va undan kutiladigan natija; (d) tanlangan usul/dori nima qilishi va nega samarali ekani; ' +
-            '(e) o\'z vaqtida aniqlanmasa yuzaga keladigan asosiy asorat yoki prognoz. ' +
-            'Har gap YANGI ma\'lumot bersin — bir fikrni boshqacha so\'z bilan takrorlamang. ' +
+            '1) `analysis` — to\'g\'ri javob tahlili: KAMIDA 8, KO\'PI BILAN 12 gap (230-330 so\'z). ' +
+            'Bu shunchaki javob emas — TALABAGA KLINIK FIKRLASHNI o\'rgatadigan tahlil bo\'lsin, ' +
+            'quyidagi ketma-ketlikda:\n' +
+            '(a) Kalit ma\'lumotlar: vignettadagi qaysi belgilar/ko\'rsatkichlar hal qiluvchi va ' +
+            'qaysilari chalg\'ituvchi ekanini ajrating (yosh, muddat, dinamika, laborator qiymat).\n' +
+            '(b) Klinik fikrlash zanjiri: shikoyat → yetakchi sindrom → differensial doira → ' +
+            'qaysi belgi qaysi tashxisni kesib tashlaydi → nega aynan shu javob qoladi.\n' +
+            '(c) Patofiziologiya: qaysi ferment/retseptor/hujayra/tizim buzilgan va bu belgilarni ' +
+            'qanday mexanizm bilan keltirib chiqaradi.\n' +
+            '(d) Tasdiqlash: "oltin standart" va birinchi navbatdagi tekshiruv, undan kutiladigan ' +
+            'ANIQ natija (ko\'rsatkich nomi va o\'zgarish yo\'nalishi bilan).\n' +
+            '(e) Taktika: keyingi qadam va tanlangan usul/dori mexanizmi, nega aynan shu ustuvor.\n' +
+            '(f) Xavf va prognoz: kechiktirilsa yuzaga keladigan asorat, "red flag" belgilari.\n' +
+            'Har gap YANGI ma\'lumot bersin — bir fikrni boshqacha so\'z bilan takrorlamang; ' +
+            'umumiy iboralar ("muhim ahamiyatga ega", "e\'tibor berish kerak") o\'rniga aniq ' +
+            'atama, ko\'rsatkich, muddat va doza guruhini yozing. ' +
             'Savol matnini takrorlamang. Boshqa variantlarni bu yerda muhokama qilmang — ular ' +
             'uchun alohida izoh bor. "Shuning uchun ... eng maqsadga muvofiq" kabi xulosa gapini ' +
             'YOZMANG, u hech qanday ma\'lumot qo\'shmaydi.\n' +
@@ -1031,14 +1051,26 @@ async function attachOptionExplanations(
             'JSON: {items:[{id:<berilgan id>, analysis:"...", explanations:[{i:<variantning berilgan i raqami>, text:"..."}]}]}. ' +
             'MUHIM: `i` — aynan o\'sha variantning berilgan raqami; izoh SHU variant haqida bo\'lsin. ' +
             'To\'g\'ri variant izohini birinchi o\'ringa ko\'chirmang — har bir variant o\'z `i` si bilan qaytsin. ' +
-            'Har variant uchun bittadan yozing, birortasini tashlab ketmang. ' +
+            'Har variant uchun bittadan yozing, birortasini tashlab ketmang.\n' +
+            (bookContext
+              ? 'MANBA: yuqoridagi darslik parchalariga TAYANING — ta\'rif, tasnif, ' +
+                'ko\'rsatkich va davolash sxemasi imkon qadar o\'sha matndan olinsin. ' +
+                'Parchalarda yo\'q narsani o\'ylab topmang; darslikda yo\'q bo\'lsa, umumiy tan ' +
+                'olingan klinik amaliyotga tayaning va aniq raqam o\'rniga umumiy qoidani yozing. '
+              : 'Faqat umumiy tan olingan klinik bilimga tayaning. ') +
+            'HECH QACHON o\'ylab topilgan raqam, doza, statistika yoki havola yozmang. ' +
+            'SAFSATA TAQIQLANADI: "muhim ahamiyatga ega", "e\'tibor berish kerak", "to\'g\'ri ' +
+            'yondashuv talab etiladi" kabi hech narsa tushuntirmaydigan gaplar YOZMANG — ' +
+            'har gapda aniq atama, mexanizm, ko\'rsatkich yoki qadam bo\'lsin.\n' +
             `Til: ${outLang}. ${strictLanguageDirective(language)}`,
           user: JSON.stringify(source),
-          // ~900 token/savol: 5-6 gaplik tahlil + 5 ta variant izohi. Avval 600
-          // edi (3 gaplik tahlil uchun). Ishlatilmagan limit hech narsa turmaydi
-          // (faqat generatsiya qilingan tokenlar hisoblanadi), kesilish esa butun
-          // bo'lakni yo'qotadi — zaxira qoldiramiz.
-          maxTokens: Math.min(16000, idxs.length * 900 + 400),
+          bookContext,
+          // ~1800 token/savol: 8-12 gaplik klinik tahlil + 5 ta variant izohi
+          // (o'zbek tilida ~3 token/so'z). Bo'lak 4 ta savoldan iborat, ya'ni
+          // ~7600 — 16000 limitidan xavfsiz uzoqda. Ishlatilmagan limit hech
+          // narsa turmaydi (faqat generatsiya qilingan tokenlar hisoblanadi),
+          // kesilish esa butun bo'lakni yo'qotadi.
+          maxTokens: Math.min(16000, idxs.length * 1800 + 400),
           temperature: 0.2,
           parse: (t) => parseJSONSafe<unknown>(t),
         });
@@ -1152,23 +1184,10 @@ async function translateTestSession(
       'Option texts must contain ONLY the answer itself — no "A.", "B)" or any letter/number prefix. ' +
       'Return ONLY valid JSON, no markdown fences.',
     user: JSON.stringify(source),
-    // ~273 token/savol (30 ta uchun 8192 asosida o'lchangan) — gpt-4o-mini
-    // max output (16000) dan oshmasin, katta partiyalarda (90 tagacha) tarjima kesilmasin.
-    // Variant izohlari (5 ta qisqa gap) savolni ~1.6 barobar kattalashtiradi —
-    // ular bor testda budjet ham shunga yarasha bo'lsin, aks holda tarjima
-    // o'rtasidan kesilib "incomplete questions" xatosi chiqadi.
-    // Izohlar uzaygach (3-5 gap, boyitilgandan keyin 5-6 gap) tarjima ham
-    // shunga yarasha ko'proq token oladi — avvalgi 273/500 bilan javob
-    // o'rtasidan kesilib "incomplete questions" xatosi chiqardi.
-    maxTokens: Math.min(
-      16000,
-      Math.ceil(
-        content.questions.length *
-          (content.questions.some((q) => (q.optionExplanations || []).some((e) => (e || '').trim()))
-            ? 700
-            : 400),
-      ) + 500,
-    ),
+    // Savol boshiga token budjeti — pastda `translateBudgetPerQuestion` bilan
+    // bir xil hisob: bo'lak kattaligi ham shunga qarab tanlanadi, shunda javob
+    // 16000 limitiga urilib o'rtasidan kesilmaydi ("incomplete questions").
+    maxTokens: Math.min(16000, content.questions.length * translateBudgetPerQuestion(content) + 500),
     temperature: 0.1,
     parse: (t) => parseJSONSafe(t),
   });
@@ -1214,7 +1233,16 @@ async function translateTestSession(
   return result;
 }
 
-async function translateTestSessionWithRetry(
+/** Bitta savolni tarjima qilishga ketadigan taxminiy token. */
+function translateBudgetPerQuestion(content: TestSessionContent): number {
+  const hasOptionExplanations = content.questions.some((q) =>
+    (q.optionExplanations || []).some((e) => (e || '').trim()),
+  );
+  // Izoh 8-12 gapga o'sgach bitta savol tarjimasi ~1200 tokengacha chiqadi.
+  return hasOptionExplanations ? 1400 : 800;
+}
+
+async function translateChunkWithRetry(
   content: TestSessionContent,
   targetLang: AppLanguage,
 ): Promise<TestSessionContent> {
@@ -1224,6 +1252,34 @@ async function translateTestSessionWithRetry(
     console.warn(`Test translation to ${targetLang} failed, retrying…`, err);
     return translateTestSession(content, targetLang);
   }
+}
+
+/**
+ * Tarjimani BO'LAKLARGA bo'lib bajaradi.
+ *
+ * Avval butun test bitta so'rovda tarjima qilinardi. Klinik tahlil 8-12 gapga
+ * uzaygandan keyin 30 ta savolning tarjimasi 16000 token limitiga urilib,
+ * javob o'rtasidan kesilardi — natijada ru/en versiyalar butunlay yo'qolardi.
+ */
+async function translateTestSessionWithRetry(
+  content: TestSessionContent,
+  targetLang: AppLanguage,
+): Promise<TestSessionContent> {
+  const perQuestion = translateBudgetPerQuestion(content);
+  const maxPerChunk = Math.max(1, Math.floor(14000 / perQuestion));
+  if (content.questions.length <= maxPerChunk) {
+    return translateChunkWithRetry(content, targetLang);
+  }
+  const chunks: TestSessionContent[] = [];
+  for (let i = 0; i < content.questions.length; i += maxPerChunk) {
+    chunks.push({ ...content, questions: content.questions.slice(i, i + maxPerChunk) });
+  }
+  const parts = await Promise.all(chunks.map((c) => translateChunkWithRetry(c, targetLang)));
+  return {
+    topic: parts[0]?.topic || content.topic,
+    questions: parts.flatMap((p) => p.questions),
+    references: content.references,
+  };
 }
 
 /** Test'ni asosiy tilda generatsiya qilgandan keyin qolgan 2 tilga parallel tarjima qiladi.
@@ -1520,11 +1576,9 @@ export const aiService = {
 
     const generate = async (requestedCount: number): Promise<TestSession> => {
       const variety = buildTestVarietyPrompt(topic, requestedCount);
-      // ~300 token/savol: 3-5 gaplik `explanation` avvalgi 1-2 gapdan ~2.5
-      // barobar uzun, budjet ham shunga yarasha (avval 210 edi va uzun izoh
-      // bilan javob o'rtasidan kesilib qolardi). gpt-4o max output (16000) dan
-      // oshmasin — katta partiyalar (90 ta) uchun cheklab qo'yiladi.
-      const scaledMaxTokens = Math.min(16000, Math.ceil(requestedCount * 300) + 500);
+      // ~480 token/savol: 5-7 gaplik klinik `explanation` (o'zbekcha ~3 token/so'z).
+      // gpt-4o max output (16000) dan oshmasin.
+      const scaledMaxTokens = Math.min(16000, Math.ceil(requestedCount * 480) + 500);
       // OpenAI + server RAG: book_references completion javobidan olinadi.
       let bookReferences: MedicalReference[] = [];
       const parsed = await openaiJson({
@@ -1539,17 +1593,23 @@ export const aiService = {
           // Avval "1-2 qisqa gap" edi — ekranda bir qatorlik, hech narsa
           // tushuntirmaydigan izoh chiqardi. Endi to'liq tahlil (fonda
           // `enrichTestSession` uni yana kengaytiradi).
-          'explanation — KAMIDA 3, KO\'PI BILAN 5 to\'liq gap (60-100 so\'z): ' +
-          '(a) bemordagi qaysi belgi/tahlil natijasi aynan shu javobga olib keladi; ' +
-          '(b) qisqacha patofiziologiya (mexanizm); ' +
-          '(c) tashxisni tasdiqlovchi tekshiruv yoki tanlangan dori/usul nima qilishi. ' +
-          'Bir gaplik yoki savolni takrorlaydigan izoh XATO hisoblanadi. ' +
+          'explanation — KAMIDA 5, KO\'PI BILAN 7 to\'liq gap (120-170 so\'z): ' +
+          '(a) vignettadagi qaysi belgi/tahlil hal qiluvchi va nega; ' +
+          '(b) klinik fikrlash: yetakchi sindrom va qaysi belgi boshqa tashxislarni kesib tashlashi; ' +
+          '(c) patofiziologiya (mexanizm); ' +
+          '(d) tasdiqlovchi tekshiruv va undan kutiladigan aniq natija; ' +
+          '(e) keyingi qadam yoki tanlangan dori/usul nima qilishi. ' +
+          'Bir-ikki gaplik yoki savolni takrorlaydigan izoh XATO hisoblanadi. ' +
+          'Har gapda aniq atama, mexanizm yoki ko\'rsatkich bo\'lsin; "muhim ahamiyatga ega", ' +
+          '"e\'tibor berish kerak" kabi bo\'sh (safsata) gaplar TAQIQLANADI. ' +
+          'O\'ylab topilgan raqam, doza, statistika yoki havola yozmang — ishonchingiz komil ' +
+          'bo\'lmasa, aniq son o\'rniga umumiy qoidani yozing. ' +
           'optionExplanations YOZMANG. ' +
           `Til: ${outLang}. ${strictLanguageDirective(language)}`,
         user:
           `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 1–2 gap, 5 ta variant. ` +
           'Har savolni yozishdan oldin o\'zingizga savol bering: "to\'g\'ri javobim shu mavzuga kiradimi?" — ' +
-          'kirmasa, savolni almashtiring. explanation — 3-5 gaplik to\'liq tahlil. Faqat valid JSON.',
+          'kirmasa, savolni almashtiring. explanation — 5-7 gaplik klinik tahlil. Faqat valid JSON.',
         maxTokens: scaledMaxTokens,
         temperature: 0.45,
         bookContext,
@@ -1599,7 +1659,7 @@ export const aiService = {
     const primary = session.primaryLanguage || language;
     // MUHIM tartib: variant izohlari TARJIMADAN OLDIN qo'shiladi — aks holda
     // tarjima manbasida ular bo'lmaydi va ru/en versiyalar izohsiz qolardi.
-    const withOptionExplanations = await attachOptionExplanations(session, primary);
+    const withOptionExplanations = await attachOptionExplanations(session, primary, subjectCode);
     const [withRefs, translated] = await Promise.all([
       attachPerQuestionBookReferences(withOptionExplanations, subjectCode),
       attachTestTranslations(withOptionExplanations, primary),
