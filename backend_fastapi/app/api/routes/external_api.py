@@ -15,6 +15,7 @@ from app.services.pagination import paginate
 router = APIRouter(dependencies=[Depends(require_external_api_key)])
 
 QL_BOUNDS = {"min": cc.TEST_QUESTION_LIMIT_MIN, "max": cc.TEST_QUESTION_LIMIT_MAX}
+KEYS_QL_BOUNDS = {"min": cc.CASE_QUESTION_LIMIT_MIN, "max": cc.CASE_QUESTION_LIMIT_MAX}
 
 
 def _params(request: Request) -> dict:
@@ -122,6 +123,100 @@ def external_questions_sample(request: Request, db: Session = Depends(get_db)) -
         "question_limit_bounds": QL_BOUNDS,
         "questions": questions,
     }
+
+
+# ---------------- keys (case) ----------------
+
+
+@router.get("/external/keys/stats/")
+def external_keys_stats(db: Session = Depends(get_db)) -> dict:
+    body = cc.build_catalog_stats(db, published_only=True, kind="case")
+    body["question_limit_bounds"] = KEYS_QL_BOUNDS
+    return body
+
+
+@router.get("/external/keys/")
+def external_keys_list(request: Request, db: Session = Depends(get_db)) -> dict:
+    params = _params(request)
+    min_q, err = cc.parse_case_question_limit(params.get("min_questions"), param_name="min_questions")
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    max_q, err = cc.parse_case_question_limit(params.get("max_questions"), param_name="max_questions")
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    if min_q is not None and max_q is not None and min_q > max_q:
+        raise HTTPException(status_code=400, detail="min_questions cannot be greater than max_questions.")
+
+    stmt = cc.filter_catalog_stmt(
+        cc.published_catalog_stmt().where(PreparedContent.kind == "case"), params
+    )
+    stmt = cc.filter_by_stored_question_count(stmt, min_questions=min_q, max_questions=max_q)
+    items = db.execute(stmt).scalars().all()
+    rows = [cc.catalog_item_summary(i, include_verification=True) for i in items]
+    payload = paginate(rows, request, default_page_size=50, max_page_size=200)
+    payload["question_limit_bounds"] = KEYS_QL_BOUNDS
+    return payload
+
+
+@router.get("/external/keys/scenarios/")
+def external_keys_scenarios(request: Request, db: Session = Depends(get_db)) -> dict:
+    """Keys savollarining tekis banki — UI da to'g'ridan-to'g'ri ro'yxat qilib chiqarish uchun."""
+    params = _params(request)
+    raw_count = params.get("count") or params.get("question_limit") or params.get("question_count")
+    count, err = cc.parse_case_question_limit(raw_count, param_name="count")
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    shuffle = str(params.get("shuffle") or "").strip().lower() not in ("0", "false", "no")
+
+    stmt = cc.filter_catalog_stmt(
+        cc.published_catalog_stmt().where(PreparedContent.kind == "case"), params
+    )
+    items = db.execute(stmt).scalars().all()
+    scenarios, available, cases_scanned = cc.collect_case_scenarios(items, shuffle=shuffle, count=count)
+
+    body = paginate(scenarios, request, default_page_size=50, max_page_size=200)
+    body.update(
+        {
+            "subject_code": (params.get("subject_code") or "").strip(),
+            "department_code": (params.get("department_code") or "").strip(),
+            "variant_label": (params.get("variant_label") or "").strip(),
+            "topic_code": (params.get("topic_code") or "").strip().lower(),
+            "syllabus_id": (params.get("syllabus_id") or "").strip(),
+            "count_requested": count,
+            "count_available": available,
+            "count_returned": len(scenarios),
+            "cases_scanned": cases_scanned,
+            "question_limit_bounds": KEYS_QL_BOUNDS,
+        }
+    )
+    return body
+
+
+@router.get("/external/keys/{pk}/")
+def external_key_detail(pk: int, request: Request, db: Session = Depends(get_db)) -> dict:
+    params = _params(request)
+    raw_limit = params.get("question_limit") or params.get("question_count")
+    limit, err = cc.parse_case_question_limit(raw_limit)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+    item = db.execute(
+        cc.published_catalog_stmt().where(PreparedContent.id == pk, PreparedContent.kind == "case")
+    ).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    payload_raw = item.payload if isinstance(item.payload, dict) else {}
+    payload, available, returned = cc.slice_case_payload(payload_raw, limit)
+
+    data = cc.catalog_item_summary(item, include_verification=True)
+    data["payload"] = payload
+    data["question_count_available"] = available
+    data["question_count_returned"] = returned
+    data["question_limit_bounds"] = KEYS_QL_BOUNDS
+    if limit is not None:
+        data["question_limit"] = limit
+    return data
 
 
 # ---------------- catalog ----------------

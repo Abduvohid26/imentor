@@ -15,3 +15,8 @@ Asosiy o'zgarishlar (qisqa):
   - Soxta tarjima (masalan ru kaliti ostida o'zbekcha matn)
     API tomonidan filtrlanadi; available_languages faqat
     haqiqiy tillarni ko'rsatadi.
+  - YANGI: keys (case study) bazasi ham tashqi APIda:
+      GET /v1/external/keys/stats/
+      GET /v1/external/keys/
+      GET /v1/external/keys/<id>/?question_limit=1..50
+      GET /v1/external/keys/scenarios/   <- tekis savollar banki (UI uchun)

@@ -9,7 +9,7 @@
 | **API hujjatlari** | `/api/docs/` (Swagger UI) |
 | **Admin panel** | `/admin/` (telefon raqam orqali kirish) |
 | **Admin qo‘llanmasi (SPA)** | [docs/ADMIN_README.md](docs/ADMIN_README.md) — to‘liq flow, modullar, test checklist |
-| **Tashqi API (partner)** | [docs/EXTERNAL_TESTS_API.md](EXTERNAL_TESTS_API.md) — katalog + testlar, X-Api-Key |
+| **Tashqi API (partner)** | [docs/EXTERNAL_TESTS_API.md](EXTERNAL_TESTS_API.md) — katalog + testlar + keys, X-Api-Key |
 | **To'liq oqim + integratsiya** | [docs/FULL_PLATFORM_FLOW.txt](docs/FULL_PLATFORM_FLOW.txt) — kafedra→fan→test→tashqi API |
 
 ---
@@ -442,6 +442,15 @@ JWT emas — `X-Api-Key` header. To'liq hujjat: [EXTERNAL_TESTS_API.md](EXTERNAL
 | GET | `/api/v1/external/tests/` | X-Api-Key | E'lon qilingan testlar ro'yxati |
 | GET | `/api/v1/external/tests/<id>/` | X-Api-Key | Test + savollar (`?question_limit=10..30&language=uz\|ru\|en`) |
 | GET | `/api/v1/external/questions/sample/` | X-Api-Key | Unique bank; har savol `languages.uz/ru/en` (til param shart emas) |
+
+**Keys** (case study savollar bazasi):
+
+| Method | Endpoint | Auth | Tavsif |
+|---|---|---|---|
+| GET | `/api/v1/external/keys/stats/` | X-Api-Key | Keys bazasi statistikasi |
+| GET | `/api/v1/external/keys/` | X-Api-Key | E'lon qilingan keyslar ro'yxati |
+| GET | `/api/v1/external/keys/<id>/` | X-Api-Key | Keys + savollar (`?question_limit=1..50`) |
+| GET | `/api/v1/external/keys/scenarios/` | X-Api-Key | Tekis savollar banki (`scenario`+`answer`) — UI ro'yxati uchun |
 
 Server `.env`: `IMENTOR_EXTERNAL_API_KEYS=kalit1,kalit2`
 

@@ -5,7 +5,8 @@ Hamkor tizimlar uchun to‘liq qo‘llanma.
 | Blok | Mazmun |
 |------|--------|
 | **A. Katalog** | Kafedra / fan / yo‘nalish / mavzu nomlari |
-| **B. Testlar** | Hodimlar yaratgan savollar (uz / ru / en) |
+| **B. Testlar** | Hodimlar yaratgan test savollari (uz / ru / en) |
+| **C. Keys** | Klinik keys (case study) savollari bazasi — `scenario` + `answer` |
 
 | | |
 |---|---|
@@ -40,12 +41,21 @@ Kalit yo‘q / noto‘g‘ri → **HTTP 403**. Yangi testlar darhol e’lon qili
 | GET | `/v1/external/tests/<id>/?question_limit=10..30&language=uz\|ru\|en` | Bitta test; `language` ixtiyoriy |
 | GET | `/v1/external/questions/sample/?subject_code=...&count=10..30` | Unique aralash bank; **har savol avto 3 tilda** |
 
+### Keys (case study)
+
+| Method | Path | Izoh |
+|--------|------|------|
+| GET | `/v1/external/keys/stats/` | Statistika |
+| GET | `/v1/external/keys/` | Ro‘yxat (savolsiz meta) |
+| GET | `/v1/external/keys/<id>/?question_limit=1..50` | Bitta keys + savollar |
+| GET | `/v1/external/keys/scenarios/` | **Tekis savollar banki** — UI da to‘g‘ridan-to‘g‘ri chiqarish uchun |
+
 ---
 
 ## 1. Ierarxiya va kalit maydonlar
 
 ```
-Kafedra → Fan → Yo‘nalish → Mavzu → Test savollari
+Kafedra → Fan → Yo‘nalish → Mavzu → Test savollari / Keys savollari
 ```
 
 | Maydon | Ma’nosi |
@@ -64,7 +74,7 @@ Kafedra → Fan → Yo‘nalish → Mavzu → Test savollari
 
 ---
 
-## 2. Savol soni chegarasi (10–30)
+## 2. Savol soni chegarasi (testlar 10–30, keys 1–50)
 
 | Parametr | Vazifa |
 |----------|--------|
@@ -74,6 +84,10 @@ Kafedra → Fan → Yo‘nalish → Mavzu → Test savollari
 | `count` | Sample endpointda savol soni (10–30) |
 
 Har javobda: `"question_limit_bounds": { "min": 10, "max": 30 }`.
+
+> **Keys uchun chegara boshqacha: 1–50.** `/v1/external/keys/...` javoblarida
+> `"question_limit_bounds": { "min": 1, "max": 50 }` qaytadi — keysda odatda
+> 3–5 ta savol bo‘ladi, shuning uchun 10 lik pastki chegara qo‘yilmagan.
 
 ---
 
@@ -361,7 +375,163 @@ Agar biror til yaroqsiz bo‘lsa, masalan faqat `uz`+`en`:
 
 ---
 
-## 6. Integratsiya oqimi
+## 6. Keys API (C) — klinik keyslar bazasi
+
+Keys (case study) — bu bemor holati (`scenario`) va uning yechimi (`answer`)
+dan iborat savollar. Testdan farqi:
+
+| | Testlar | Keys |
+|---|---|---|
+| Savol maydoni | `question` + `options[]` | `scenario` (uzun matn) |
+| Javob | `correctOptionIndex` | `answer` (matn) |
+| Tillar | uz / ru / en (`translations`) | **Bitta til** — qaysi tilda yaratilgan bo‘lsa |
+| Savol soni chegarasi | 10–30 | 1–50 |
+| `kind` | `"test"` | `"case"` |
+
+Katalog (kafedra / fan / mavzu) **umumiy** — 4-bo‘limdagi endpointlar keyslar
+uchun ham ishlaydi, filtr parametrlari ham bir xil.
+
+### 6.1 `GET /v1/external/keys/stats/`
+
+E’lon qilingan keyslar statistikasi: `totals`, `by_subject`, `by_variant`,
+`by_topic`, `by_author`, `recent`. `totals.case_count` — jami keyslar soni,
+`totals.questions_total` — ular ichidagi savollar soni.
+
+### 6.2 `GET /v1/external/keys/`
+
+Ro‘yxat (savolsiz meta) — testlar ro‘yxati bilan bir xil shakl, `kind: "case"`.
+
+**Query:** `subject_code`, `department_code`, `variant_label`, `topic_code`,
+`syllabus_id`, `q`, `page`, `page_size`, `min_questions`, `max_questions` (1–50).
+
+```json
+{
+  "count": 3,
+  "page": 1,
+  "page_size": 50,
+  "question_limit_bounds": { "min": 1, "max": 50 },
+  "results": [
+    {
+      "id": 12,
+      "kind": "case",
+      "topic": "Bioelektrik hodisalar",
+      "subject_code": "fiziologiya__normal-fiziologiya",
+      "subject_name": "Normal fiziologiya",
+      "department_code": "fiziologiya",
+      "department_name": "Fiziologiya",
+      "variant_label": "DI",
+      "topic_code": "m1",
+      "syllabus_id": 178,
+      "question_count": 3,
+      "created_at": "2026-07-28T08:37:55+00:00",
+      "document_id": "IM-000012-24F5B805",
+      "verification_code": "24F5B805F5D287E4"
+    }
+  ]
+}
+```
+
+### 6.3 `GET /v1/external/keys/<id>/`
+
+Bitta keys + savollar. **Query:** `question_limit` / `question_count` (1–50).
+
+```json
+{
+  "id": 12,
+  "kind": "case",
+  "topic": "Bioelektrik hodisalar",
+  "question_count_available": 3,
+  "question_count_returned": 1,
+  "question_limit": 1,
+  "question_limit_bounds": { "min": 1, "max": 50 },
+  "document_id": "IM-000012-24F5B805",
+  "payload": {
+    "topic": "Bioelektrik hodisalar",
+    "questions": [
+      {
+        "scenario": "46 yoshli erkak bemor ko‘ngil aynishi ... EKG da QT uzayishi aniqlangan.",
+        "answer": "Torsades de Pointes; magniy sulfat ...",
+        "focus": "tashxis"
+      }
+    ],
+    "references": [{ "title": "Guyton and Hall ...", "year": "2021" }]
+  }
+}
+```
+
+### 6.4 `GET /v1/external/keys/scenarios/` ⭐ UI uchun tavsiya
+
+Filtr doirasidagi **barcha** keyslardan savollarni bitta tekis ro‘yxatga yig‘adi
+va takrorlarni olib tashlaydi (`scenario` matni bo‘yicha). UI da keysni ochib
+o‘tirmasdan, to‘g‘ridan-to‘g‘ri savollar ro‘yxatini chiqarish uchun.
+
+**Query:**
+
+| Param | Izoh |
+|-------|------|
+| `subject_code` / `department_code` | Filtr (ixtiyoriy — hech biri berilmasa butun baza) |
+| `variant_label`, `topic_code`, `syllabus_id`, `q` | Qo‘shimcha filtrlar |
+| `count` (alias `question_limit`, `question_count`) | 1–50; yo‘q = hammasi |
+| `shuffle` | Default `true`. `shuffle=false` → tartib saqlanadi (sahifalash uchun) |
+| `page`, `page_size` | Sahifalash (max 200) |
+
+> Sahifalashda `shuffle=false` bering — aks holda har so‘rovda tartib
+> o‘zgaradi va sahifalar orasida savollar takrorlanishi mumkin.
+
+```bash
+GET /api/v1/external/keys/scenarios/?department_code=fiziologiya&shuffle=false&page_size=20
+Header: X-Api-Key: <kalit>
+```
+
+```json
+{
+  "count": 9,
+  "page": 1,
+  "page_size": 20,
+  "count_requested": null,
+  "count_available": 9,
+  "count_returned": 9,
+  "cases_scanned": 3,
+  "subject_code": "",
+  "department_code": "fiziologiya",
+  "question_limit_bounds": { "min": 1, "max": 50 },
+  "results": [
+    {
+      "scenario": "46 yoshli erkak bemor ...",
+      "answer": "Torsades de Pointes ...",
+      "focus": "tashxis",
+      "options": [],
+      "explanation": "",
+      "references": [{ "title": "Guyton and Hall ...", "year": "2021" }],
+      "source_case_id": 12,
+      "topic": "Bioelektrik hodisalar"
+    }
+  ]
+}
+```
+
+| Maydon | Ma’nosi |
+|--------|---------|
+| `results[].scenario` | Bemor holati (uzun matn, `\n` bilan abzatslar) |
+| `results[].answer` | Kutilayotgan javob / tahlil |
+| `results[].focus` | `tashxis` \| `davolash` \| `profilaktika` (bo‘sh bo‘lishi mumkin) |
+| `results[].options` / `correctOptionIndex` | Ba’zi keyslarda variantli savol bo‘ladi; odatda `options` bo‘sh |
+| `results[].source_case_id` | Manba keys `id` — `/external/keys/<id>/` bilan ochiladi |
+| `count` | Sahifalashdagi umumiy soni |
+| `count_available` | Filtr bo‘yicha topilgan unique savollar soni (`count` kesilishidan oldin) |
+| `cases_scanned` | Nechta keys ko‘rildi |
+
+**Xatoliklar**
+
+| Kod | Sabab |
+|-----|--------|
+| 400 | `count` / `min_questions` / `max_questions` 1–50 dan tashqari |
+| 403 | `X-Api-Key` yo‘q/noto‘g‘ri |
+| 404 | Keys topilmadi (yoki bu `id` test, keys emas) |
+
+---
+
+## 7. Integratsiya oqimi
 
 1. Kalit: `IMENTOR_EXTERNAL_API_KEYS=...`
 2. `GET /v1/external/catalog/departments/` → kafedra
@@ -369,14 +539,18 @@ Agar biror til yaroqsiz bo‘lsa, masalan faqat `uz`+`en`:
 4. **Imtihon banki (tavsiya):**  
    `GET /v1/external/questions/sample/?subject_code=...&count=20`  
    → har savol `languages.uz|ru|en`
-5. (Ixtiyoriy) bitta test: `GET /v1/external/tests/<id>/?question_limit=20&language=ru`
-6. `document_id` + `verification_code` saqlash
+5. **Keys banki (tavsiya):**  
+   `GET /v1/external/keys/scenarios/?subject_code=...&shuffle=false&page_size=20`  
+   → tekis `results[]`: `scenario` + `answer`
+6. (Ixtiyoriy) bitta test: `GET /v1/external/tests/<id>/?question_limit=20&language=ru`
+7. (Ixtiyoriy) bitta keys: `GET /v1/external/keys/<id>/`
+8. `document_id` + `verification_code` saqlash
 
-Minimal oqim: **kafedra → fan → sample**. `variant_label` / `topic_code` shart emas.
+Minimal oqim: **kafedra → fan → sample / scenarios**. `variant_label` / `topic_code` shart emas.
 
 ---
 
-## 7. curl misollar
+## 8. curl misollar
 
 ```bash
 BASE=https://imentor.devflix.uz/api
@@ -402,11 +576,25 @@ curl -s -H "X-Api-Key: $KEY" \
 # Sample bank — har savol uz+ru+en birga (til param shart emas)
 curl -s -H "X-Api-Key: $KEY" \
   "$BASE/v1/external/questions/sample/?subject_code=fiziologiya__anatomiya&count=10"
+
+# Keys statistikasi
+curl -s -H "X-Api-Key: $KEY" "$BASE/v1/external/keys/stats/"
+
+# Keyslar ro‘yxati
+curl -s -H "X-Api-Key: $KEY" \
+  "$BASE/v1/external/keys/?department_code=fiziologiya"
+
+# Bitta keys
+curl -s -H "X-Api-Key: $KEY" "$BASE/v1/external/keys/12/?question_limit=3"
+
+# Keys savollar banki — UI ro‘yxati uchun (sahifalanadigan, barqaror tartib)
+curl -s -H "X-Api-Key: $KEY" \
+  "$BASE/v1/external/keys/scenarios/?department_code=fiziologiya&shuffle=false&page_size=20"
 ```
 
 ---
 
-## 8. Namuna skript
+## 9. Namuna skript
 
 `deploy/examples/external_partner_client.py`
 
@@ -418,7 +606,7 @@ python deploy/examples/external_partner_client.py
 
 ---
 
-## 9. HTTP kodlar
+## 10. HTTP kodlar
 
 | Kod | Ma’no |
 |-----|--------|
@@ -429,9 +617,8 @@ python deploy/examples/external_partner_client.py
 
 ---
 
-## 10. Nima yuborilmaydi
+## 11. Nima yuborilmaydi
 
-- Keys / case study (faqat testlar)
 - JWT, parol, telefon
 - PDF fayllar (faqat parsed mavzu ro‘yxati)
 - Ma’ruza / taqdimot
@@ -439,7 +626,7 @@ python deploy/examples/external_partner_client.py
 
 ---
 
-## 11. Server sozlash
+## 12. Server sozlash
 
 `deploy/.env.production`:
 

@@ -371,6 +371,115 @@ def collect_unique_questions_from_tests(
     return pool, available, tests_scanned
 
 
+# ---------------- keys (case) ----------------
+#
+# Keyslar testlardan farqli: bitta tilda saqlanadi (translations bloki yo'q)
+# va savol o'rniga `scenario` + `answer` juftligidan iborat. Shuning uchun
+# ular uchun alohida parse/slice/collect yordamchilari bor.
+
+CASE_QUESTION_LIMIT_MIN = 1
+CASE_QUESTION_LIMIT_MAX = 50
+
+
+def parse_case_question_limit(
+    value: str | None, *, param_name: str = "question_limit"
+) -> tuple[int | None, str | None]:
+    if value is None or not str(value).strip():
+        return None, None
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None, (
+            f"{param_name} must be an integer between {CASE_QUESTION_LIMIT_MIN} and {CASE_QUESTION_LIMIT_MAX}."
+        )
+    if parsed < CASE_QUESTION_LIMIT_MIN or parsed > CASE_QUESTION_LIMIT_MAX:
+        return None, f"{param_name} must be between {CASE_QUESTION_LIMIT_MIN} and {CASE_QUESTION_LIMIT_MAX}."
+    return parsed, None
+
+
+def _case_scenario_block(q: dict) -> dict | None:
+    """Bitta keys savoli — UI to'g'ridan-to'g'ri chiqara oladigan shaklda."""
+    scenario = str(q.get("scenario") or q.get("question") or "").strip()
+    if not scenario:
+        return None
+    options = q.get("options")
+    block: dict = {
+        "scenario": scenario,
+        "answer": str(q.get("answer") or "").strip(),
+        "focus": str(q.get("focus") or "").strip(),
+        "options": list(options) if isinstance(options, list) else [],
+        "explanation": str(q.get("explanation") or "").strip(),
+    }
+    correct = q.get("correctOptionIndex")
+    if isinstance(correct, int) and block["options"]:
+        block["correctOptionIndex"] = correct
+    refs = q.get("references")
+    if isinstance(refs, list) and refs:
+        block["references"] = list(refs)
+    return block
+
+
+def slice_case_payload(payload: dict | None, limit: int | None) -> tuple[dict, int, int]:
+    base = dict(payload) if isinstance(payload, dict) else {}
+    questions = base.get("questions")
+    if not isinstance(questions, list):
+        base["questions"] = []
+        return base, 0, 0
+    available = len(questions)
+    if limit is None:
+        return base, available, available
+    base["questions"] = questions[:limit]
+    return base, available, len(base["questions"])
+
+
+def collect_case_scenarios(
+    items: list[PreparedContent],
+    *,
+    shuffle: bool = True,
+    count: int | None = None,
+) -> tuple[list[dict], int, int]:
+    """Unique keys-savollari pooli (scenario matni bo'yicha takrorlar olib tashlanadi)."""
+    import random as _random
+
+    seen: set[str] = set()
+    pool: list[dict] = []
+    cases_scanned = 0
+
+    for item in items:
+        cases_scanned += 1
+        raw_payload = item.payload if isinstance(item.payload, dict) else {}
+        questions = raw_payload.get("questions")
+        if not isinstance(questions, list):
+            continue
+        payload_refs = raw_payload.get("references")
+        payload_refs = list(payload_refs) if isinstance(payload_refs, list) and payload_refs else []
+        source_id = int(item.id or 0)
+
+        for q in questions:
+            if not isinstance(q, dict):
+                continue
+            block = _case_scenario_block(q)
+            if block is None:
+                continue
+            key = normalize_question_text_key(block["scenario"])
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            if not block.get("references") and payload_refs:
+                block["references"] = list(payload_refs)
+            if source_id > 0:
+                block["source_case_id"] = source_id
+            block["topic"] = item.topic
+            pool.append(block)
+
+    available = len(pool)
+    if shuffle and pool:
+        _random.shuffle(pool)
+    if count is not None:
+        pool = pool[: max(0, int(count))]
+    return pool, available, cases_scanned
+
+
 def _now() -> dt_datetime:
     return dt_datetime.now(dt_timezone.utc)
 

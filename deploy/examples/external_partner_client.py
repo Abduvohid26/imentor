@@ -57,21 +57,21 @@ def main() -> None:
     catalog_stats = request_json('/v1/external/catalog/stats/')
     print(json.dumps(catalog_stats, ensure_ascii=False, indent=2))
 
-  print('\n=== 2. Kafedralar (1-qadam: tanlash) ===')
-  departments = request_json('/v1/external/catalog/departments/')
-  print(f"  Jami: {departments.get('count', 0)}")
-  for dept in departments.get('results', [])[:5]:
-    print(f"  - {dept['name']} ({dept['code']}) — {dept.get('subjects_count', 0)} fan")
+    print('\n=== 2. Kafedralar (1-qadam: tanlash) ===')
+    departments = request_json('/v1/external/catalog/departments/')
+    print(f"  Jami: {departments.get('count', 0)}")
+    for dept in departments.get('results', [])[:5]:
+        print(f"  - {dept['name']} ({dept['code']}) — {dept.get('subjects_count', 0)} fan")
 
-  if not departments.get('results'):
-    print('  Kafedra topilmadi')
-    return
+    if not departments.get('results'):
+        print('  Kafedra topilmadi')
+        return
 
-  dept_code = departments['results'][0]['code']
-  dept_name = departments['results'][0]['name']
-  print(f"\n=== 3. Fanlar — tanlangan kafedra: {dept_name} ===")
-  subjects = request_json(f'/v1/external/catalog/departments/{dept_code}/subjects/', params={'page_size': 10})
-  rows = subjects.get('results', [])
+    dept_code = departments['results'][0]['code']
+    dept_name = departments['results'][0]['name']
+    print(f"\n=== 3. Fanlar — tanlangan kafedra: {dept_name} ===")
+    subjects = request_json(f'/v1/external/catalog/departments/{dept_code}/subjects/', params={'page_size': 10})
+    rows = subjects.get('results', [])
     if not rows:
         print('  Fan topilmadi')
         return
@@ -100,27 +100,48 @@ def main() -> None:
     )
     test_rows = tests.get('results', [])
     if not test_rows:
-        print('  Hali e\'lon qilingan test yo\'q (1 soat kutish yoki hodim test yaratishi kerak)')
-        return
+        print('  Hali e\'lon qilingan test yo\'q (hodim test yaratishi kerak)')
+    else:
+        import random
 
-    import random
+        pick = random.choice(test_rows)
+        test_id = pick['id']
+        print(
+            f"  Random tanlandi: test id={test_id}, "
+            f"variant={pick.get('variant_label') or '—'}, "
+            f"topic={pick.get('topic_code') or '—'}, "
+            f"savollar={pick.get('question_count')}"
+        )
 
-    pick = random.choice(test_rows)
-    test_id = pick['id']
+        print(f'\n=== 7. Test savollari (id={test_id}, limit=10) ===')
+        payload = request_json(f'/v1/external/tests/{test_id}/', params={'question_limit': 10})
+        questions = (payload.get('payload') or {}).get('questions') or []
+        print(f"  Qaytarildi: {payload.get('question_count_returned')} / {payload.get('question_count_available')}")
+        if questions:
+            print(f"  Birinchi savol: {questions[0].get('question', '')[:80]}…")
+        print(f"  document_id: {payload.get('document_id')}")
+
+    print('\n=== 8. Keys (case study) statistikasi ===')
+    keys_stats = request_json('/v1/external/keys/stats/')
+    keys_totals = keys_stats.get('totals', {})
     print(
-        f"  Random tanlandi: test id={test_id}, "
-        f"variant={pick.get('variant_label') or '—'}, "
-        f"topic={pick.get('topic_code') or '—'}, "
-        f"savollar={pick.get('question_count')}"
+        f"  Jami keys: {keys_totals.get('case_count', 0)}, "
+        f"ichida savollar: {keys_totals.get('questions_total', 0)}"
     )
 
-    print(f'\n=== 7. Test savollari (id={test_id}, limit=10) ===')
-    payload = request_json(f'/v1/external/tests/{test_id}/', params={'question_limit': 10})
-    questions = (payload.get('payload') or {}).get('questions') or []
-    print(f"  Qaytarildi: {payload.get('question_count_returned')} / {payload.get('question_count_available')}")
-    if questions:
-        print(f"  Birinchi savol: {questions[0].get('question', '')[:80]}…")
-    print(f"  document_id: {payload.get('document_id')}")
+    print('\n=== 9. Keys savollar banki (UI ro\'yxati uchun) ===')
+    scenarios = request_json(
+        '/v1/external/keys/scenarios/',
+        params={'department_code': dept_code, 'shuffle': 'false', 'page_size': 5},
+    )
+    print(
+        f"  Unique savollar: {scenarios.get('count_available', 0)} "
+        f"({scenarios.get('cases_scanned', 0)} keys ko'rildi)"
+    )
+    for row in scenarios.get('results', []):
+        focus = row.get('focus') or '—'
+        print(f"  - [{focus}] keys#{row.get('source_case_id')} {row.get('scenario', '')[:70]}…")
+        print(f"      javob: {row.get('answer', '')[:70]}…")
 
 
 if __name__ == '__main__':
