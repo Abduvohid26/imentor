@@ -38,11 +38,11 @@ function formatReference(ref: MedicalReference): string {
 function referencesBlock(refs: MedicalReference[] | undefined, title: string): string {
   if (!refs?.length) return '';
   const items = refs
-    .map((r) => `<li style="margin:4px 0;font-size:13px;color:#374151;">${escapeHtml(formatReference(r))}</li>`)
+    .map((r) => `<li style="margin:4px 0;font-size:13px;color:#1e3a5f;">${escapeHtml(formatReference(r))}</li>`)
     .join('');
   return `
-    <div style="margin:16px 0;padding:12px;background:#f9fafb;border-radius:8px;">
-      <p data-pdf-keep-next style="margin:0 0 8px;font-size:12px;font-weight:700;color:#4b5563;text-transform:uppercase;">${escapeHtml(title)}</p>
+    <div style="margin:16px 0;padding:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;">
+      <p data-pdf-keep-next style="margin:0 0 8px;font-size:12px;font-weight:700;color:#1d4ed8;text-transform:uppercase;">${escapeHtml(title)}</p>
       <ul style="margin:0;padding-left:18px;">${items}</ul>
     </div>
   `;

@@ -96,17 +96,20 @@ type CloudRow = {
  *  - timeout uzun (payload katta, mobil internet sekin bo'lishi mumkin),
  *  - vaqtinchalik xatolarda (tarmoq, timeout, 5xx) qisqa kutib qayta uriniladi.
  * 4xx (validatsiya/autentifikatsiya) da qayta urinilmaydi — natija o'zgarmaydi. */
-async function postWithRetry(url: string, token: string, body: unknown): Promise<void> {
+async function postWithRetry(
+  url: string,
+  token: string,
+  body: unknown,
+): Promise<{ id?: number } | null> {
   const delaysMs = [800, 2500];
   for (let attempt = 0; ; attempt += 1) {
     try {
-      await httpJson(url, {
+      return await httpJson<{ id?: number }>(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body,
         timeoutMs: 60_000,
       });
-      return;
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 0;
       const retriable = status === 0 || status === 429 || status >= 500;
@@ -116,13 +119,16 @@ async function postWithRetry(url: string, token: string, body: unknown): Promise
   }
 }
 
-/** Asosiy saqlash — FastAPI `/v1/prepared-content/` (Postgres). localStorage ishlatilmaydi. */
+/** Asosiy saqlash — FastAPI `/v1/prepared-content/` (Postgres). localStorage ishlatilmaydi.
+ * Qaytaradi: yaratilgan yozuvning Baza id'si (`cloud_<n>`) — chaqiruvchi uni
+ * keyinroq yangilashi (PATCH) yoki fayl bilan bog'lashi mumkin. Server id
+ * qaytarmasa `null`. */
 export async function savePreparedContent(
   kind: PreparedContentKind,
   topic: string,
   payload: unknown,
   meta?: PreparedContentMeta,
-): Promise<void> {
+): Promise<string | null> {
   const owner = ownerKey();
   if (!owner) {
     throw new Error('Tizimga kiring — kontent FastAPI bazasiga saqlanadi.');
@@ -131,7 +137,7 @@ export async function savePreparedContent(
   const topicNorm = meta?.topicNorm?.trim() || normTopic(topic);
   const lightPayload = stripHeavyMediaFromPayload(payload);
 
-  await postWithRetry(`${apiBaseUrl()}/v1/prepared-content/`, token, {
+  const created = await postWithRetry(`${apiBaseUrl()}/v1/prepared-content/`, token, {
       owner_key: owner,
       kind,
       topic: topic.trim() || 'Nomsiz',
@@ -143,6 +149,36 @@ export async function savePreparedContent(
       topic_code: meta?.topicCode?.trim() || '',
       payload: lightPayload,
   });
+  return created?.id != null ? cloudId(created.id) : null;
+}
+
+/** Mavjud yozuvning payload'ini almashtirish — Bazada nusxa ko'paymasligi uchun.
+ * Masalan test avval asosiy tilda saqlanadi, tarjimalar tayyor bo'lgach
+ * SHU yozuv yangilanadi. */
+export async function updatePreparedContentPayload(
+  id: string,
+  payload: unknown,
+): Promise<boolean> {
+  const numericId = parseCloudNumericId(id);
+  if (!numericId) return false;
+  const token = await getBackendAccessToken();
+  if (!token) return false;
+  try {
+    await httpJson(`${apiBaseUrl()}/v1/prepared-content/${numericId}/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+      body: { payload: stripHeavyMediaFromPayload(payload) },
+      timeoutMs: 60_000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `cloud_12` → `12` (Baza id'sini fayl nomiga bog'lash uchun). */
+export function preparedContentNumericId(id: string): string | null {
+  return parseCloudNumericId(id);
 }
 
 /** @deprecated Faqat sync ro'yxatdan foydalaning — localStorage o'chirilgan. */
@@ -158,55 +194,102 @@ export function listAllPreparedForKind(_kind: PreparedContentKind): PreparedCont
   return [];
 }
 
-/** FastAPI `/v1/prepared-content/mine/` — foydalanuvchi tarixi bazadan. */
-export async function listAllPreparedForKindSynced(
+type MineRow = {
+  id: number;
+  topic: string;
+  topic_norm?: string;
+  author_display_name?: string;
+  created_at: string;
+};
+
+const MINE_PAGE_SIZE = 300;
+/** Xavfsizlik chegarasi — server nosoz javob bersa cheksiz aylanmaslik uchun. */
+const MINE_MAX_PAGES = 20;
+
+/** `/v1/prepared-content/mine/` — BARCHA sahifalarni yig'ib oladi.
+ * Ilgari faqat birinchi 200 ta yozuv olinardi va faol o'qituvchida eski
+ * materiallar Bazadan butunlay yo'qolganday ko'rinardi. */
+async function fetchMineRows(
   kind: PreparedContentKind,
+  topicNorms?: string[],
 ): Promise<PreparedContentSummary[]> {
-  try {
-    const token = await getBackendAccessToken();
-    if (!token) return [];
-    const data = await httpJson<{
-      results?: {
-        id: number;
-        topic: string;
-        topic_norm?: string;
-        author_display_name?: string;
-        created_at: string;
-      }[];
-    }>(`${apiBaseUrl()}/v1/prepared-content/mine/?kind=${encodeURIComponent(kind)}&page_size=200`, {
-      headers: { Authorization: `Bearer ${token}` },
+  const token = await getBackendAccessToken();
+  if (!token) return [];
+  const out: PreparedContentSummary[] = [];
+  const seen = new Set<number>();
+  for (let page = 1; page <= MINE_MAX_PAGES; page += 1) {
+    const params = new URLSearchParams({
+      kind,
+      page: String(page),
+      page_size: String(MINE_PAGE_SIZE),
     });
-    return (data.results || [])
-      .map((r) => ({
+    for (const norm of topicNorms || []) params.append('topic_norm', norm);
+    const data = await httpJson<{ results?: MineRow[]; count?: number }>(
+      `${apiBaseUrl()}/v1/prepared-content/mine/?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const rows = data.results || [];
+    for (const r of rows) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push({
         id: cloudId(r.id),
         topic: r.topic,
         topicNorm: r.topic_norm || normTopic(r.topic),
         author: r.author_display_name || '',
         createdAt: new Date(r.created_at).getTime(),
         source: 'cloud' as const,
-      }))
-      .sort((a, b) => b.createdAt - a.createdAt);
+      });
+    }
+    // Backend `paginate` javobi: {count, page, page_size, results} — `next` yo'q,
+    // shuning uchun to'xtash sharti sonlar bo'yicha.
+    if (rows.length < MINE_PAGE_SIZE) break;
+    if (typeof data.count === 'number' && out.length >= data.count) break;
+  }
+  return out.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** FastAPI `/v1/prepared-content/mine/` — foydalanuvchi tarixi bazadan. */
+export async function listAllPreparedForKindSynced(
+  kind: PreparedContentKind,
+): Promise<PreparedContentSummary[]> {
+  try {
+    return await fetchMineRows(kind);
   } catch {
     return [];
   }
 }
 
-/** Mavzu bo'yicha FastAPI tarix (mine + filter). */
+/** Mavzu bo'yicha FastAPI tarix — filtrlash SERVERDA, aniq `topic_norm`
+ * tenglik bo'yicha. `topicNormLookupKeys` eski (sarlavha) kalitni ham
+ * qaytaradi, shuning uchun eski yozuvlar ham topiladi.
+ *
+ * Ilgari bu yerda "includes" bilan taxminiy solishtirish bor edi va bir
+ * mavzuning Bazasiga nomi o'xshash boshqa mavzular materiallari aralashib
+ * ketardi. */
 export async function listPreparedForTopicSynced(
   kind: PreparedContentKind,
   topic: SyllabusTopic | SyllabusTopicContext | string,
 ): Promise<PreparedContentSummary[]> {
-  const wanted = new Set(
-    (typeof topic === 'string' ? [normTopic(topic)] : topicNormLookupKeys(topic)).map((k) =>
-      k.toLowerCase(),
-    ),
-  );
-  if (!wanted.size) return [];
-  const all = await listAllPreparedForKindSynced(kind);
-  return all.filter((r) => {
-    const keys = [r.topicNorm || '', normTopic(r.topic)].map((k) => k.toLowerCase()).filter(Boolean);
-    return keys.some((k) => wanted.has(k) || [...wanted].some((w) => k.includes(w) || w.includes(k)));
-  });
+  const wantedKeys = (
+    typeof topic === 'string' ? [normTopic(topic)] : topicNormLookupKeys(topic)
+  )
+    .map((k) => k.trim().toLowerCase())
+    .filter(Boolean);
+  if (!wantedKeys.length) return [];
+  try {
+    const rows = await fetchMineRows(kind, wantedKeys);
+    // Ikkilamchi himoya: server filtrni qo'llamagan bo'lsa ham (eski build)
+    // ro'yxat ANIQ kalitlar bo'yicha qisqartiriladi.
+    const wanted = new Set(wantedKeys);
+    return rows.filter((r) =>
+      [r.topicNorm || '', normTopic(r.topic)]
+        .map((k) => k.trim().toLowerCase())
+        .some((k) => k && wanted.has(k)),
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** @deprecated local id endi yo'q — `loadPreparedByIdSynced` ishlating. */

@@ -32,7 +32,8 @@ export default function LinkifiedText({ text, className }: { text: string; class
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-600 underline underline-offset-2 break-all hover:text-blue-700"
+        /* Havola rangi butun tizimda bir xil ko'k (staffUi `staffSourceLink`). */
+        className="font-semibold text-blue-700 underline underline-offset-2 break-all hover:text-blue-800"
       >
         {href}
       </a>,

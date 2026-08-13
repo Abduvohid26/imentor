@@ -25,6 +25,17 @@ class PreparedContentIn(BaseModel):
         return v
 
 
+class PreparedContentPayloadIn(BaseModel):
+    """Mavjud yozuvning payload'ini almashtirish (PATCH).
+
+    Test bo'limi avval asosiy tildagi testni darrov saqlaydi (ish yo'qolmasin),
+    keyin fonda tarjima/manbalar tayyor bo'lgach SHU yozuvni yangilaydi —
+    aks holda Bazada bir testning ikkita nusxasi paydo bo'lardi.
+    """
+
+    payload: dict
+
+
 class PreparedContentOut(BaseModel):
     id: int
     owner_key: str

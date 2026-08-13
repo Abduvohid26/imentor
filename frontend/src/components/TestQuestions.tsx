@@ -24,18 +24,31 @@ import {
   loadLatestPreparedContent,
   loadPreparedByIdSynced,
   savePreparedContent,
+  updatePreparedContentPayload,
+  deletePreparedContent,
   normTopicKey,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
 import { buildPreparedContentMeta } from '../utils/preparedContentMeta';
 import ContentTopicToolbar, { StaffToolbarButton } from './staff/ContentTopicToolbar';
 import { useLocalizedTopic } from '../i18n/useLocalizedTopic';
+import { copyTextToClipboard } from '../utils/copyText';
 import StaffPageLayout from './staff/StaffPageLayout';
 import StaffErrorAlert from './staff/StaffErrorAlert';
 import StaffLoading from './staff/StaffLoading';
 import StaffPanel from './staff/StaffPanel';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
-import { STAFF_HEADING } from './staff/staffUi';
+import {
+  STAFF_HEADING,
+  staffBtnGhost,
+  staffExplainBody,
+  staffExplainBox,
+  staffExplainTitle,
+  staffIndexBadge,
+  staffOptionCorrect,
+  staffOptionNeutral,
+  staffQuestionText,
+} from './staff/staffUi';
 import { messageFromAiError } from '../utils/aiErrors';
 import {
   syncLiveTestSessionToServer,
@@ -127,6 +140,23 @@ function clearStoredTeacherSid(topic: string): void {
 /** Yopilgan test paneli teacher sahifasidan shuncha vaqtdan keyin avto yo'qoladi. */
 const TEACHER_SESSION_AUTO_HIDE_MS = 60 * 60 * 1000;
 
+/** Savollar to'plamining barmoq izi — sessiyani qayta ishlatish AYNAN
+ * shu savollar bo'lgandagina xavfsiz. Ilgari faqat mavzu va savollar SONI
+ * solishtirilardi: 10 savolli testni qayta yaratganda eski sessiya qayta
+ * ishlatilib, allaqachon topshirgan talabalarning javoblari YANGI kalit
+ * bo'yicha baholanardi. */
+function questionsFingerprint(questions: Array<TestQuestion | StudentTestQuestion>): string {
+  return questions
+    .map((q) => {
+      const correct =
+        'correctOptionIndex' in q && typeof q.correctOptionIndex === 'number'
+          ? q.correctOptionIndex
+          : -1;
+      return `${(q.question || '').trim()}|${(q.options || []).join('¦')}|${correct}`;
+    })
+    .join('||');
+}
+
 function tryReuseTeacherSessionId(data: TestSession): string | null {
   const stored = readStoredTeacherSid(data.topic);
   if (!stored) return null;
@@ -134,6 +164,18 @@ function tryReuseTeacherSessionId(data: TestSession): string | null {
   if (!doc) return null;
   if (normTopicKey(doc.topic) !== normTopicKey(data.topic)) return null;
   if (doc.questions.length !== data.questions.length) return null;
+  // Saqlangan sessiya talabalar ko'rinishida bo'lishi mumkin (to'g'ri javobsiz) —
+  // shuning uchun savol/variant matnlari bo'yicha solishtiramiz.
+  const storedFp = questionsFingerprint(
+    (doc.questions as Array<TestQuestion | StudentTestQuestion>).map((q) => ({
+      question: q.question,
+      options: q.options,
+    })),
+  );
+  const freshFp = questionsFingerprint(
+    data.questions.map((q) => ({ question: q.question, options: q.options })),
+  );
+  if (storedFp !== freshFp) return null;
   return stored;
 }
 
@@ -266,6 +308,7 @@ export default function TestQuestions() {
   const [sessionClosed, setSessionClosed] = useState(false);
   const [closedAtMs, setClosedAtMs] = useState<number | null>(null);
   const [finalizing, setFinalizing] = useState(false);
+  const [startingSession, setStartingSession] = useState(false);
 
   const [studentFirstName, setStudentFirstName] = useState('');
   const [studentLastName, setStudentLastName] = useState('');
@@ -414,8 +457,11 @@ export default function TestQuestions() {
     };
   }, [isStudentMode, studentSessionId]);
 
+  // Talabaning javob qoralamasi fonda serverga yoziladi — telefon o'chsa yoki
+  // sahifa yopilsa ish yo'qolmasin. MUHIM: bu effekt AYNAN talaba rejimi
+  // uchun (avval shart teskari yozilgani uchun hech qachon ishlamagan).
   useEffect(() => {
-    if (isStudentMode || !studentSessionId || !studentTest || studentSubmitted || sessionClosed) return;
+    if (!isStudentMode || !studentSessionId || !studentTest || studentSubmitted || sessionClosed) return;
     const timer = window.setTimeout(() => {
       void upsertLiveTestDraftOnServer(studentSessionId, {
         participantKey: participantKeyRef.current,
@@ -515,19 +561,26 @@ export default function TestQuestions() {
     };
 
     const tick = async () => {
+      // Tab fonda bo'lsa so'rov yubormaymiz — sessiya soatlab ochiq turishi mumkin.
+      if (document.hidden) return;
       try {
         await ensureServerSession();
         const remote = await fetchLiveTestSubmissionsFromServer(teacherSessionId);
         if (cancelled) return;
-        const mapped: TestSubmissionDoc[] = remote.map((r) => ({
-          sessionId: teacherSessionId,
-          firstName: r.firstName,
-          lastName: r.lastName,
-          answers: r.answers,
-          submittedAt: r.submittedAt,
-        }));
-        setSubmissions(mapped.length > 0 ? mapped : loadLocalNow());
+        // Server javob berdi — u YAGONA haqiqat manbai. Ilgari ro'yxat bo'sh
+        // bo'lsa localStorage'ga tushilardi va boshqa sessiyaning eski
+        // yozuvlari "topshirganlar" bo'lib ko'rinardi.
+        setSubmissions(
+          remote.map((r) => ({
+            sessionId: teacherSessionId,
+            firstName: r.firstName,
+            lastName: r.lastName,
+            answers: r.answers,
+            submittedAt: r.submittedAt,
+          })),
+        );
       } catch {
+        // Faqat server javob bermaganda — offline zaxira.
         if (!cancelled) setSubmissions(loadLocalNow());
       }
     };
@@ -541,11 +594,17 @@ export default function TestQuestions() {
       }
     };
     window.addEventListener('storage', onStorage);
+    // Tabga qaytilganda darhol yangilaymiz (fonda o'tkazib yuborilganlari uchun).
+    const onVisible = () => {
+      if (!document.hidden) void tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
       window.removeEventListener('storage', onStorage);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [isStudentMode, teacherSessionId, sessionClosed]);
 
@@ -587,16 +646,61 @@ export default function TestQuestions() {
     serverSessionSyncedRef.current = null;
   }, [teacherSessionId]);
 
+  /** Bazadan variantni ochish — FAQAT ko'rsatadi.
+   * Ilgari bu yerda darrov jonli sessiya (QR) yaratilardi: o'qituvchi
+   * shunchaki savollarni ko'rmoqchi bo'lganda ham serverda sessiya paydo
+   * bo'lardi. Endi sessiya alohida tugma bilan boshlanadi. */
   const handleSelectVersion = (id: string) => {
     void (async () => {
       const data = await loadPreparedByIdSynced<TestSession>('test', id);
-      if (!data) return;
+      if (!data) {
+        setError(t('test.errorLoadVersion'));
+        return;
+      }
       setTestSession(data);
-      const reused = tryReuseTeacherSessionId(data);
-      void setupTeacherLiveSession(data, reused ?? undefined);
+      setViewLang(data.primaryLanguage || language);
+      setTeacherSessionId('');
+      setJoinUrl('');
+      setSubmissions([]);
+      setSessionClosed(false);
+      setClosedAtMs(null);
       setActiveVersionId(id);
       setShowAnalysis(false);
       setError(null);
+    })();
+  };
+
+  /** Jonli sessiyani (QR) ataylab boshlash. */
+  const handleStartLiveSession = async () => {
+    if (!testSession || teacherSessionId) return;
+    setStartingSession(true);
+    setError(null);
+    try {
+      const reused = tryReuseTeacherSessionId(testSession);
+      await setupTeacherLiveSession(testSession, reused ?? undefined);
+    } catch (err) {
+      console.error('Live session start failed', err);
+      setError(t('test.errorStartSession'));
+    } finally {
+      setStartingSession(false);
+    }
+  };
+
+  /** Bazadagi saqlangan variantni butunlay o'chirish. */
+  const handleDeleteVersion = (id: string) => {
+    if (!window.confirm(t('toolbar.deleteConfirm'))) return;
+    void (async () => {
+      try {
+        await deletePreparedContent('test', id);
+        if (activeVersionId === id) {
+          setTestSession(null);
+          setActiveVersionId(null);
+        }
+        setVersions(await listPreparedForTopicSynced('test', globalTopic ?? topic));
+      } catch (err) {
+        console.error('Delete version failed', err);
+        setError(t('toolbar.deleteFailed'));
+      }
     })();
   };
 
@@ -630,11 +734,25 @@ export default function TestQuestions() {
       if (!sid) throw new Error('live-session-missing');
       setLoading(false);
 
+      const meta = buildPreparedContentMeta(globalTopic);
+      // Asosiy tildagi test DARHOL bazaga yoziladi. Avval saqlash faqat fon
+      // "enrich" (tarjima + manbalar) tugagach bo'lardi — o'qituvchi shu orada
+      // sahifadan chiqsa test Bazada umuman qolmasdi.
+      let savedId: string | null = null;
+      try {
+        savedId = await savePreparedContent('test', topic, data, meta);
+        const firstList = await listPreparedForTopicSynced('test', globalTopic ?? topic);
+        setVersions(firstList);
+        setActiveVersionId(savedId ?? firstList[0]?.id ?? null);
+      } catch (saveErr) {
+        console.error('Test save failed', saveErr);
+        setError(t('common.saveFailedKeepWork'));
+      }
+
       setEnriching(true);
       void (async () => {
-        const meta = buildPreparedContentMeta(globalTopic);
         try {
-          // Fonda: qolgan 2 tilga tarjima + kitob manbalari → bazaga yozish
+          // Fonda: qolgan 2 tilga tarjima + kitob manbalari
           const enriched = await aiService.enrichTestSession(
             data,
             contentLanguage,
@@ -642,22 +760,20 @@ export default function TestQuestions() {
           );
           if (enrichTokenRef.current !== enrichToken) return;
           setTestSession(enriched);
-          await savePreparedContent('test', topic, enriched, meta);
+          // Bazada NUSXA ko'paymasligi uchun yangi yozuv emas, mavjudi yangilanadi.
+          const patched = savedId ? await updatePreparedContentPayload(savedId, enriched) : false;
+          if (!patched) {
+            await savePreparedContent('test', topic, enriched, meta);
+          }
           await setupTeacherLiveSession(enriched, sid);
         } catch (enrichErr) {
-          console.warn('Test enrich failed — saving primary-language test as fallback', enrichErr);
-          if (enrichTokenRef.current !== enrichToken) return;
-          try {
-            await savePreparedContent('test', topic, data, meta);
-          } catch (saveErr) {
-            console.warn('Fallback test save failed', saveErr);
-          }
+          console.warn('Test enrich failed — primary-language test already saved', enrichErr);
         }
         if (enrichTokenRef.current !== enrichToken) return;
         setEnriching(false);
         const nextList = await listPreparedForTopicSynced('test', globalTopic ?? topic);
         setVersions(nextList);
-        setActiveVersionId(nextList[0]?.id ?? null);
+        setActiveVersionId(savedId ?? nextList[0]?.id ?? null);
       })();
     } catch (err) {
       console.error('Test generation error:', err);
@@ -673,8 +789,14 @@ export default function TestQuestions() {
     setStudentAnswers(next);
   };
 
+  /** Ball. Javoblar ro'yxati savollar ro'yxatidan uzunroq bo'lishi mumkin
+   * (masalan test qayta yaratilgan bo'lsa) — `questions[i]` mavjudligi
+   * tekshirilmasa sahifa butunlay yiqilardi. */
   const calculateScore = (answers: number[], questions: TestQuestion[]) => {
-    return answers.filter((a, i) => a === questions[i].correctOptionIndex).length;
+    return answers.filter((a, i) => {
+      const q = questions[i];
+      return q != null && a === q.correctOptionIndex;
+    }).length;
   };
 
   const handleDownloadKeyPdf = async () => {
@@ -886,20 +1008,28 @@ export default function TestQuestions() {
               </div>
 
               <div className="space-y-6">
+                {/* Talaba ko'rinishi ham o'qituvchinikidek: raqam nishoni,
+                    qalin savol matni, bir xil variant o'lchamlari. */}
                 {studentTest.questions.map((q, i) => (
-                  <div key={i} className="bg-white rounded-3xl p-6 border border-gray-100">
-                    <p className="font-bold text-gray-800 mb-4">{i + 1}. {q.question}</p>
+                  <div key={i} className="bg-white rounded-3xl p-5 sm:p-6 border border-gray-100 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className={staffIndexBadge}>{i + 1}</div>
+                      <p className={staffQuestionText}>{q.question}</p>
+                    </div>
                     <div className="space-y-2">
                       {q.options.map((opt, optIdx) => (
                         <button
                           key={optIdx}
                           onClick={() => handleStudentAnswer(i, optIdx)}
                           disabled={studentSubmitted || sessionClosed}
-                          className={`w-full text-left p-3 rounded-xl border ${
-                            studentAnswers[i] === optIdx ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                          className={`w-full text-left text-[14px] leading-relaxed p-3 rounded-xl border transition-colors ${
+                            studentAnswers[i] === optIdx
+                              ? 'border-blue-500 bg-blue-50 text-blue-900 font-semibold'
+                              : 'border-black/10 bg-white text-[#083047]/85 hover:bg-black/[0.02]'
                           }`}
                         >
-                          {String.fromCharCode(65 + optIdx)}) {stripOptionLetterPrefix(opt, optIdx)}
+                          <span className="font-bold">{String.fromCharCode(65 + optIdx)})</span>{' '}
+                          {stripOptionLetterPrefix(opt, optIdx)}
                         </button>
                       ))}
                     </div>
@@ -965,6 +1095,7 @@ export default function TestQuestions() {
         versions={versions}
         activeVersionId={activeVersionId}
         onSelectVersion={handleSelectVersion}
+        onDeleteVersion={handleDeleteVersion}
         versionsTitle={t('test.savedVersions')}
         hasUnsavedActiveContent={Boolean(testSession)}
       />
@@ -1062,7 +1193,9 @@ export default function TestQuestions() {
                       <button
                         type="button"
                         onClick={async () => {
-                          await navigator.clipboard.writeText(joinUrl);
+                          // http:// da `navigator.clipboard` yo'q — zaxira usul bilan.
+                          const ok = await copyTextToClipboard(joinUrl);
+                          if (!ok) setError(t('common.copyFailed'));
                         }}
                         className="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold flex items-center gap-2"
                       >
@@ -1070,6 +1203,27 @@ export default function TestQuestions() {
                       </button>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {!teacherSessionId && !sessionClosed && (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+                  <p className="flex-1 min-w-[12rem] text-sm text-blue-900/80">
+                    {t('test.startLiveSessionHint')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleStartLiveSession()}
+                    disabled={startingSession}
+                    className="px-4 py-2 rounded-xl font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 shrink-0"
+                  >
+                    {startingSession ? (
+                      <Loader2 size={16} className="inline mr-1 animate-spin" />
+                    ) : (
+                      <Users size={16} className="inline mr-1" />
+                    )}
+                    {t('test.startLiveSession')}
+                  </button>
                 </div>
               )}
 
@@ -1103,18 +1257,16 @@ export default function TestQuestions() {
             </StaffPanel>
 
             {!showAnalysis ? (
-              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <div className="px-4 py-3 border-b bg-gray-50 font-semibold text-gray-700 flex items-center justify-between gap-3 flex-wrap">
+              <StaffPanel className="overflow-hidden">
+                <div className="px-4 py-3 border-b border-black/5 bg-black/[0.02] flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleBackToQuestions}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                    >
+                    <button type="button" onClick={handleBackToQuestions} className={staffBtnGhost}>
                       <ArrowLeft size={16} />
                       {t('test.backToQuestions')}
                     </button>
-                    <span>{t('test.resultsTitle')} ({submissions.length})</span>
+                    <span className={`text-[14px] font-bold ${STAFF_HEADING}`}>
+                      {t('test.resultsTitle')} ({submissions.length})
+                    </span>
                   </div>
                   {sessionClosed && (
                     <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
@@ -1125,7 +1277,7 @@ export default function TestQuestions() {
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
-                      <tr className="text-left text-gray-500 border-b">
+                      <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-black/45 border-b border-black/5">
                         <th className="px-4 py-3">{t('test.studentColumn')}</th>
                         <th className="px-4 py-3">{t('test.scoreColumn')}</th>
                         <th className="px-4 py-3">{t('test.gradeColumn')}</th>
@@ -1138,9 +1290,9 @@ export default function TestQuestions() {
                         const total = testSession.questions.length;
                         const grade = scoreToGrade(score, total);
                         return (
-                        <tr key={idx} className="border-b last:border-b-0">
-                          <td className="px-4 py-3 font-medium">{s.firstName} {s.lastName}</td>
-                          <td className="px-4 py-3">
+                        <tr key={idx} className="border-b border-black/5 last:border-b-0">
+                          <td className="px-4 py-3 font-semibold text-[#083047]">{s.firstName} {s.lastName}</td>
+                          <td className="px-4 py-3 font-semibold tabular-nums text-[#083047]/85">
                             {score} / {total}
                           </td>
                           <td className="px-4 py-3">
@@ -1148,7 +1300,7 @@ export default function TestQuestions() {
                               {grade}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-gray-500">
+                          <td className="px-4 py-3 text-black/45 tabular-nums">
                             {new Date(s.submittedAt).toLocaleString(locale)}
                           </td>
                         </tr>
@@ -1156,7 +1308,7 @@ export default function TestQuestions() {
                       })}
                       {submissions.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                          <td colSpan={4} className="px-4 py-8 text-center text-black/40">
                             {t('test.noSubmissionsRow')}
                           </td>
                         </tr>
@@ -1164,7 +1316,7 @@ export default function TestQuestions() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </StaffPanel>
             ) : (
               <div className="space-y-6">
                 {enriching && (
@@ -1173,55 +1325,57 @@ export default function TestQuestions() {
                     <span>{t('test.enriching')}</span>
                   </div>
                 )}
+                {/* Kartochka Keys/Ma'ruza bo'limlari bilan bir xil `StaffPanel` —
+                    ilgari bu yerda o'ziga xos oq `rounded-3xl` kartochkalar bo'lib,
+                    Test bo'limi boshqa ilovadek ko'rinardi. */}
                 {displayedTest.questions.map((q, i) => (
-                  <div key={i} className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100">
-                    <div className="flex items-start gap-4 mb-6">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">
-                        {i + 1}
-                      </div>
-                      <p className="text-lg text-gray-800 font-bold leading-relaxed">{q.question}</p>
+                  <StaffPanel key={i} large className="p-5 sm:p-7 space-y-5">
+                    <div className="flex items-start gap-4">
+                      <div className={staffIndexBadge}>{i + 1}</div>
+                      <p className={staffQuestionText}>{q.question}</p>
                     </div>
                     <div className="space-y-2">
                       {q.options.map((option, optIdx) => {
                         const optionExplanation = q.optionExplanations?.[optIdx]?.trim();
+                        const isCorrect = optIdx === q.correctOptionIndex;
                         return (
                           <div
                             key={optIdx}
-                            className={`p-3 rounded-xl border ${
-                              optIdx === q.correctOptionIndex
-                                ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
-                                : 'border-gray-200 bg-white text-gray-700'
-                            }`}
+                            className={isCorrect ? staffOptionCorrect : staffOptionNeutral}
                           >
-                            <div>
-                              {String.fromCharCode(65 + optIdx)}) {stripOptionLetterPrefix(option, optIdx)}
-                              {optIdx === q.correctOptionIndex && (
-                                <span className="ml-2 inline-flex items-center text-xs font-semibold">
+                            <div className="text-[14px] leading-relaxed">
+                              <span className="font-bold">{String.fromCharCode(65 + optIdx)})</span>{' '}
+                              {stripOptionLetterPrefix(option, optIdx)}
+                              {isCorrect && (
+                                <span className="ml-2 inline-flex items-center text-[11px] font-bold uppercase tracking-wide">
                                   <CheckCircle2 size={14} className="mr-1" /> {t('test.correctAnswer')}
                                 </span>
                               )}
                             </div>
                             {optionExplanation && (
-                              <p className="mt-1 text-sm opacity-80">{optionExplanation}</p>
+                              <p className="mt-1.5 text-[13px] leading-relaxed opacity-75">
+                                {optionExplanation}
+                              </p>
                             )}
                           </div>
                         );
                       })}
                     </div>
-                    <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
-                      <h4 className="font-semibold text-blue-800 mb-1 flex items-center gap-2">
-                        <Brain size={16} /> {t('test.correctAnalysis')}
+                    <div className={staffExplainBox}>
+                      <h4 className={staffExplainTitle}>
+                        <Brain size={14} className="shrink-0" /> {t('test.correctAnalysis')}
                       </h4>
-                      <p className="text-blue-800/90 whitespace-pre-wrap">{q.explanation}</p>
+                      <p className={staffExplainBody}>{q.explanation}</p>
                       {q.references && q.references.length > 0 && (
                         <MedicalReferencesList
                           references={q.references}
                           title={t('test.questionReferences')}
                           compact
+                          className="bg-white/60"
                         />
                       )}
                     </div>
-                  </div>
+                  </StaffPanel>
                 ))}
                 {displayedTest.references && displayedTest.references.length > 0 && (
                   <MedicalReferencesList references={displayedTest.references} />

@@ -29,12 +29,15 @@ import {
 import { extractPdfTextFromBlob } from '../utils/presentationTopicNorm';
 import PdfSlideViewer from './PdfSlideViewer';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { outputLanguageLooksWrong } from '../utils/outputLanguage';
 import { isTopicContextComplete, topicContextKey } from '../utils/syllabusTopicContext';
 import {
   loadLatestPreparedContent,
   loadPreparedByIdSynced,
   listPreparedForTopicSynced,
   savePreparedContent,
+  deletePreparedContent,
+  preparedContentNumericId,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
 import {
@@ -60,6 +63,27 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Bazadagi yozuv (prepared_content) bilan serverga yuklangan PPTX faylni
+ * bog'lovchi barqaror belgi — fayl nomiga qo'yiladi.
+ *
+ * Ilgari bog'lanish sarlavhalarni bir-biriga "includes" qilib solishtirish
+ * orqali topilardi: noto'g'ri taqdimot ochilishi mumkin edi, mos kelmasa esa
+ * HAR ochilishda serverga yangi nusxa yuklanardi. Endi belgi aniq va yagona.
+ */
+function deckFileMarker(preparedId: string): string | null {
+  const numeric = preparedContentNumericId(preparedId);
+  return numeric ? `--pc${numeric}` : null;
+}
+
+/** Fayl nomiga bog'lanish belgisini qo'shadi (kengaytmasi saqlanadi). */
+function withDeckMarker(file: File, marker: string): File {
+  const dot = file.name.lastIndexOf('.');
+  const base = dot > 0 ? file.name.slice(0, dot) : file.name;
+  const ext = dot > 0 ? file.name.slice(dot) : '';
+  return new File([file], `${base.slice(0, 120)}${marker}${ext}`, { type: file.type });
 }
 
 function kindLabel(kind: TopicPresentationItem['kind']): string {
@@ -147,7 +171,9 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, hasPrev, hasNext, onClose, onIndexChange]);
+    // Faqat Escape kuzatiladi — slayd almashganda listener qayta ro'yxatdan
+    // o'tishi shart emas (avval `index` ham deps'da turardi).
+  }, [onClose]);
 
   // Hooks'dan KEYIN — erta return hook tartibini buzardi (React "rendered
   // fewer hooks than expected" xatosi).
@@ -206,9 +232,11 @@ function PresentationLightbox({ items, index, onClose, onIndexChange }: Lightbox
               <div className="relative w-48 h-32 mx-auto rounded-2xl overflow-hidden bg-white/10">
                 <PresentationPreview item={item} mode="full" />
               </div>
+              {/* Ilgari ikkala shoxda bir xil matn turardi — preview xatosi
+                  yuz berganini foydalanuvchi bilmasdi. */}
               <p className="text-[14px] text-white/80 leading-relaxed">
                 {previewError
-                  ? t('presentation.previewDownload')
+                  ? t('presentation.previewFailed')
                   : t('presentation.previewDownload')}
               </p>
               {downloadUrl && (
@@ -251,6 +279,8 @@ export default function PresentationMaterials() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiProgress, setAiProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /** Xato emas — ogohlantirish (ma'ruza tili joriy tilga mos kelmasa). */
+  const [languageWarning, setLanguageWarning] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [savedDecks, setSavedDecks] = useState<PreparedContentSummary[]>([]);
@@ -278,11 +308,14 @@ export default function PresentationMaterials() {
 
   /** Baza: HTML preview yo‘q — mavjud PPTX ni ochadi yoki shu deckdan PPTX yuklaydi. */
   const openHistoryDeck = async (summary: PreparedContentSummary) => {
+    const marker = deckFileMarker(summary.id);
+    // 1) Aniq bog'lanish: fayl nomidagi `--pc<id>` belgisi.
+    // 2) Eski (belgisiz) fayllar uchun — FAQAT sarlavha to'liq teng bo'lsa.
+    //    "includes" bilan taxminiy moslash noto'g'ri taqdimotni ochardi.
     const topicNorm = (summary.topic || '').trim().toLowerCase();
-    const match = items.find((i) => {
-      const title = (i.title || '').trim().toLowerCase();
-      return title === topicNorm || title.includes(topicNorm) || topicNorm.includes(title);
-    });
+    const match =
+      (marker ? items.find((i) => (i.file_name || '').includes(marker)) : undefined) ??
+      items.find((i) => (i.title || '').trim().toLowerCase() === topicNorm);
     if (match) {
       // Bazadan ochilgan taqdimot shu seansda ko'rinadigan bo'lib qoladi.
       const nextIds = new Set(sessionIds).add(match.id);
@@ -302,7 +335,7 @@ export default function PresentationMaterials() {
         title: summary.topic,
         subject: globalTopic?.subjectName || '',
       });
-      const file = await buildPresentationPptxFile(deck, {
+      const built = await buildPresentationPptxFile(deck, {
         meta: {
           subjectName: globalTopic?.subjectName || deck.subject_area,
           topicId: globalTopic?.id || 'T',
@@ -310,6 +343,9 @@ export default function PresentationMaterials() {
           language,
         },
       });
+      // Belgi qo'yiladi — shu deck ikkinchi marta ochilganda mavjud fayl
+      // topilib, serverga yana nusxa yuklanmaydi.
+      const file = marker ? withDeckMarker(built, marker) : built;
       // Bazadagi yozuvga hali fayl biriktirilmagan bo'lsa — yuklab OLMAYMIZ,
       // balki serverga qo'yamiz va shu sahifada ko'rish oynasini ochamiz.
       const shortTopic =
@@ -334,6 +370,34 @@ export default function PresentationMaterials() {
     } finally {
       setHistoryBusyId(null);
     }
+  };
+
+  /** Bazadagi taqdimotni o'chirish — yozuv bilan birga unga bog'langan
+   *  (fayl nomida `--pc<id>` belgisi bor) PPTX ham o'chiriladi. */
+  const handleDeleteSavedDeck = (id: string) => {
+    if (!window.confirm(t('toolbar.deleteConfirm'))) return;
+    void (async () => {
+      setHistoryBusyId(id);
+      try {
+        const marker = deckFileMarker(id);
+        const linked = marker ? items.find((i) => (i.file_name || '').includes(marker)) : undefined;
+        await deletePreparedContent('presentation', id);
+        if (linked?.can_delete) {
+          try {
+            await deletePresentation(linked.id);
+            await loadItems();
+          } catch (fileErr) {
+            console.warn('Linked presentation file delete failed', fileErr);
+          }
+        }
+        refreshDeckHistory();
+      } catch (err) {
+        console.error('Delete deck failed', err);
+        setError(t('toolbar.deleteFailed'));
+      } finally {
+        setHistoryBusyId(null);
+      }
+    })();
   };
 
   const topicTitle = globalTopic?.title?.trim() ?? '';
@@ -431,6 +495,14 @@ export default function PresentationMaterials() {
         setError(t('presentation.errorNoLecture'));
         return;
       }
+      // Ma'ruza o'sha paytdagi interfeys tilida saqlanadi. Hozirgi til boshqa
+      // bo'lsa, model bir tildagi manbadan boshqa tilda slayd yasashga majbur
+      // bo'ladi va natija aralash chiqishi mumkin — buni oldindan aytamiz.
+      setLanguageWarning(
+        outputLanguageLooksWrong(lectureText, language)
+          ? t('presentation.warnLectureLanguage')
+          : null,
+      );
 
       // Yuklangan PDF (bo'lsa) qo'shimcha kontekst sifatida beriladi.
       let sourceText = '';
@@ -460,24 +532,14 @@ export default function PresentationMaterials() {
         subjectCode: globalTopic.subjectCode,
         onProgress: (textSoFar) => setAiProgress(textSoFar),
       });
-      const file = await buildPresentationPptxFile(deck, {
-        meta: {
-          subjectName: globalTopic.subjectName,
-          topicId: globalTopic.id,
-          variantLabel: globalTopic.variantLabel,
-          language,
-        },
-      });
-      if (!file.size) {
-        throw new Error('empty-pptx');
-      }
+      let savedDeckId: string | null = null;
       try {
         // MUHIM: mavzu kaliti sifatida taqdimot SARLAVHASI emas, MAVZU nomi
         // ishlatiladi — aks holda Baza mavzu bo'yicha qidirganda topa olmaydi
         // (boshqa 3 bo'lim ham aynan shunday saqlaydi).
         // topicNorm (sillabus::yo'nalish::mavzu kodi) qo'shiladi — sarlavha
         // kalit bo'lib qolmasin (tarjimadan keyin yozuv yo'qolmasligi uchun).
-        await savePreparedContent(
+        savedDeckId = await savePreparedContent(
           'presentation',
           globalTopic.title,
           deck,
@@ -503,6 +565,22 @@ export default function PresentationMaterials() {
           level: 'warning',
         });
       }
+      // PPTX Baza yozuvi yaratilgandan KEYIN quriladi — fayl nomiga o'sha
+      // yozuvning belgisi qo'yiladi va ikkalasi bir-biriga bog'lanadi.
+      const built = await buildPresentationPptxFile(deck, {
+        meta: {
+          subjectName: globalTopic.subjectName,
+          topicId: globalTopic.id,
+          variantLabel: globalTopic.variantLabel,
+          language,
+        },
+      });
+      if (!built.size) {
+        throw new Error('empty-pptx');
+      }
+      const deckMarker = savedDeckId ? deckFileMarker(savedDeckId) : null;
+      const file = deckMarker ? withDeckMarker(built, deckMarker) : built;
+
       const shortTopic =
         [globalTopic.id, globalTopic.title].filter(Boolean).join(' — ').slice(0, 240) || topicTitle;
       const created = await uploadPresentation({
@@ -553,6 +631,7 @@ export default function PresentationMaterials() {
             const deck = savedDecks.find((x) => x.id === id);
             if (deck) void openHistoryDeck(deck);
           }}
+          onDelete={handleDeleteSavedDeck}
           emptyText={t('lecture.noSaved')}
         />
       </StaffPageLayout>
@@ -640,6 +719,12 @@ export default function PresentationMaterials() {
       )}
 
       {error && <StaffErrorAlert message={error} />}
+
+      {languageWarning && (
+        <StaffPanel className="p-4 border border-amber-200 bg-amber-50/80">
+          <p className="text-[13px] text-amber-900/90">{languageWarning}</p>
+        </StaffPanel>
+      )}
 
       {aiLoading && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>

@@ -3,7 +3,13 @@ type TestLike = { questions: Array<{ question?: string }> };
 
 export type CaseStudyFocus = 'profilaktika' | 'davolash' | 'tashxis';
 
-export const CASE_STUDY_FOCUS_ORDER: readonly CaseStudyFocus[] = ['profilaktika', 'davolash', 'tashxis'] as const;
+/**
+ * Keys savollarining tartibi — KLINIK MANTIQ bo'yicha:
+ * avval TASHXIS qo'yiladi, so'ng DAVOLASH tayinlanadi, oxirida PROFILAKTIKA.
+ *
+ * Bu tartib ham generatsiyada, ham ekranda ishlatiladi (`sortCaseQuestionsByFocus`).
+ */
+export const CASE_STUDY_FOCUS_ORDER: readonly CaseStudyFocus[] = ['tashxis', 'davolash', 'profilaktika'] as const;
 
 function pickRandom<T>(items: readonly T[], count: number): T[] {
   const pool = [...items];

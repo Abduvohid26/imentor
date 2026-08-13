@@ -21,9 +21,9 @@ import { getCurrentLocalUser, normalizeUserRole } from '../utils/localStaffAuth'
 import { appendCaseStudyToLibrary } from '../utils/staffContentLibrary';
 import {
   listPreparedForTopicSynced,
-  loadLatestPreparedContent,
   loadPreparedByIdSynced,
   savePreparedContent,
+  deletePreparedContent,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
 import { buildPreparedContentMeta } from '../utils/preparedContentMeta';
@@ -35,7 +35,17 @@ import StaffLoading from './staff/StaffLoading';
 import StaffPanel from './staff/StaffPanel';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
 import LinkifiedText from './staff/LinkifiedText';
-import { staffInput, staffLabel, staffBtnSecondary, STAFF_HEADING } from './staff/staffUi';
+import MedicalReferencesList from './staff/MedicalReferencesList';
+import {
+  staffInput,
+  staffLabel,
+  staffBtnSecondary,
+  staffExplainBody,
+  staffExplainBox,
+  staffExplainTitle,
+  staffQuestionText,
+  STAFF_HEADING,
+} from './staff/staffUi';
 import { messageFromAiError } from '../utils/aiErrors';
 import { parseKeywordsInput } from '../utils/generationVariety';
 import { downloadCaseAnswerKeyPdf, downloadCaseScenariosPdf } from '../utils/buildCasePdf';
@@ -44,6 +54,7 @@ import {
   caseFocusBadgeClass,
   caseFocusIconBgClass,
   caseFocusLabel,
+  sortCaseQuestionsByFocus,
 } from '../utils/caseFocusLabels';
 import type { CaseStudyFocus } from '../utils/generationVariety';
 
@@ -67,6 +78,11 @@ export default function CaseStudies() {
   const [versions, setVersions] = useState<PreparedContentSummary[]>([]);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Saqlash yiqilganda — "Qayta saqlash" uchun kutayotgan ish. */
+  const [pendingSave, setPendingSave] = useState<{ topic: string; data: CaseStudySession } | null>(
+    null,
+  );
+  const [retryingSave, setRetryingSave] = useState(false);
 
   const refreshVersions = useCallback(() => {
     if (!topic.trim()) {
@@ -76,14 +92,20 @@ export default function CaseStudies() {
     void listPreparedForTopicSynced('case', globalTopic ?? topic).then(setVersions);
   }, [topic, globalTopic]);
 
-  const applySession = useCallback((data: CaseStudySession, versionId: string | null) => {
-    setCaseSession(data);
-    setRevealedAnswers(new Array(data.questions.length).fill(false));
-    setActiveVersionId(versionId);
-    if (data.keywords?.length) {
-      setKeywords(data.keywords.join(', '));
-    }
-  }, []);
+  /** `keepKeywords` — foydalanuvchi kiritgan kalit so'zlar saqlanib qolsin.
+   * Ilgari Bazadan variant ochilganda inputdagi yangi kalit so'zlar
+   * yuklangan sessiyanikiga almashtirilardi va yozilgani yo'qolardi. */
+  const applySession = useCallback(
+    (data: CaseStudySession, versionId: string | null, keepKeywords = false) => {
+      setCaseSession(data);
+      setRevealedAnswers(new Array(data.questions.length).fill(false));
+      setActiveVersionId(versionId);
+      if (!keepKeywords && data.keywords?.length) {
+        setKeywords(data.keywords.join(', '));
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (globalTopic) {
@@ -119,7 +141,30 @@ export default function CaseStudies() {
 
   const handleSelectVersion = async (id: string) => {
     const data = await loadPreparedByIdSynced<CaseStudySession>('case', id);
-    if (data) applySession(data, id);
+    if (!data) {
+      setError(t('case.errorLoadVersion'));
+      return;
+    }
+    // Inputdagi kalit so'zlar tegilmaydi — ular keyingi yaratish uchun.
+    applySession(data, id, keywords.trim().length > 0);
+  };
+
+  /** Bazadagi saqlangan variantni butunlay o'chirish. */
+  const handleDeleteVersion = (id: string) => {
+    if (!window.confirm(t('toolbar.deleteConfirm'))) return;
+    void (async () => {
+      try {
+        await deletePreparedContent('case', id);
+        if (activeVersionId === id) {
+          setCaseSession(null);
+          setActiveVersionId(null);
+        }
+        setVersions(await listPreparedForTopicSynced('case', globalTopic ?? topic));
+      } catch (err) {
+        console.error('Delete case version failed', err);
+        setError(t('toolbar.deleteFailed'));
+      }
+    })();
   };
 
   const parsedKeywords = useMemo(() => parseKeywordsInput(keywords), [keywords]);
@@ -151,6 +196,8 @@ export default function CaseStudies() {
         applySession(data, list[0]?.id ?? null);
       } catch (saveErr) {
         console.error('Case save failed', saveErr);
+        // Keys ekranda turibdi — bir bosishda qayta saqlash imkoni beriladi.
+        setPendingSave({ topic: currentTopic, data });
         setError(t('common.saveFailedKeepWork'));
       }
       try {
@@ -171,6 +218,32 @@ export default function CaseStudies() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /** Yiqilgan saqlashni qayta urinish — tayyor keys yo'qolmasin. */
+  const handleRetrySave = () => {
+    if (!pendingSave) return;
+    void (async () => {
+      setRetryingSave(true);
+      try {
+        await savePreparedContent(
+          'case',
+          pendingSave.topic,
+          pendingSave.data,
+          buildPreparedContentMeta(globalTopic),
+        );
+        setPendingSave(null);
+        setError(null);
+        const list = await listPreparedForTopicSynced('case', globalTopic ?? pendingSave.topic);
+        setVersions(list);
+        setActiveVersionId(list[0]?.id ?? null);
+      } catch (err) {
+        console.error('Case retry save failed', err);
+        setError(t('common.saveFailedKeepWork'));
+      } finally {
+        setRetryingSave(false);
+      }
+    })();
   };
 
   const handleRevealAnswer = (qIndex: number) => {
@@ -211,6 +284,13 @@ export default function CaseStudies() {
     globalTopic && isTopicContextComplete(globalTopic) ? globalTopic : null,
   );
 
+  /** Ekranda klinik mantiq bo'yicha: tashxis → davolash → profilaktika.
+   *  Saralash ko'rsatishda bajarilgani uchun eski keyslar ham to'g'ri chiqadi. */
+  const orderedQuestions = useMemo(
+    () => (caseSession ? sortCaseQuestionsByFocus(caseSession.questions) : []),
+    [caseSession],
+  );
+
   return (
     <StaffPageLayout spacious className="print:p-0 print:max-w-none print:m-0">
       <ContentTopicToolbar
@@ -227,6 +307,7 @@ export default function CaseStudies() {
         versions={versions}
         activeVersionId={activeVersionId}
         onSelectVersion={(id) => void handleSelectVersion(id)}
+        onDeleteVersion={handleDeleteVersion}
         versionsTitle={t('case.savedVersions')}
         extra={
           <div className="space-y-2">
@@ -247,7 +328,14 @@ export default function CaseStudies() {
         }
       />
 
-      {error && <StaffErrorAlert message={error} />}
+      {error && (
+        <StaffErrorAlert
+          message={error}
+          actionLabel={pendingSave ? t('common.retrySave') : undefined}
+          onAction={pendingSave ? handleRetrySave : undefined}
+          actionBusy={retryingSave}
+        />
+      )}
       {loading && <StaffLoading label={t('case.generating')} />}
 
       {!loading && !caseSession && topic.trim() && (
@@ -305,7 +393,7 @@ export default function CaseStudies() {
           </div>
 
           <div className="space-y-4">
-            {caseSession.questions.map((q, i) => {
+            {orderedQuestions.map((q, i) => {
               const FocusIcon = q.focus ? CASE_FOCUS_ICONS[q.focus] : Stethoscope;
               const revealed = revealedAnswers[i];
               return (
@@ -333,9 +421,9 @@ export default function CaseStudies() {
                           </span>
                         )}
                       </div>
-                      <p className="font-medium text-black/90 text-[15px] leading-relaxed whitespace-pre-wrap">
-                        {q.scenario}
-                      </p>
+                      {/* Vaziyat matni — kartochkadagi asosiy o'qiladigan qism:
+                          qalinroq va kengroq satr oralig'i bilan. */}
+                      <p className={`${staffQuestionText} whitespace-pre-wrap`}>{q.scenario}</p>
                     </div>
                   </div>
 
@@ -353,26 +441,38 @@ export default function CaseStudies() {
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
-                        className="mt-4 rounded-2xl p-5 bg-black/[0.025] border border-black/6"
+                        className={`mt-4 ${staffExplainBox}`}
                       >
-                        <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-2 ${STAFF_HEADING}`}>
+                        <h4 className={staffExplainTitle}>
+                          <KeyRound size={14} className="shrink-0" />
                           {t('case.answerLabel')}
                         </h4>
-                        <LinkifiedText text={q.answer} className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap" />
+                        <LinkifiedText text={q.answer} className={staffExplainBody} />
+                        {/* Manbalar avval umuman ko'rsatilmasdi (`q.references`
+                            ishlatilmagan edi) — endi ko'k blokda chiqadi. */}
+                        {q.references && q.references.length > 0 && (
+                          <MedicalReferencesList references={q.references} compact />
+                        )}
                       </motion.div>
                     )}
                   </div>
 
                   {/* Print: har doim javobni ko'rsatish */}
                   <div className="hidden print:block px-7 pb-7 pl-[84px]">
-                    <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-2 ${STAFF_HEADING}`}>
-                      {t('case.answerLabel')}
-                    </h4>
-                    <LinkifiedText text={q.answer} className="text-[14px] text-black/75 leading-relaxed whitespace-pre-wrap" />
+                    <h4 className={staffExplainTitle}>{t('case.answerLabel')}</h4>
+                    <LinkifiedText text={q.answer} className={`mt-2 ${staffExplainBody}`} />
+                    {q.references && q.references.length > 0 && (
+                      <MedicalReferencesList references={q.references} compact className="mt-3" />
+                    )}
                   </div>
                 </StaffPanel>
               );
             })}
+
+            {/* Butun keys to'plami uchun umumiy manbalar — bir xil ko'k blok. */}
+            {caseSession.references && caseSession.references.length > 0 && (
+              <MedicalReferencesList references={caseSession.references} />
+            )}
           </div>
         </div>
       )}

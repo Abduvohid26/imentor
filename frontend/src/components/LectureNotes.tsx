@@ -11,6 +11,7 @@ import {
   Copy,
   CheckCircle2,
   BookOpen,
+  RefreshCw,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -25,12 +26,14 @@ import { useUiText } from '../i18n/useUiText';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
 import {
   listPreparedForTopicSynced,
-  loadLatestPreparedContent,
   loadPreparedByIdSynced,
   savePreparedContent,
+  updatePreparedContentPayload,
+  deletePreparedContent,
   type PreparedContentSummary,
 } from '../utils/preparedContentStore';
 import { useLocalizedTopic } from '../i18n/useLocalizedTopic';
+import { copyTextToClipboard } from '../utils/copyText';
 import StaffPageLayout from './staff/StaffPageLayout';
 import SavedWorkBanner from './staff/SavedWorkBanner';
 import SavedWorkList from './staff/SavedWorkList';
@@ -69,6 +72,11 @@ export default function LectureNotes() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
   const [savedLectures, setSavedLectures] = useState<PreparedContentSummary[]>([]);
+  /** Ekrandagi ma'ruza Bazadagi qaysi yozuv — tahrir shu yozuvni yangilaydi. */
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+  /** Saqlash yiqilganda — "Qayta saqlash" uchun kutayotgan ish. */
+  const [pendingSave, setPendingSave] = useState<{ topic: string; data: LectureNote } | null>(null);
+  const [retryingSave, setRetryingSave] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [copied, setCopied] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -95,23 +103,30 @@ export default function LectureNotes() {
     }
   }, [globalTopic]);
 
+  // Bazadan ma'ruza ochilganda `topic` ham o'sha yozuvnikiga o'zgaradi — quyidagi
+  // "mavzu almashdi → ekranni tozala" effekti aynan shu payt ishga tushib,
+  // endigina ochilgan ma'ruzani darhol yopib qo'yardi. Shu bitta tozalash
+  // o'tkazib yuboriladi.
+  const skipNextTopicResetRef = useRef(false);
+
   useEffect(() => {
     if (!topic.trim()) {
+      skipNextTopicResetRef.current = false;
       setLectureSession(null);
       setEditedContent('');
       setLectureContent('');
       return;
     }
-    let mounted = true;
-    setLectureSession(null);
-    setEditedContent('');
-    setLectureContent('');
+    if (skipNextTopicResetRef.current) {
+      skipNextTopicResetRef.current = false;
+      return;
+    }
     // Sahifa TOZA ochiladi: avval yaratilgan material avtomatik ochilmaydi.
     // Shu mavzuda saqlangani bo'lsa, tepadagi SavedWorkBanner orqali Bazadan
     // ochiladi (4 bo'limda bir xil xatti-harakat).
-    return () => {
-      mounted = false;
-    };
+    setLectureSession(null);
+    setEditedContent('');
+    setLectureContent('');
     // globalLecture obyekti har renderda yangi — faqat topic/setContent.
   }, [topic, setLectureContent]);
 
@@ -119,8 +134,8 @@ export default function LectureNotes() {
     refreshHistory();
   }, [refreshHistory]);
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGenerate = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!topic.trim()) return;
     setLoading(true);
     setError(null);
@@ -144,7 +159,13 @@ export default function LectureNotes() {
       // yiqilsa "generatsiya xatosi" deb ko'rsatmaymiz, aks holda
       // foydalanuvchi tayyor matnni yo'qotdim deb o'ylaydi.
       try {
-        await savePreparedContent('lecture', topic, data, buildPreparedContentMeta(globalTopic));
+        const savedId = await savePreparedContent(
+          'lecture',
+          topic,
+          data,
+          buildPreparedContentMeta(globalTopic),
+        );
+        setActiveVersionId(savedId);
         pushAppNotification({
           title: t('common.doneTitle'),
           body: t('lecture.readyToast'),
@@ -155,6 +176,8 @@ export default function LectureNotes() {
         refreshHistory();
       } catch (saveErr) {
         console.error('Lecture save failed', saveErr);
+        // Ish ekranda turibdi — foydalanuvchi bir bosishda qayta saqlay olsin.
+        setPendingSave({ topic, data });
         setError(t('common.saveFailedKeepWork'));
       }
     } catch (err) {
@@ -169,6 +192,10 @@ export default function LectureNotes() {
   const loadPastSession = async (summary: PreparedContentSummary) => {
     const session = await loadPreparedByIdSynced<LectureNote>('lecture', summary.id);
     if (!session) return;
+    // Mavzu haqiqatan almashsagina tozalash effektini o'tkazib yuboramiz —
+    // aks holda bayroq osilib qolib, keyingi haqiqiy mavzu almashuvini yeb qo'yardi.
+    if (session.topic !== topic) skipNextTopicResetRef.current = true;
+    setActiveVersionId(summary.id);
     setLectureSession(session);
     setTopic(session.topic);
     setEditedContent(session.content);
@@ -176,15 +203,62 @@ export default function LectureNotes() {
     setShowHistory(false);
   };
 
+  /** Yiqilgan saqlashni qayta urinish — tayyor matn yo'qolmasin. */
+  const handleRetrySave = () => {
+    if (!pendingSave) return;
+    void (async () => {
+      setRetryingSave(true);
+      try {
+        const savedId = await savePreparedContent(
+          'lecture',
+          pendingSave.topic,
+          pendingSave.data,
+          buildPreparedContentMeta(globalTopic),
+        );
+        setActiveVersionId(savedId);
+        setPendingSave(null);
+        setError(null);
+        refreshHistory();
+      } catch (err) {
+        console.error('Lecture retry save failed', err);
+        setError(t('common.saveFailedKeepWork'));
+      } finally {
+        setRetryingSave(false);
+      }
+    })();
+  };
+
+  /** Bazadagi saqlangan ma'ruzani butunlay o'chirish. */
+  const handleDeleteSaved = (id: string) => {
+    if (!window.confirm(t('toolbar.deleteConfirm'))) return;
+    void (async () => {
+      try {
+        await deletePreparedContent('lecture', id);
+        if (activeVersionId === id) {
+          setActiveVersionId(null);
+          setLectureSession(null);
+          setEditedContent('');
+          setLectureContent('');
+        }
+        refreshHistory();
+      } catch (err) {
+        console.error('Delete lecture failed', err);
+        setError(t('toolbar.deleteFailed'));
+      }
+    })();
+  };
+
   const handleCopy = async () => {
     if (!lectureSession) return;
-    try {
-      await navigator.clipboard.writeText(lectureSession.content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Copy failed', err);
+    const ok = await copyTextToClipboard(lectureSession.content);
+    if (!ok) {
+      // Ilgari xato faqat console'ga chiqardi — foydalanuvchi tugma
+      // ishlamayotganini bilmasdi.
+      setError(t('common.copyFailed'));
+      return;
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (showHistory) {
@@ -202,10 +276,12 @@ export default function LectureNotes() {
         </div>
         <SavedWorkList
           items={savedLectures}
+          activeId={activeVersionId}
           onSelect={(id) => {
             const item = savedLectures.find((x) => x.id === id);
             if (item) void loadPastSession(item);
           }}
+          onDelete={handleDeleteSaved}
           emptyText={t('lecture.noSaved')}
         />
       </StaffPageLayout>
@@ -279,7 +355,14 @@ export default function LectureNotes() {
         <SavedWorkBanner count={savedLectures.length} />
       )}
 
-      {error && <StaffErrorAlert message={error} />}
+      {error && (
+        <StaffErrorAlert
+          message={error}
+          actionLabel={pendingSave ? t('common.retrySave') : undefined}
+          onAction={pendingSave ? handleRetrySave : undefined}
+          actionBusy={retryingSave}
+        />
+      )}
       {loading && !streamingContent && (
         <StaffLoading label={t('lecture.generating')} hint={t('lecture.generatingHint')} />
       )}
@@ -316,11 +399,36 @@ export default function LectureNotes() {
                 <FileText size={15} />
                 {isEditing ? t('lecture.view') : t('lecture.edit')}
               </button>
+              {/* Yangi variant — avval faqat "yangi yaratish" bor edi va u
+                  ekranni tozalab, mavzuni qaytadan kiritishni talab qilardi. */}
+              <button
+                type="button"
+                onClick={() => void handleGenerate()}
+                disabled={loading}
+                className={`${staffBtnGhost} disabled:opacity-50`}
+              >
+                <RefreshCw size={15} />
+                {t('lecture.regenerate')}
+              </button>
               <button type="button" onClick={handleCopy} className={staffBtnGhost}>
                 {copied ? <CheckCircle2 size={15} /> : <Copy size={15} />}
                 {copied ? t('lecture.copied') : t('lecture.copy')}
               </button>
-              <button type="button" onClick={() => window.print()} className={staffBtnPrimary}>
+              {/* Chop etish faqat KO'RISH rejimida ishlaydi (chop CSS `.staff-prose`
+                  ni ko'rsatadi). Tahrir rejimida bosilsa bo'sh sahifa chiqardi —
+                  shuning uchun avval ko'rish rejimiga qaytariladi. */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isEditing) {
+                    setIsEditing(false);
+                    window.setTimeout(() => window.print(), 100);
+                    return;
+                  }
+                  window.print();
+                }}
+                className={staffBtnPrimary}
+              >
                 <Download size={15} />
                 {t('lecture.print')}
               </button>
@@ -343,14 +451,33 @@ export default function LectureNotes() {
                   <button
                     type="button"
                     onClick={async () => {
-                      setLectureSession({ ...lectureSession, content: editedContent });
+                      const next = { ...lectureSession, content: editedContent };
+                      setLectureSession(next);
                       globalLecture.setContent(editedContent);
-                      await savePreparedContent('lecture', lectureSession.topic, {
-                        ...lectureSession,
-                        content: editedContent,
-                      });
-                      refreshHistory();
-                      setIsEditing(false);
+                      try {
+                        // MUHIM: meta (topicNorm) uzatilishi shart — busiz yozuv
+                        // sillabus kaliti bilan emas, oddiy sarlavha bilan
+                        // saqlanadi va Taqdimot bo'limi ma'ruzani topa olmay
+                        // "ma'ruza matni yo'q" deb qolardi.
+                        const meta = buildPreparedContentMeta(globalTopic);
+                        const patched = activeVersionId
+                          ? await updatePreparedContentPayload(activeVersionId, next)
+                          : false;
+                        if (!patched) {
+                          const newId = await savePreparedContent(
+                            'lecture',
+                            lectureSession.topic,
+                            next,
+                            meta,
+                          );
+                          setActiveVersionId(newId);
+                        }
+                        refreshHistory();
+                        setIsEditing(false);
+                      } catch (err) {
+                        console.error('Lecture edit save failed', err);
+                        setError(t('common.saveFailedKeepWork'));
+                      }
                     }}
                     className={staffBtnPrimary}
                   >
@@ -379,6 +506,7 @@ export default function LectureNotes() {
               onClick={() => {
                 setLectureSession(null);
                 setEditedContent('');
+                setActiveVersionId(null);
                 setError(null);
               }}
               className={staffBtnSecondary}

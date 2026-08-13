@@ -57,6 +57,26 @@ export function caseFocusBadgeClass(focus: CaseStudyFocus | undefined): string {
   return BADGE_CLASS[focus];
 }
 
+/**
+ * Ekranda ko'rsatish tartibi: tashxis → davolash → profilaktika.
+ *
+ * Saralash generatsiya paytida emas, KO'RSATISHDA bajariladi — shunda eski,
+ * boshqa tartibda saqlangan keyslar ham to'g'ri ketma-ketlikda chiqadi.
+ * Fokusi noma'lum savollar o'z o'rnida, ro'yxat oxirida qoladi.
+ */
+export function sortCaseQuestionsByFocus<T extends { focus?: CaseStudyFocus }>(items: T[]): T[] {
+  const rank = (focus: CaseStudyFocus | undefined): number => {
+    if (!focus) return CASE_STUDY_FOCUS_ORDER.length;
+    const i = CASE_STUDY_FOCUS_ORDER.indexOf(focus);
+    return i === -1 ? CASE_STUDY_FOCUS_ORDER.length : i;
+  };
+  // `map`+`sort` — barqaror saralash: bir xil fokusdagilar asl tartibda qoladi.
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => rank(a.item.focus) - rank(b.item.focus) || a.index - b.index)
+    .map((x) => x.item);
+}
+
 export function normalizeCaseFocus(raw: unknown, index: number): CaseStudyFocus {
   const s = String(raw || '').toLowerCase();
   if (s.includes('profil') || s.includes('prevent') || s.includes('profyl')) return 'profilaktika';

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.schemas.prepared_content import (
     PreparedContentIn,
     PreparedContentLatestOut,
     PreparedContentOut,
+    PreparedContentPayloadIn,
     PreparedContentSummaryOut,
 )
 from app.services import content_catalog as cc
@@ -28,19 +29,30 @@ STAFF_ROLES = ("admin", "klinika_admin", "hodim")
 def list_my_prepared_content(
     request: Request,
     kind: str,
+    topic_norm: list[str] = Query(default=[]),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
 ) -> dict:
     """Joriy foydalanuvchining shu turdagi (masalan `lecture`) barcha
     saqlangan yozuvlari — "Baza" (tarix) sahifasi uchun. Server'da saqlanadi,
-    shuning uchun brauzer/qurilma almashtirilsa ham yo'qolmaydi."""
+    shuning uchun brauzer/qurilma almashtirilsa ham yo'qolmaydi.
+
+    `topic_norm` (bir nechta bo'lishi mumkin) berilsa — filtrlash SHU YERDA,
+    ANIQ tenglik bo'yicha bajariladi. Ilgari frontend butun ro'yxatni tortib
+    olib, kalitlarni bir-biriga "includes" qilib solishtirardi: (a) "Gripp"
+    mavzusi "Gripp va O'RVI" materiallarini ham tortib kelardi, (b) yozuvlar
+    200 tadan oshgach eskilari umuman ko'rinmay qolardi.
+    """
     if not kind.strip():
         raise HTTPException(status_code=400, detail="kind majburiy.")
-    rows = db.execute(
-        select(PreparedContent)
-        .where(PreparedContent.owner_key == auth.user.username, PreparedContent.kind == kind.strip())
-        .order_by(PreparedContent.created_at.desc())
-    ).scalars().all()
+    stmt = select(PreparedContent).where(
+        PreparedContent.owner_key == auth.user.username,
+        PreparedContent.kind == kind.strip(),
+    )
+    wanted = [t.strip().lower() for t in topic_norm if t and t.strip()]
+    if wanted:
+        stmt = stmt.where(PreparedContent.topic_norm.in_(wanted))
+    rows = db.execute(stmt.order_by(PreparedContent.created_at.desc())).scalars().all()
     out = [
         PreparedContentSummaryOut(
             id=r.id,
@@ -168,6 +180,25 @@ def create_prepared_content(
     db.commit()
     db.refresh(obj)
     return _out(obj)
+
+
+@router.patch("/prepared-content/{pk}/", response_model=PreparedContentOut)
+def update_prepared_content_payload(
+    pk: int,
+    body: PreparedContentPayloadIn,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_roles(*STAFF_ROLES)),
+) -> PreparedContentOut:
+    """Yozuvning payload'ini almashtirish — faqat egasi uchun."""
+    item = db.execute(
+        select(PreparedContent).where(PreparedContent.id == pk, PreparedContent.owner_key == auth.user.username)
+    ).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Topilmadi.")
+    item.payload = body.payload
+    db.commit()
+    db.refresh(item)
+    return _out(item)
 
 
 @router.delete("/prepared-content/{pk}/", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

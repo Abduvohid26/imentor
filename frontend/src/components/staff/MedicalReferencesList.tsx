@@ -1,7 +1,13 @@
-import React from 'react';
 import { BookOpen, ExternalLink } from 'lucide-react';
 import type { MedicalReference } from '../../utils/medicalReferences';
 import { useUiText } from '../../i18n/useUiText';
+import {
+  staffSourceBox,
+  staffSourceItem,
+  staffSourceLink,
+  staffSourceMeta,
+  staffSourceTitle,
+} from './staffUi';
 
 type Props = {
   references: MedicalReference[];
@@ -10,6 +16,13 @@ type Props = {
   className?: string;
 };
 
+/**
+ * MANBALAR ro'yxati — to'rt bo'lim uchun yagona ko'rinish.
+ *
+ * Rang HAMISHA KO'K. Ilgari blok sariq (amber) edi: bu rang tizimning qolgan
+ * qismida "ogohlantirish" ma'nosini bildirgani uchun manbalar xato yoki
+ * shubhali ma'lumotdek ko'rinardi.
+ */
 export default function MedicalReferencesList({
   references,
   title,
@@ -18,44 +31,37 @@ export default function MedicalReferencesList({
 }: Props) {
   const { t } = useUiText();
   if (!references?.length) return null;
-  
+
   const displayTitle = title ?? t('staff.medical.referencesTitle');
 
   return (
-    <div
-      className={`rounded-xl border border-amber-200/80 bg-amber-50/60 ${compact ? 'p-3' : 'p-5'} ${className}`}
-    >
-      <h4
-        className={`font-bold text-amber-900 flex items-center gap-2 ${compact ? 'text-[11px] mb-2' : 'text-[13px] mb-3'}`}
-      >
-        <BookOpen size={compact ? 14 : 16} />
+    <div className={`${staffSourceBox} ${compact ? 'p-3' : 'p-5'} ${className}`}>
+      <h4 className={`${staffSourceTitle} ${compact ? 'text-[11px] mb-2' : 'mb-3'}`}>
+        <BookOpen size={compact ? 14 : 16} className="shrink-0" />
         {displayTitle}
       </h4>
-      <ol className={`space-y-2 list-decimal list-inside ${compact ? 'text-[11px]' : 'text-[13px]'}`}>
+      <ol
+        className={`space-y-2 list-decimal list-inside ${compact ? 'text-[12px]' : 'text-[13.5px]'}`}
+      >
         {references.map((ref, idx) => (
-          <li key={`${ref.url || ref.title}-${idx}`} className="text-amber-950/90 leading-relaxed">
+          <li key={`${ref.url || ref.title}-${idx}`} className={staffSourceItem}>
             {ref.url ? (
-              <a
-                href={ref.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-semibold text-blue-700 hover:text-blue-600 hover:underline inline-flex items-center gap-1"
-              >
+              <a href={ref.url} target="_blank" rel="noopener noreferrer" className={staffSourceLink}>
                 {ref.title}
                 <ExternalLink size={12} className="shrink-0 opacity-70" />
               </a>
             ) : (
-              /* Darslik manbasi — tashqi havola yo'q, oddiy matn. */
-              <span className="font-semibold text-amber-950">{ref.title}</span>
+              /* Darslik manbasi — tashqi havola yo'q, lekin rangi bir xil ko'k. */
+              <span className="font-bold text-blue-900">{ref.title}</span>
             )}
-            <span className="text-amber-900/70">
+            <span className={staffSourceMeta}>
               {ref.pages ? ` — ${ref.pages}-bet` : ''}
               {ref.authors ? ` — ${ref.authors}` : ''}
               {ref.year ? ` (${ref.year})` : ''}
               {ref.publisher ? `. ${ref.publisher}` : ''}
             </span>
             {ref.note ? (
-              <span className="block text-amber-800/60 mt-0.5 not-italic">{ref.note}</span>
+              <span className="block text-blue-900/55 mt-0.5 not-italic">{ref.note}</span>
             ) : null}
           </li>
         ))}
