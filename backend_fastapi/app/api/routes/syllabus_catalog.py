@@ -19,6 +19,7 @@ from app.schemas.content import (
     StaffCourseSelectionOut,
 )
 from app.schemas.course_syllabus import CourseSyllabusFullOut, CourseSyllabusUpsertRequest
+from app.services.direction_code import infer_direction_code, normalize_direction_code
 from app.services.pagination import paginate
 
 router = APIRouter()
@@ -53,6 +54,7 @@ def _full_out(obj: CourseSyllabus) -> CourseSyllabusFullOut:
         department=obj.department_id,
         department_name=obj.department.name if obj.department else "",
         department_code=obj.department.code if obj.department else "",
+        direction_code=obj.direction_code or "",
         description=obj.description,
         instruction_language=obj.instruction_language,
         file_name=obj.file_name,
@@ -558,11 +560,18 @@ def admin_create_syllabus(
     if instr_lang not in ("uz", "en", "ru"):
         instr_lang = "uz"
 
+    direction_code = normalize_direction_code(payload.direction_code)
+    if not direction_code:
+        direction_code = infer_direction_code(file_name) or infer_direction_code(
+            payload.subject_name or ""
+        )
+
     now = dt.datetime.now(dt.timezone.utc)
     obj = CourseSyllabus(
         subject_name=payload.subject_name.strip(),
         subject_code=code,
         department_id=payload.department_id,
+        direction_code=direction_code,
         description=payload.description.strip()[:512],
         instruction_language=instr_lang,
         file_name=file_name,
@@ -644,6 +653,8 @@ def admin_update_syllabus(
         obj.is_active = bool(data["is_active"])
     if "department_id" in data:
         obj.department_id = data["department_id"]
+    if "direction_code" in data:
+        obj.direction_code = normalize_direction_code(data.get("direction_code"))
     if "instruction_language" in data:
         lang = (data.get("instruction_language") or "uz").strip().lower()
         if lang in ("uz", "en", "ru"):

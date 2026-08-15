@@ -149,34 +149,57 @@ export default function StaffTeachingSubjectsPicker({
           <p className="text-xs text-amber-800 leading-relaxed">{t('teachingSubjects.emptyDeptHint')}</p>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          {courses.map((syllabus) => {
-            const isActive = selected.has(syllabus.id);
-            const topics = totalTopicCount(resolveSyllabusVariants(syllabus));
-            return (
-              <button
-                key={syllabus.id}
-                type="button"
-                onClick={() => toggle(syllabus.id)}
-                className={`inline-flex items-center gap-1.5 pl-2.5 pr-2.5 py-1.5 rounded-lg border text-[12px] transition ${
-                  isActive
-                    ? 'border-blue-400 bg-blue-50'
-                    : 'border-slate-200 bg-white hover:border-blue-300'
-                }`}
-              >
-                {isActive && <Check size={14} className="text-blue-600 shrink-0" />}
-                <span className="font-semibold text-slate-900 truncate max-w-[160px] sm:max-w-[220px]">
-                  {syllabus.subject_name}
-                </span>
-                <span className="text-[9px] text-slate-500 shrink-0">
-                  {instructionLanguageBadge(resolveSyllabusInstructionLanguage(syllabus))}
-                </span>
-                <span className="text-[9px] text-slate-400 shrink-0">
-                  {topics} {t('syllabus.topics')}
-                </span>
-              </button>
-            );
-          })}
+        <div className="space-y-4">
+          {(() => {
+            const groups = new Map<string, typeof courses>();
+            for (const syllabus of courses) {
+              const key = (syllabus.direction_code || '').trim() || '__none__';
+              const bucket = groups.get(key) || [];
+              bucket.push(syllabus);
+              groups.set(key, bucket);
+            }
+            const keys = [...groups.keys()].sort((a, b) => {
+              if (a === '__none__') return 1;
+              if (b === '__none__') return -1;
+              return a.localeCompare(b, 'uz');
+            });
+            return keys.map((key) => (
+              <div key={key} className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  {key === '__none__' ? t('admin.directionUnassigned') : key}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {(groups.get(key) || []).map((syllabus) => {
+                    const isActive = selected.has(syllabus.id);
+                    const topics = totalTopicCount(resolveSyllabusVariants(syllabus));
+                    return (
+                      <button
+                        key={syllabus.id}
+                        type="button"
+                        onClick={() => toggle(syllabus.id)}
+                        className={`inline-flex items-center gap-1.5 pl-2.5 pr-2.5 py-1.5 rounded-lg border text-[12px] transition ${
+                          isActive
+                            ? 'border-blue-400 bg-blue-50'
+                            : 'border-slate-200 bg-white hover:border-blue-300'
+                        }`}
+                      >
+                        {isActive && <Check size={14} className="text-blue-600 shrink-0" />}
+                        <span className="font-semibold text-slate-900 truncate max-w-[160px] sm:max-w-[220px]">
+                          {syllabus.subject_name}
+                        </span>
+                        <span className="text-[9px] text-slate-500 shrink-0">
+                          {instructionLanguageBadge(resolveSyllabusInstructionLanguage(syllabus))}
+                        </span>
+                        <span className="text-[9px] text-slate-400 shrink-0">
+                          {topics} {t('syllabus.topics')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ));
+          })()}
         </div>
       )}
 

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  GraduationCap,
   Loader2,
   Languages,
   Pencil,
@@ -18,7 +19,7 @@ import {
 import { HttpError } from '../../api/httpClient';
 import { aiService, syllabusExtractionErrorMessage, type SyllabusTopic } from '../../services/aiService';
 import { clearBackendAuthTokens } from '../../utils/backendAuth';
-import { fetchAcademicCatalog } from '../../utils/academicCatalogApi';
+import { fetchAcademicCatalog, type CatalogDirection, type CatalogKafedra } from '../../utils/academicCatalogApi';
 import {
   createAdminCourseSyllabus,
   deleteAdminCourseSyllabus,
@@ -34,6 +35,10 @@ import {
   totalTopicCount,
   type SyllabusVariant,
 } from '../../utils/syllabusVariant';
+import {
+  inferDirectionCode,
+  resolveSyllabusDirection,
+} from '../../utils/directionCode';
 import type { AppLanguage } from '../../i18n/language';
 import { useUiText } from '../../i18n/useUiText';
 import {
@@ -114,6 +119,33 @@ function matchAcademicDepartment(
   );
 }
 
+function catalogDirectionsForDept(
+  dept: DepartmentRow,
+  catalog: CatalogKafedra[] | null,
+): CatalogDirection[] {
+  if (!catalog?.length) return [];
+  const kn = softDeptKey(dept.name);
+  const kc = softDeptKey(dept.code);
+  const hit =
+    catalog.find((k) => softDeptKey(k.name) === kn || (kc && softDeptKey(k.code || '') === kc)) ||
+    catalog.find(
+      (k) =>
+        softDeptKey(k.name).includes(kn) ||
+        kn.includes(softDeptKey(k.name)) ||
+        (kc &&
+          (softDeptKey(k.code || '').includes(kc) || kc.includes(softDeptKey(k.code || '')))),
+    );
+  const seen = new Set<string>();
+  const out: CatalogDirection[] = [];
+  for (const d of hit?.directions || []) {
+    const key = d.name.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(d);
+  }
+  return out;
+}
+
 export default function AdminSyllabusCatalog() {
   const { t, language } = useUiText();
   const [list, setList] = useState<CourseSyllabusRow[]>([]);
@@ -127,8 +159,10 @@ export default function AdminSyllabusCatalog() {
 
   /** Shu page ichida ochilgan kafedra (alohida sahifa emas). */
   const [openDeptId, setOpenDeptId] = useState<number | null>(null);
-  /** OnlineTest academic-catalog tartibi (28) — asosiy ro'yxat. */
-  const [catalogOrder, setCatalogOrder] = useState<{ name: string; code: string }[] | null>(null);
+  /** Ochilgan yo'nalish: `${deptId}::${code}` */
+  const [openDirectionKey, setOpenDirectionKey] = useState<string | null>(null);
+  /** OnlineTest academic-catalog — kafedra tartibi va yo'nalishlar. */
+  const [catalogKafedralar, setCatalogKafedralar] = useState<CatalogKafedra[] | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   /** Nomlar tarjimasini tahrirlash oynasi (sifat nazorati). */
   const [translatingRow, setTranslatingRow] = useState<CourseSyllabusRow | null>(null);
@@ -144,7 +178,9 @@ export default function AdminSyllabusCatalog() {
   const [showNewFanForm, setShowNewFanForm] = useState(false);
   const [newFanName, setNewFanName] = useState('');
   const [newFanDescription, setNewFanDescription] = useState('');
+  const [newFanDirection, setNewFanDirection] = useState('');
   const [creatingFan, setCreatingFan] = useState(false);
+  const [pendingUploadDirection, setPendingUploadDirection] = useState('');
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const appendInputRef = useRef<HTMLInputElement>(null);
@@ -171,15 +207,11 @@ export default function AdminSyllabusCatalog() {
         })),
       );
       const kafedralar = catalog?.kafedralar || [];
-      setCatalogOrder(
-        kafedralar.length > 0
-          ? kafedralar.map((k) => ({ name: k.name, code: (k.code || '').trim() }))
-          : null,
-      );
+      setCatalogKafedralar(kafedralar.length > 0 ? kafedralar : null);
     } catch (err) {
       setList([]);
       setDepartments([]);
-      setCatalogOrder(null);
+      setCatalogKafedralar(null);
       setListError(listLoadErrorMessage(err, t));
     } finally {
       setLoading(false);
@@ -259,6 +291,7 @@ export default function AdminSyllabusCatalog() {
   const resetNewFanForm = () => {
     setNewFanName('');
     setNewFanDescription('');
+    setNewFanDirection('');
     setShowNewFanForm(false);
   };
 
@@ -279,10 +312,10 @@ export default function AdminSyllabusCatalog() {
     const q = search.trim().toLowerCase();
     // API (academic-catalog) 28 kafedra — asosiy manba; DB id uchun AcademicDepartment ga moslashtiramiz.
     let base: DepartmentRow[];
-    if (catalogOrder && catalogOrder.length > 0) {
+    if (catalogKafedralar && catalogKafedralar.length > 0) {
       const used = new Set<number>();
       base = [];
-      for (const [idx, k] of catalogOrder.entries()) {
+      for (const [idx, k] of catalogKafedralar.entries()) {
         const hit = matchAcademicDepartment(k.name, k.code, departments);
         if (hit && !used.has(hit.id)) {
           used.add(hit.id);
@@ -293,7 +326,6 @@ export default function AdminSyllabusCatalog() {
             sort_order: idx,
           });
         } else if (!hit) {
-          // Katalogda bor, lekin DB da hali yo'q — ko'rsatamiz (id=0 upload uchun yopiq).
           base.push({
             id: -idx - 1,
             name: k.name,
@@ -315,9 +347,12 @@ export default function AdminSyllabusCatalog() {
     });
     if (!q) return withCounts;
     return withCounts.filter(
-      (d) => d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q),
+      (d) =>
+        d.name.toLowerCase().includes(q) ||
+        d.code.toLowerCase().includes(q) ||
+        catalogDirectionsForDept(d, catalogKafedralar).some((dir) => dir.name.toLowerCase().includes(q)),
     );
-  }, [departments, fansForDept, search, catalogOrder]);
+  }, [departments, fansForDept, search, catalogKafedralar]);
 
   const selectedDept = useMemo(() => {
     if (openDeptId == null) return null;
@@ -327,6 +362,16 @@ export default function AdminSyllabusCatalog() {
   const deptFans = useMemo(
     () => (selectedDept ? fansForDept(selectedDept) : []),
     [fansForDept, selectedDept],
+  );
+
+  const deptDirectionOptions = useMemo(
+    () => (selectedDept ? catalogDirectionsForDept(selectedDept, catalogKafedralar) : []),
+    [selectedDept, catalogKafedralar],
+  );
+
+  const deptDirectionCodes = useMemo(
+    () => deptDirectionOptions.map((d) => d.name),
+    [deptDirectionOptions],
   );
 
   const createFan = async () => {
@@ -346,6 +391,7 @@ export default function AdminSyllabusCatalog() {
         subject_name: name,
         description: newFanDescription.trim(),
         department_id: selectedDept.id,
+        direction_code: newFanDirection.trim(),
         sort_order: deptFans.length,
       });
       resetNewFanForm();
@@ -386,8 +432,16 @@ export default function AdminSyllabusCatalog() {
       subjectName: subjectGuess || t('admin.newSubject'),
       description: '',
       instructionLanguage: result.language,
-      variants: result.variants.map((v) => ({ ...v, editableLabel: v.label })),
+      variants: result.variants.map((v) => ({
+        ...v,
+        editableLabel: v.label,
+        directionCode:
+          pendingUploadDirection ||
+          inferDirectionCode(v.file_name, deptDirectionCodes) ||
+          inferDirectionCode(v.label, deptDirectionCodes),
+      })),
     });
+    setPendingUploadDirection('');
   };
 
   const processAppendFiles = async (files: FileList | File[], targetId: number) => {
@@ -406,7 +460,11 @@ export default function AdminSyllabusCatalog() {
       subjectName: target.subject_name,
       description: target.description || '',
       instructionLanguage: result.language,
-      variants: result.variants.map((v) => ({ ...v, editableLabel: v.label })),
+      variants: result.variants.map((v) => ({
+        ...v,
+        editableLabel: v.label,
+        directionCode: target.direction_code || '',
+      })),
     });
   };
 
@@ -424,7 +482,8 @@ export default function AdminSyllabusCatalog() {
     try {
       if (previewMode === 'create') {
         // Har bir PDF = alohida fan; fan nomi = fayl nomi.
-        for (const v of variants) {
+        for (let i = 0; i < variants.length; i++) {
+          const v = variants[i];
           const nameFromFile = (v.file_name || '').replace(/\.(pdf|docx?)$/i, '').trim();
           const subjectName = nameFromFile || v.label || t('admin.newSubject');
           await createAdminCourseSyllabus({
@@ -432,6 +491,7 @@ export default function AdminSyllabusCatalog() {
             description: preview.description.trim(),
             instruction_language: preview.instructionLanguage,
             department_id: selectedDept.id,
+            direction_code: preview.variants[i]?.directionCode || pendingUploadDirection,
             variants: [v],
             sort_order: deptFans.length,
           });
@@ -546,6 +606,16 @@ export default function AdminSyllabusCatalog() {
     }
   };
 
+  const saveFanDirection = async (row: CourseSyllabusRow, code: string) => {
+    if ((row.direction_code || '') === code) return;
+    try {
+      await updateAdminCourseSyllabus(row.id, { direction_code: code });
+      await load();
+    } catch {
+      setError(t('admin.error.updateFailedGeneric'));
+    }
+  };
+
   const ensureDraftVariants = (row: CourseSyllabusRow) => {
     if (draftTopicsByFan[row.id]) return draftTopicsByFan[row.id];
     return resolveSyllabusVariants(row);
@@ -612,9 +682,14 @@ export default function AdminSyllabusCatalog() {
         <SyllabusUploadPreview
           data={preview}
           saving={uploading}
+          directionOptions={deptDirectionCodes}
+          requireDirection={previewMode === 'create' && deptDirectionCodes.length > 0}
           onChange={setPreview}
           onConfirm={() => void savePreview()}
-          onCancel={() => setPreview(null)}
+          onCancel={() => {
+            setPreview(null);
+            setPendingUploadDirection('');
+          }}
         />
       )}
 
@@ -711,6 +786,7 @@ export default function AdminSyllabusCatalog() {
                   onClick={() => {
                     const next = isOpen ? null : dept.id;
                     setOpenDeptId(next);
+                    setOpenDirectionKey(null);
                     setExpandedId(null);
                     setShowNewFanForm(false);
                     setError(null);
@@ -730,6 +806,9 @@ export default function AdminSyllabusCatalog() {
                     {t('admin.fanCount', { count: dept.fanCount })}
                     {' · '}
                     {t('admin.topicsCountLabel', { count: dept.topicCount })}
+                    {catalogDirectionsForDept(dept, catalogKafedralar).length > 0
+                      ? ` · ${t('admin.directionsCount', { count: catalogDirectionsForDept(dept, catalogKafedralar).length })}`
+                      : ''}
                   </span>
                 </button>
 
@@ -738,15 +817,27 @@ export default function AdminSyllabusCatalog() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => setShowNewFanForm((v) => !v)}
+                        onClick={() => {
+                          setShowNewFanForm((v) => {
+                            const next = !v;
+                            if (next && openDirectionKey?.startsWith(`${dept.id}::`)) {
+                              const code = openDirectionKey.slice(String(dept.id).length + 2);
+                              setNewFanDirection(code === '__none__' ? '' : code);
+                            }
+                            return next;
+                          });
+                        }}
                         className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold"
                       >
                         <Plus size={16} /> {t('admin.newSubject')}
                       </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => uploadInputRef.current?.click()}
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setPendingUploadDirection('');
+                            uploadInputRef.current?.click();
+                          }}
                         className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-[13px] font-semibold text-indigo-800"
                       >
                         <Upload size={16} /> {t('admin.uploadSyllabusCombined')}
@@ -797,6 +888,20 @@ export default function AdminSyllabusCatalog() {
                               className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white"
                             />
                           </label>
+                          <label className="space-y-1 sm:col-span-2">
+                            <span className="text-[12px] font-semibold text-slate-600">{t('admin.direction')}</span>
+                            <select
+                              value={newFanDirection}
+                              onChange={(e) => setNewFanDirection(e.target.value)}
+                              disabled={creatingFan}
+                              className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white"
+                            >
+                              <option value="">{t('admin.selectVariantPlaceholder')}</option>
+                              {deptDirectionOptions.map((d) => (
+                                <option key={d.id} value={d.name}>{d.name}</option>
+                              ))}
+                            </select>
+                          </label>
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -818,11 +923,91 @@ export default function AdminSyllabusCatalog() {
                       </div>
                     )}
 
-                    {fans.length === 0 ? (
-                      <p className="text-center text-slate-500 text-[13px] py-6">{t('admin.emptyDepartmentFans')}</p>
-                    ) : (
-                      <ul className="space-y-3">
-          {fans.map((row) => {
+                    {(() => {
+                      const dirs = catalogDirectionsForDept(dept, catalogKafedralar);
+                      const codes = dirs.map((d) => d.name);
+                      const assigned = new Set<number>();
+                      const groups: { key: string; label: string; fans: CourseSyllabusRow[] }[] = dirs.map((d) => {
+                        const rows = fans.filter((f) => resolveSyllabusDirection(f, codes) === d.name);
+                        rows.forEach((r) => assigned.add(r.id));
+                        return { key: d.name, label: d.name, fans: rows };
+                      });
+                      const rest = fans.filter((f) => !assigned.has(f.id));
+                      if (dirs.length === 0) {
+                        groups.push({
+                          key: '__none__',
+                          label: t('admin.directionUnassigned'),
+                          fans,
+                        });
+                      } else if (rest.length > 0) {
+                        groups.push({
+                          key: '__none__',
+                          label: t('admin.directionUnassigned'),
+                          fans: rest,
+                        });
+                      }
+                      if (fans.length === 0 && dirs.length === 0) {
+                        return (
+                          <p className="text-center text-slate-500 text-[13px] py-6">
+                            {t('admin.emptyDepartmentFans')}
+                          </p>
+                        );
+                      }
+                      return (
+                        <div className="space-y-2">
+                          {groups.map((group) => {
+                            const dirKey = `${dept.id}::${group.key}`;
+                            const dirOpen = openDirectionKey === dirKey;
+                            const uploadCode = group.key === '__none__' ? '' : group.key;
+                            return (
+                              <div
+                                key={dirKey}
+                                className={`rounded-xl border overflow-hidden ${
+                                  dirOpen ? 'border-indigo-200 bg-white' : 'border-slate-200 bg-white'
+                                }`}
+                              >
+                                <div className="flex items-stretch">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenDirectionKey(dirOpen ? null : dirKey)}
+                                    className="flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-indigo-50/40"
+                                  >
+                                    <span className="flex items-center gap-2 font-semibold text-slate-800 min-w-0">
+                                      <GraduationCap size={15} className="text-indigo-500 shrink-0" />
+                                      <span className="truncate">{group.label}</span>
+                                      {dirOpen ? (
+                                        <ChevronUp size={14} className="text-indigo-500 shrink-0" />
+                                      ) : (
+                                        <ChevronDown size={14} className="text-slate-400 shrink-0" />
+                                      )}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 shrink-0">
+                                      {t('admin.fanCount', { count: group.fans.length })}
+                                    </span>
+                                  </button>
+                                  {dept.id > 0 ? (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      title={t('admin.uploadSyllabusCombined')}
+                                      onClick={() => {
+                                        setPendingUploadDirection(uploadCode);
+                                        uploadInputRef.current?.click();
+                                      }}
+                                      className="px-3 border-l border-slate-100 text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                                    >
+                                      <Upload size={15} />
+                                    </button>
+                                  ) : null}
+                                </div>
+                                {dirOpen ? (
+                                  group.fans.length === 0 ? (
+                                    <p className="text-center text-slate-500 text-[12px] py-5 px-3">
+                                      {t('admin.emptyDirectionFans')}
+                                    </p>
+                                  ) : (
+                      <ul className="space-y-3 px-2 pb-2">
+          {group.fans.map((row) => {
             const variants = draftTopicsByFan[row.id] || resolveSyllabusVariants(row);
             const open = expandedId === row.id;
             const topicTotal = totalTopicCount(variants);
@@ -875,6 +1060,19 @@ export default function AdminSyllabusCatalog() {
                       {row.description ? ` · ${row.description}` : ''}
                     </p>
                     <p className="text-[11px] text-slate-400 font-mono">{row.subject_code}</p>
+                    {codes.length > 0 ? (
+                      <select
+                        value={resolveSyllabusDirection(row, codes) || row.direction_code || ''}
+                        onChange={(e) => void saveFanDirection(row, e.target.value)}
+                        className="mt-1 h-7 max-w-[220px] px-2 rounded-lg border border-slate-200 bg-white text-[11px] font-semibold text-slate-700"
+                        title={t('admin.direction')}
+                      >
+                        <option value="">{t('admin.directionUnassigned')}</option>
+                        {codes.map((code) => (
+                          <option key={code} value={code}>{code}</option>
+                        ))}
+                      </select>
+                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -1037,7 +1235,14 @@ export default function AdminSyllabusCatalog() {
             );
           })}
                       </ul>
-                    )}
+                                  )
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

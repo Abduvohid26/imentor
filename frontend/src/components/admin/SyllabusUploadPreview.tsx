@@ -11,12 +11,14 @@ export type SyllabusUploadPreviewData = {
   subjectName: string;
   description: string;
   instructionLanguage: AppLanguage;
-  variants: Array<VariantRow & { editableLabel: string }>;
+  variants: Array<VariantRow & { editableLabel: string; directionCode?: string }>;
 };
 
 type Props = {
   data: SyllabusUploadPreviewData;
   saving: boolean;
+  directionOptions?: string[];
+  requireDirection?: boolean;
   onChange: (data: SyllabusUploadPreviewData) => void;
   onConfirm: () => void;
   onCancel: () => void;
@@ -25,6 +27,8 @@ type Props = {
 export default function SyllabusUploadPreview({
   data,
   saving,
+  directionOptions = [],
+  requireDirection = false,
   onChange,
   onConfirm,
   onCancel,
@@ -40,6 +44,8 @@ export default function SyllabusUploadPreview({
     0,
   );
   const totalTopics = data.variants.reduce((n, v) => n + v.topics.length, 0);
+  const missingDirection =
+    requireDirection && data.variants.some((v) => !(v.directionCode || '').trim());
 
   const updateTopicTitle = (variantIndex: number, topicIndex: number, title: string) => {
     const variants = data.variants.map((v, i) => {
@@ -93,6 +99,25 @@ export default function SyllabusUploadPreview({
                   <span className="text-[12px] font-semibold text-slate-800 truncate flex-1 min-w-0">
                     {variant.file_name}
                   </span>
+                  {directionOptions.length > 0 ? (
+                    <select
+                      value={variant.directionCode || ''}
+                      disabled={saving}
+                      onChange={(e) => {
+                        const variants = data.variants.map((v, i) =>
+                          i === index ? { ...v, directionCode: e.target.value } : v,
+                        );
+                        onChange({ ...data, variants });
+                      }}
+                      className="h-7 max-w-[140px] px-1.5 rounded-lg border border-indigo-200 bg-white text-[11px] font-semibold text-indigo-800"
+                      title={t('admin.syllabusPreview.direction')}
+                    >
+                      <option value="">{t('admin.selectVariantPlaceholder')}</option>
+                      {directionOptions.map((code) => (
+                        <option key={code} value={code}>{code}</option>
+                      ))}
+                    </select>
+                  ) : null}
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200">
                     {instructionLanguageBadge(data.instructionLanguage)}
                   </span>
@@ -145,7 +170,7 @@ export default function SyllabusUploadPreview({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={saving || totalTopics === 0}
+            disabled={saving || totalTopics === 0 || missingDirection}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold disabled:opacity-50"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}

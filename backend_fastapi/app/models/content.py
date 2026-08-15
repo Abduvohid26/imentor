@@ -38,6 +38,8 @@ class CourseSyllabus(Base):
     department_id: Mapped[int | None] = mapped_column(
         ForeignKey("core_academicdepartment.id"), nullable=True
     )
+    # OnlineTest Direction.name (DI, TPI, PI, …). Bo'sh = hali belgilanmagan.
+    direction_code: Mapped[str] = mapped_column(String(32), default="")
     description: Mapped[str] = mapped_column(String(512), default="")
     instruction_language: Mapped[str] = mapped_column(String(8), default="uz")
     file_name: Mapped[str] = mapped_column(String(512))

@@ -15,6 +15,7 @@ class CourseSyllabusUpsertRequest(BaseModel):
     subject_name: str | None = None
     subject_code: str = ""
     department_id: int | None = None
+    direction_code: str = ""
     description: str = ""
     file_name: str = ""
     topics: list[dict] = []
@@ -34,6 +35,11 @@ class CourseSyllabusUpsertRequest(BaseModel):
             raise ValueError("Fan nomi juda qisqa.")
         return v
 
+    @field_validator("direction_code")
+    @classmethod
+    def _validate_direction(cls, value: str) -> str:
+        return (value or "").strip()[:32]
+
 
 class CourseSyllabusFullOut(BaseModel):
     id: int
@@ -42,6 +48,7 @@ class CourseSyllabusFullOut(BaseModel):
     department: int | None
     department_name: str
     department_code: str
+    direction_code: str = ""
     description: str
     instruction_language: str
     file_name: str

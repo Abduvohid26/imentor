@@ -22,6 +22,8 @@ export type CourseSyllabusRow = {
   department?: number | null;
   department_name?: string;
   department_code?: string;
+  /** OnlineTest yo'nalish kodi (DI, TPI, PI, …). */
+  direction_code?: string;
   /** Ko'rsatish uchun tarjimalar (asl nom o'zgarmaydi — u kalit): */
   name_i18n?: Partial<Record<AppLanguage, string>>;
   topics_i18n?: Partial<Record<AppLanguage, Record<string, string>>>;
@@ -107,6 +109,7 @@ export async function createAdminCourseSyllabus(payload: {
   subject_name: string;
   subject_code?: string;
   department_id?: number | null;
+  direction_code?: string;
   description?: string;
   instruction_language?: AppLanguage;
   file_name?: string;
@@ -130,6 +133,7 @@ export async function updateAdminCourseSyllabus(
     subject_name: string;
     description: string;
     department_id: number | null;
+    direction_code: string;
     instruction_language: AppLanguage;
     file_name: string;
     topics: SyllabusTopic[];
