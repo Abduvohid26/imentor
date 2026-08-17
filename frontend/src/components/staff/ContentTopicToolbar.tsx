@@ -6,6 +6,10 @@ import SavedWorkList from './SavedWorkList';
 import { useUiText } from '../../i18n/useUiText';
 import StaffTopicHeader, { type StaffTopicInfo } from './StaffTopicHeader';
 import { staffBtnPrimary, staffBtnSecondary, staffInput, staffLabel } from './staffUi';
+import {
+  DEFAULT_TEST_DIFFICULTY,
+  type TestDifficulty,
+} from '../../utils/testDifficulty';
 
 type Props = {
   moduleLabel: string;
@@ -31,6 +35,8 @@ type Props = {
   questionCountMin?: number;
   questionCountMax?: number;
   questionCountLabel?: string;
+  difficulty?: TestDifficulty;
+  onDifficultyChange?: (value: TestDifficulty) => void;
   /** Panelda allaqachon faol kontent ko'rsatilayotgan bo'lsa (masalan yangi yaratilgan test/QR),
    *  "Hali saqlangan variant yo'q" degan chalkashtiruvchi maslahat ko'rsatilmaydi —
    *  fon saqlash jarayoni tugamagan bo'lishi mumkin, lekin kontent allaqachon foydalanuvchiga ko'rinadi. */
@@ -70,6 +76,8 @@ export default function ContentTopicToolbar({
   questionCountMin = 10,
   questionCountMax = 30,
   questionCountLabel,
+  difficulty,
+  onDifficultyChange,
 }: Props) {
   const { t, locale } = useUiText();
   const resolvedVersionsTitle = versionsTitle ?? t('toolbar.saved');
@@ -104,6 +112,46 @@ export default function ContentTopicToolbar({
     </div>
   ) : null;
 
+  const showDifficulty = onDifficultyChange != null;
+  const resolvedDifficulty = difficulty ?? DEFAULT_TEST_DIFFICULTY;
+  const difficultyField = showDifficulty ? (
+    <div className="space-y-1.5 shrink-0 w-full sm:w-auto">
+      <p className={staffLabel} id="staff-test-difficulty-label">
+        {t('test.difficultyLabel')}
+      </p>
+      <div
+        role="group"
+        aria-labelledby="staff-test-difficulty-label"
+        className="flex rounded-xl border border-black/8 bg-white/60 p-0.5"
+      >
+        {(['easy', 'medium', 'hard'] as const).map((level) => {
+          const active = resolvedDifficulty === level;
+          return (
+            <button
+              key={level}
+              type="button"
+              disabled={loading}
+              onClick={() => onDifficultyChange?.(level)}
+              className={`flex-1 sm:flex-none px-3 h-10 rounded-[10px] text-[13px] font-semibold transition-colors ${
+                active
+                  ? 'bg-[#083047] text-white'
+                  : 'text-[#083047]/70 hover:bg-white/80'
+              }`}
+            >
+              {t(
+                level === 'easy'
+                  ? 'test.difficultyEasy'
+                  : level === 'hard'
+                    ? 'test.difficultyHard'
+                    : 'test.difficultyMedium',
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
   const createButton = (
     <button
       type="button"
@@ -132,6 +180,7 @@ export default function ContentTopicToolbar({
               />
             </div>
             {questionCountField}
+            {difficultyField}
             {createButton}
           </div>
         )}
@@ -139,6 +188,7 @@ export default function ContentTopicToolbar({
         {!showTopicInput && (
           <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
             {questionCountField}
+            {difficultyField}
             {createButton}
           </div>
         )}

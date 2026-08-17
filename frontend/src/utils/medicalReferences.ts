@@ -10,6 +10,8 @@ export interface MedicalReference {
   /** Darslik sahifalari ("114" yoki "114-118, 220"). Faqat kitob manbalarida. */
   pages?: string;
   note?: string;
+  /** Keys matnidagi [n] iqtibos raqami (manba ro'yxati bilan moslash uchun). */
+  citeIndex?: number;
 }
 
 const TRUSTED_HOSTS = [

@@ -60,6 +60,14 @@ import { normalizeCaseFocus } from '../utils/caseFocusLabels';
 import { type MedicalReference } from '../utils/medicalReferences';
 import { stripUnfilledSourceTemplate } from '../utils/sourceTemplate';
 import { stripOptionLetterPrefix } from '../utils/testOptionText';
+import {
+  DEFAULT_TEST_DIFFICULTY,
+  buildTestDifficultyPrompt,
+  testDifficultyTemperature,
+  testExplanationInstruction,
+  testStemInstruction,
+  type TestDifficulty,
+} from '../utils/testDifficulty';
 import { httpJson } from '../api/httpClient';
 import { ensureBackendAccessToken, getBackendAccessToken } from '../utils/backendAuth';
 
@@ -223,6 +231,8 @@ export interface TestSession {
   primaryLanguage?: AppLanguage;
   /** Qolgan tillardagi tarjimalar (uz/ru/en to'liq to'plami uchun). */
   translations?: Partial<Record<AppLanguage, TestSessionContent>>;
+  /** Oson / o'rta / qiyin — yaratishda tanlangan. */
+  difficulty?: TestDifficulty;
 }
 
 export interface LectureNote {
@@ -274,7 +284,10 @@ const SYLLABUS_AI_JSON_HINT =
   '{"subject_name":"...","instruction_language":"uz|en|ru","topics":[{"id":"L1","title":"...","type":"lecture|practical"}]}';
 
 const SYLLABUS_NO_TRANSLATE_RULE =
-  'CRITICAL: subject_name and every topic title MUST stay in the original document language. NEVER translate.';
+  'CRITICAL: subject_name and every topic title MUST stay in the original document language. NEVER translate into another language. ' +
+  'EXCEPTION for Uzbek: if the document is Uzbek (Latin OR Cyrillic), write EVERY title in Latin Uzbek script only — ' +
+  'transliterate Cyrillic Uzbek to Latin (o‘, g‘, sh, ch). Do NOT leave Uzbek Cyrillic letters (ў, қ, ғ, ҳ, …). ' +
+  'Russian titles stay Cyrillic Russian; English stays Latin English.';
 
 const SYLLABUS_AI_SYSTEM =
   'You are an academic syllabus parser for university medical courses. Return JSON only. ' +
@@ -767,6 +780,7 @@ function normalizeTestSession(
     topic: (data.topic || topic || '').trim() || topic,
     questions,
     references: sessionRefs,
+    difficulty: data.difficulty,
   };
 }
 
@@ -901,6 +915,7 @@ function sourcePublisherLabel(type: CaseSource['type']): string {
 function sourcesToMedicalReferences(sources: CaseSource[]): MedicalReference[] {
   return sources.map((s) => ({
     title: s.title,
+    citeIndex: s.index,
     ...(s.authors ? { authors: s.authors } : {}),
     publisher: sourcePublisherLabel(s.type),
     ...(s.url ? { url: s.url } : {}),
@@ -1561,6 +1576,7 @@ export const aiService = {
     count: number = 10,
     language: AppLanguage = 'uz',
     subjectCode?: string,
+    difficulty: TestDifficulty = DEFAULT_TEST_DIFFICULTY,
   ): Promise<TestSession> {
     assertOpenAiApiKey();
     const safeCount = Math.min(90, Math.max(10, Math.round(count) || 10));
@@ -1575,7 +1591,8 @@ export const aiService = {
     ]);
 
     const generate = async (requestedCount: number): Promise<TestSession> => {
-      const variety = buildTestVarietyPrompt(topic, requestedCount);
+      const variety = buildTestVarietyPrompt(topic, requestedCount, difficulty);
+      const levelBlock = buildTestDifficultyPrompt(difficulty);
       // ~480 token/savol: 5-7 gaplik klinik `explanation` (o'zbekcha ~3 token/so'z).
       // gpt-4o max output (16000) dan oshmasin.
       const scaledMaxTokens = Math.min(16000, Math.ceil(requestedCount * 480) + 500);
@@ -1590,35 +1607,25 @@ export const aiService = {
           // optionExplanations shu yerda so'ralmaydi — u `enrichTestSession`
           // ichida, fonda, bo'lak-bo'lak olinadi (katta partiyalarda javob
           // token limitiga urilib JSON kesilib qolmasligi uchun).
-          // Avval "1-2 qisqa gap" edi — ekranda bir qatorlik, hech narsa
-          // tushuntirmaydigan izoh chiqardi. Endi to'liq tahlil (fonda
-          // `enrichTestSession` uni yana kengaytiradi).
-          'explanation — KAMIDA 5, KO\'PI BILAN 7 to\'liq gap (120-170 so\'z): ' +
-          '(a) vignettadagi qaysi belgi/tahlil hal qiluvchi va nega; ' +
-          '(b) klinik fikrlash: yetakchi sindrom va qaysi belgi boshqa tashxislarni kesib tashlashi; ' +
-          '(c) patofiziologiya (mexanizm); ' +
-          '(d) tasdiqlovchi tekshiruv va undan kutiladigan aniq natija; ' +
-          '(e) keyingi qadam yoki tanlangan dori/usul nima qilishi. ' +
-          'Bir-ikki gaplik yoki savolni takrorlaydigan izoh XATO hisoblanadi. ' +
-          'Har gapda aniq atama, mexanizm yoki ko\'rsatkich bo\'lsin; "muhim ahamiyatga ega", ' +
-          '"e\'tibor berish kerak" kabi bo\'sh (safsata) gaplar TAQIQLANADI. ' +
+          `${testExplanationInstruction(difficulty)} ` +
           'O\'ylab topilgan raqam, doza, statistika yoki havola yozmang — ishonchingiz komil ' +
           'bo\'lmasa, aniq son o\'rniga umumiy qoidani yozing. ' +
+          `${levelBlock} ` +
           'optionExplanations YOZMANG. ' +
           `Til: ${outLang}. ${strictLanguageDirective(language)}`,
         user:
-          `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. Klinik vignette 1–2 gap, 5 ta variant. ` +
-          'Har savolni yozishdan oldin o\'zingizga savol bering: "to\'g\'ri javobim shu mavzuga kiradimi?" — ' +
-          'kirmasa, savolni almashtiring. explanation — 5-7 gaplik klinik tahlil. Faqat valid JSON.',
+          `${variety}${avoid}\n\n${requestedCount} ta NOYOB savol. ${testStemInstruction(difficulty)} ` +
+          'Har savolni yozishdan oldin o\'zingizga savol bering: "to\'g\'ri javobim shu mavzuga kiradimi va stemdan kelib chiqadimi? Ikkinchi variant ham to\'g\'rimi?" — ' +
+          'kirmasa yoki ikkita to\'g\'ri bo\'lsa, savolni almashtiring. explanation — 5-7 gaplik klinik tahlil. Faqat valid JSON.',
         maxTokens: scaledMaxTokens,
-        temperature: 0.45,
+        temperature: testDifficultyTemperature(difficulty),
         bookContext,
         onBookReferences: (refs) => {
           bookReferences = refs;
         },
         parse: (t) => parseJSONSafe<TestSession>(t),
       });
-      return normalizeTestSession(topic, parsed, requestedCount, bookReferences);
+      return { ...normalizeTestSession(topic, { ...parsed, difficulty }, requestedCount, bookReferences) };
     };
 
     /** Savol matnlari so'ralgan tilda ekanini tekshiradi. */
@@ -1642,11 +1649,11 @@ export const aiService = {
           console.warn('Test tili bo\'yicha qayta urinish muvaffaqiyatsiz:', err);
         }
       }
-      return { ...normalizeTestSession(topic, data, safeCount), primaryLanguage: language };
+      return { ...normalizeTestSession(topic, data, safeCount), primaryLanguage: language, difficulty };
     } catch (error) {
       console.warn('Test generation failed, compact retry…', error);
       const data = await generate(Math.min(safeCount, 10));
-      return { ...normalizeTestSession(topic, data, safeCount), primaryLanguage: language };
+      return { ...normalizeTestSession(topic, data, safeCount), primaryLanguage: language, difficulty };
     }
   },
 

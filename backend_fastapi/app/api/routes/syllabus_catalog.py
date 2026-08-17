@@ -616,6 +616,7 @@ def _translate_syllabus_bg(syllabus_id: int) -> None:
 def admin_update_syllabus(
     pk: int,
     payload: CourseSyllabusUpsertRequest,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     auth=Depends(require_roles("admin")),
 ) -> CourseSyllabusFullOut:
@@ -624,11 +625,13 @@ def admin_update_syllabus(
         raise HTTPException(status_code=404, detail="Topilmadi.")
 
     data = payload.model_dump(exclude_unset=True)
+    topics_changed = False
     if "subject_name" in data and data["subject_name"]:
         obj.subject_name = data["subject_name"].strip()
     if "description" in data:
         obj.description = (data.get("description") or "").strip()[:512]
     if "variants" in data:
+        topics_changed = True
         incoming = data["variants"]
         if data.get("append_variants"):
             existing = list(obj.variants or [])
@@ -646,6 +649,7 @@ def admin_update_syllabus(
     if "file_name" in data and data["file_name"]:
         obj.file_name = data["file_name"].strip()
     if "topics" in data:
+        topics_changed = True
         obj.topics = data["topics"]
     if "sort_order" in data:
         obj.sort_order = int(data["sort_order"])
@@ -671,6 +675,11 @@ def admin_update_syllabus(
     obj.updated_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
     db.refresh(obj)
+
+    # Yangi/qo'shilgan mavzular ham avto 3 tilga (uz-lotin, ru, en) tarjima qilinsin.
+    if topics_changed:
+        background.add_task(_translate_syllabus_bg, obj.id)
+
     return _full_out(obj)
 
 

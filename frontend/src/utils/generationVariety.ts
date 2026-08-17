@@ -1,3 +1,5 @@
+import type { TestDifficulty } from './testDifficulty';
+
 type CaseLike = { questions: Array<{ scenario?: string }> };
 type TestLike = { questions: Array<{ question?: string }> };
 
@@ -68,11 +70,24 @@ export function topicSubThemes(topic: string): string[] {
     .slice(0, 8);
 }
 
-export function buildTestVarietyPrompt(topic: string, count: number): string {
-  // Yo'nalishlar — savolni QANDAY so'rash uslubi, mavzuning o'zi emas. Ilgari
-  // 4 ta tanlanardi va ular orasida "etika", "bemor xavfsizligi" kabi
-  // umumiy yo'nalishlar model e'tiborini mavzudan butunlay chalg'itardi.
-  const angles = pickRandom(TEST_ANGLES, 2);
+export function buildTestVarietyPrompt(
+  topic: string,
+  count: number,
+  difficulty: TestDifficulty = 'medium',
+): string {
+  const anglePool =
+    difficulty === 'easy'
+      ? TEST_ANGLES.filter(
+          (a) =>
+            a.includes('diagnostika') ||
+            a.includes('dori-darmon') ||
+            a.includes('profilaktika') ||
+            a.includes('laboratoriya'),
+        )
+      : difficulty === 'hard'
+        ? TEST_ANGLES
+        : TEST_ANGLES.filter((a) => !a.includes('etika'));
+  const angles = pickRandom(anglePool.length ? anglePool : TEST_ANGLES, 2);
   const themes = topicSubThemes(topic);
   const themeBlock =
     themes.length > 1

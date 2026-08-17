@@ -31,6 +31,8 @@ export function inferPdfLanguage(text: string): AppLanguage {
 
   const cyr = (sample.match(/[\u0430-\u044f\u0451]/g) || []).length;
   const lat = (sample.match(/[a-z]/g) || []).length;
+  // Faqat o'zbek kirilida bor harflar — rus alifbosida yo'q.
+  const uzOnlyCyr = (sample.match(/[\u049b\u0493\u04b3\u045e\u04d9\u04e3]/g) || []).length;
 
   const ruHints = [
     '\u043b\u0435\u043a\u0446\u0438\u044f',
@@ -59,16 +61,28 @@ export function inferPdfLanguage(text: string): AppLanguage {
     'hours',
     'content',
   ];
+  const uzLatinHints = ["ma'ruza", 'amaliy', 'mavzu', 'sillabus', "o'quv", "sog'liq"];
+  const uzCyrHints = [
+    '\u043c\u0430\u0440\u0443\u0437\u0430', // маруза
+    '\u0430\u043c\u0430\u043b\u0438\u0439', // амалий
+    '\u043c\u0430\u0432\u0437\u0443', // мавзу
+    '\u043a\u0430\u0441\u0430\u043b\u043b\u0438\u043a', // касаллик
+    '\u0434\u0430\u0432\u043e\u043b\u0430\u0448', // даволаш
+  ];
+
+  const uzScore =
+    uzLatinHints.reduce((acc, w) => acc + (sample.includes(w) ? 2 : 0), 0) +
+    uzCyrHints.reduce((acc, w) => acc + (sample.includes(w) ? 2 : 0), 0) +
+    (uzOnlyCyr > 0 ? 4 : 0);
 
   const ruScore = ruHints.reduce((acc, w) => acc + (sample.includes(w) ? 2 : 0), 0) + (cyr > lat ? 2 : 0);
   const enScore =
     enHints.reduce((acc, w) => acc + (sample.includes(w) ? 2 : 0), 0) + (lat > cyr + 40 ? 3 : lat > cyr ? 1 : 0);
 
+  // O'zbek (lotin yoki kirill) — rus/inglizdan oldin.
+  if (uzScore >= 2 && uzScore >= ruScore) return 'uz';
   if (ruScore >= enScore + 2) return 'ru';
   if (enScore >= ruScore + 2) return 'en';
-
-  const uzHints = ["ma'ruza", 'amaliy', 'mavzu', 'sillabus'];
-  const uzScore = uzHints.reduce((acc, w) => acc + (sample.includes(w) ? 2 : 0), 0);
   if (uzScore >= 2) return 'uz';
 
   return cyr > lat ? 'ru' : 'en';

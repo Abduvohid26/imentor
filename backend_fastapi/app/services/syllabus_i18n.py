@@ -23,11 +23,27 @@ logger = logging.getLogger(__name__)
 _NUM_PREFIX = re.compile(r"^\s*\d+[.)]\s*(.+)$", re.S)
 
 SUPPORTED_LANGS = ("uz", "ru", "en")
-LANG_NAMES = {"uz": "Uzbek (latin)", "ru": "Russian", "en": "English"}
+LANG_NAMES = {"uz": "Uzbek (Latin script only — never Cyrillic)", "ru": "Russian", "en": "English"}
 
 # Bitta so'rovda tarjima qilinadigan maksimal sarlavha (juda katta sillabusda
 # javob token chegarasiga urilmasin).
 _BATCH = 30
+
+# O'zbek kiril → lotin (asosiy harflar). AI tarjimasi ishlamasa zaxira.
+_UZ_CYR_TO_LAT = str.maketrans(
+    {
+        "А": "A", "а": "a", "Б": "B", "б": "b", "В": "V", "в": "v", "Г": "G", "г": "g",
+        "Д": "D", "д": "d", "Е": "E", "е": "e", "Ё": "Yo", "ё": "yo", "Ж": "J", "ж": "j",
+        "З": "Z", "з": "z", "И": "I", "и": "i", "Й": "Y", "й": "y", "К": "K", "к": "k",
+        "Л": "L", "л": "l", "М": "M", "м": "m", "Н": "N", "н": "n", "О": "O", "о": "o",
+        "П": "P", "п": "p", "Р": "R", "р": "r", "С": "S", "с": "s", "Т": "T", "т": "t",
+        "У": "U", "у": "u", "Ф": "F", "ф": "f", "Х": "X", "х": "x", "Ц": "Ts", "ц": "ts",
+        "Ч": "Ch", "ч": "ch", "Ш": "Sh", "ш": "sh", "Щ": "Sh", "щ": "sh", "Ъ": "", "ъ": "",
+        "Ы": "I", "ы": "i", "Ь": "", "ь": "", "Э": "E", "э": "e", "Ю": "Yu", "ю": "yu",
+        "Я": "Ya", "я": "ya",
+        "Ў": "O'", "ў": "o'", "Қ": "Q", "қ": "q", "Ғ": "G'", "ғ": "g'", "Ҳ": "H", "ҳ": "h",
+    }
+)
 
 
 def collect_topic_titles(syllabus) -> list[str]:
@@ -157,7 +173,13 @@ def _translate_batch(api_key: str, model: str, items: list[str], target: str) ->
                         "(the same term must be translated the same way everywhere). "
                         "Keep topic codes, numbers, abbreviations and Latin anatomical terms as they are. "
                         "Do NOT add explanations. "
-                        "Input is a JSON array of strings. Return ONLY a JSON object of the form "
+                        + (
+                            "For Uzbek: use LATIN Uzbek orthography only (o', g', sh, ch). "
+                            "Never output Cyrillic letters. "
+                            if target == "uz"
+                            else ""
+                        )
+                        + "Input is a JSON array of strings. Return ONLY a JSON object of the form "
                         '{"items": ["...", "..."]} where "items" has the SAME length and SAME order '
                         "as the input. Do not add numbering or any extra text. Every double quote "
                         "inside a title must be escaped so that the JSON stays valid."
@@ -204,6 +226,9 @@ def _translate_batch(api_key: str, model: str, items: list[str], target: str) ->
                     "Tarjima %s tilida emas, tashlab yuborildi: %s", target, dst[:60]
                 )
                 continue
+            if target == "uz" and _CYRILLIC.search(dst):
+                logger.warning("O'zbek tarjimada kirill qoldi, tashlandi: %s", dst[:60])
+                continue
             out[src] = dst[:512]
         return out
     except Exception:
@@ -224,6 +249,114 @@ def _titles_look_foreign(titles: list[str], lang: str) -> bool:
     return wrong > len(checked) * 0.6
 
 
+def _has_cyrillic(text: str) -> bool:
+    return bool(_CYRILLIC.search(text or ""))
+
+
+def latinize_uzbek_text(text: str) -> str:
+    """O'zbek kirill matnini lotinga o'tkazadi (zaxira transliteratsiya)."""
+    value = (text or "").strip()
+    if not value or not _has_cyrillic(value):
+        return value
+    return value.translate(_UZ_CYR_TO_LAT)
+
+
+def _rewrite_topic_titles(syllabus, mapping: dict[str, str]) -> bool:
+    """variants/topics ichidagi title'larni mapping bo'yicha almashtiradi."""
+    if not mapping:
+        return False
+    changed = False
+
+    def _map_list(items):
+        nonlocal changed
+        if not isinstance(items, list):
+            return items
+        out = []
+        for t in items:
+            if not isinstance(t, dict):
+                out.append(t)
+                continue
+            title = str(t.get("title") or "").strip()
+            new_title = mapping.get(title)
+            if new_title and new_title != title:
+                changed = True
+                out.append({**t, "title": new_title[:512]})
+            else:
+                out.append(t)
+        return out
+
+    variants = syllabus.variants if isinstance(syllabus.variants, list) else []
+    if variants:
+        syllabus.variants = [
+            {**v, "topics": _map_list(v.get("topics"))} if isinstance(v, dict) else v
+            for v in variants
+        ]
+    if isinstance(syllabus.topics, list):
+        syllabus.topics = _map_list(syllabus.topics)
+
+    name = (syllabus.subject_name or "").strip()
+    if name in mapping and mapping[name] != name:
+        syllabus.subject_name = mapping[name][:255]
+        changed = True
+    return changed
+
+
+def ensure_uzbek_latin_source(db, syllabus, api_key: str, model: str) -> bool:
+    """Manba o'zbekcha (yoki o'zbek kirill) bo'lsa — sarlavhalarni lotinga o'tkazadi.
+
+    Ruscha sillabusga tegmaydi. Maqsad: interfeysda o'zbekcha hech qachon
+    kirillcha ko'rinmasin.
+    """
+    source_lang = (syllabus.instruction_language or "uz").strip().lower()
+    titles = collect_topic_titles(syllabus)
+    name = (syllabus.subject_name or "").strip()
+    sample = [name, *titles[:20]]
+    uz_cyr = any(_UZ_ONLY_CYRILLIC.search(t or "") for t in sample)
+    any_cyr = any(_has_cyrillic(t or "") for t in sample if _letters(t or "") >= 4)
+
+    # Faqat o'zbek manba yoki aniq o'zbek-kirill belgilarida.
+    if source_lang != "uz" and not uz_cyr:
+        return False
+    if not any_cyr:
+        return False
+
+    # instruction_language xato "ru" bo'lishi mumkin — o'zbek kirill topilsa uz qilamiz.
+    if uz_cyr and source_lang != "uz":
+        syllabus.instruction_language = "uz"
+        source_lang = "uz"
+
+    items = [t for t in ([name] if name else []) + titles if _has_cyrillic(t)]
+    if not items:
+        return False
+
+    # Avval AI orqali to'g'ri lotin o'zbek; muvaffaqiyatsiz bo'lsa translit.
+    mapping: dict[str, str] = {}
+    for i in range(0, len(items), _BATCH):
+        chunk = items[i : i + _BATCH]
+        got = _translate_batch(api_key, model, chunk, "uz")
+        for src in chunk:
+            dst = (got.get(src) or "").strip()
+            if not dst or _has_cyrillic(dst):
+                dst = latinize_uzbek_text(src)
+            if dst and dst != src:
+                mapping[src] = dst
+
+    if not mapping:
+        return False
+
+    changed = _rewrite_topic_titles(syllabus, mapping)
+    if changed:
+        # Eski i18n kalitlari asl kirill title'larga bog'langan — tozalaymiz,
+        # keyin ensure_syllabus_translations qayta to'ldiradi.
+        syllabus.topics_i18n = {}
+        name_i18n = dict(syllabus.name_i18n or {})
+        name_i18n.pop("uz", None)
+        syllabus.name_i18n = name_i18n
+        db.commit()
+        logger.info("Sillabus %s o'zbek kirill → lotin qilindi (%s ta)", syllabus.id, len(mapping))
+    return changed
+
+
 def ensure_syllabus_translations(db, syllabus, langs: tuple[str, ...] = SUPPORTED_LANGS) -> bool:
     """Yetishmayotgan tarjimalarni to'ldiradi. O'zgarish bo'lsa True.
 
@@ -238,12 +371,18 @@ def ensure_syllabus_translations(db, syllabus, langs: tuple[str, ...] = SUPPORTE
         return False
 
     model = settings.openai_fast_model
+    changed = False
+
+    # Avval o'zbek manbani lotinga keltiramiz (kirill qolmasin).
+    if ensure_uzbek_latin_source(db, syllabus, api_key, model):
+        changed = True
+        db.refresh(syllabus)
+
     source_lang = (syllabus.instruction_language or "uz").strip().lower()
     titles = collect_topic_titles(syllabus)
 
     name_i18n = dict(syllabus.name_i18n or {})
     topics_i18n = {k: dict(v or {}) for k, v in (syllabus.topics_i18n or {}).items()}
-    changed = False
 
     # Saqlangan noto'g'ri tildagi tarjimalarni tozalaymiz — ular `instruction_language`
     # xato bo'lgan sillabuslarda paydo bo'lgan (masalan "ru" katagida inglizcha matn).

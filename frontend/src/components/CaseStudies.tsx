@@ -34,8 +34,9 @@ import StaffErrorAlert from './staff/StaffErrorAlert';
 import StaffLoading from './staff/StaffLoading';
 import StaffPanel from './staff/StaffPanel';
 import { isTopicContextComplete } from '../utils/syllabusTopicContext';
-import LinkifiedText from './staff/LinkifiedText';
 import MedicalReferencesList from './staff/MedicalReferencesList';
+import CaseAnswerView from './staff/CaseAnswerView';
+import type { MedicalReference } from '../utils/medicalReferences';
 import {
   staffInput,
   staffLabel,
@@ -291,6 +292,17 @@ export default function CaseStudies() {
     [caseSession],
   );
 
+  const citeUrlsFromRefs = (refs?: MedicalReference[]): Record<number, string> => {
+    const out: Record<number, string> = {};
+    (refs || []).forEach((r, idx) => {
+      const url = (r.url || '').trim();
+      if (!url) return;
+      const n = typeof r.citeIndex === 'number' ? r.citeIndex : idx + 1;
+      out[n] = url;
+    });
+    return out;
+  };
+
   return (
     <StaffPageLayout spacious className="print:p-0 print:max-w-none print:m-0">
       <ContentTopicToolbar
@@ -447,11 +459,19 @@ export default function CaseStudies() {
                           <KeyRound size={14} className="shrink-0" />
                           {t('case.answerLabel')}
                         </h4>
-                        <LinkifiedText text={q.answer} className={staffExplainBody} />
-                        {/* Manbalar avval umuman ko'rsatilmasdi (`q.references`
-                            ishlatilmagan edi) — endi ko'k blokda chiqadi. */}
+                        <CaseAnswerView
+                          text={q.answer}
+                          refAnchorPrefix={`case-${i}-ref`}
+                          citeUrls={citeUrlsFromRefs(q.references)}
+                        />
+                        {/* Matndagi FOYDALANILGAN ADABIYOTLAR CaseAnswerView ichida
+                            kesiladi; ro'yxat bir marta ko'rsatiladi. */}
                         {q.references && q.references.length > 0 && (
-                          <MedicalReferencesList references={q.references} compact />
+                          <MedicalReferencesList
+                            references={q.references}
+                            compact
+                            anchorPrefix={`case-${i}-ref`}
+                          />
                         )}
                       </motion.div>
                     )}
@@ -460,9 +480,18 @@ export default function CaseStudies() {
                   {/* Print: har doim javobni ko'rsatish */}
                   <div className="hidden print:block px-7 pb-7 pl-[84px]">
                     <h4 className={staffExplainTitle}>{t('case.answerLabel')}</h4>
-                    <LinkifiedText text={q.answer} className={`mt-2 ${staffExplainBody}`} />
+                    <CaseAnswerView
+                      text={q.answer}
+                      refAnchorPrefix={`case-${i}-ref`}
+                      citeUrls={citeUrlsFromRefs(q.references)}
+                    />
                     {q.references && q.references.length > 0 && (
-                      <MedicalReferencesList references={q.references} compact className="mt-3" />
+                      <MedicalReferencesList
+                        references={q.references}
+                        compact
+                        className="mt-3"
+                        anchorPrefix={`case-${i}-ref`}
+                      />
                     )}
                   </div>
                 </StaffPanel>

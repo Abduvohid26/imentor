@@ -70,6 +70,7 @@ import {
 } from '../utils/buildTestPdf';
 import { gradeBadgeClass, scoreToGrade } from '../utils/testGrading';
 import { stripOptionLetterPrefix } from '../utils/testOptionText';
+import { DEFAULT_TEST_DIFFICULTY, type TestDifficulty } from '../utils/testDifficulty';
 
 interface LiveTestSessionDoc {
   topic: string;
@@ -219,6 +220,7 @@ export default function TestQuestions() {
 
   const [topic, setTopic] = useState(globalTopic ? globalTopic.title : '');
   const [questionCount, setQuestionCount] = useState(10);
+  const [difficulty, setDifficulty] = useState<TestDifficulty>(DEFAULT_TEST_DIFFICULTY);
   const [loading, setLoading] = useState(false);
   const [testSession, setTestSession] = useState<TestSession | null>(null);
   const [versions, setVersions] = useState<PreparedContentSummary[]>([]);
@@ -727,7 +729,13 @@ export default function TestQuestions() {
       const count = Math.min(90, Math.max(10, questionCount));
       // Asosiy til = UI tili (header dagi uz/ru/en). Qolgan 2 til — fonda tarjima.
       const contentLanguage = language;
-      const data = await aiService.generateTests(topic, count, contentLanguage, globalTopic.subjectCode);
+      const data = await aiService.generateTests(
+        topic,
+        count,
+        contentLanguage,
+        globalTopic.subjectCode,
+        difficulty,
+      );
       setTestSession(data);
       setViewLang(data.primaryLanguage || contentLanguage);
       const sid = await setupTeacherLiveSession(data);
@@ -1092,6 +1100,8 @@ export default function TestQuestions() {
         onQuestionCountChange={setQuestionCount}
         questionCountMin={10}
         questionCountMax={90}
+        difficulty={difficulty}
+        onDifficultyChange={setDifficulty}
         versions={versions}
         activeVersionId={activeVersionId}
         onSelectVersion={handleSelectVersion}
@@ -1104,7 +1114,13 @@ export default function TestQuestions() {
       {loading && (
         <StaffLoading
           label={t('test.generating')}
-          hint={t('test.generatingHint', { count: questionCount })}
+          hint={t('test.generatingHint', { count: questionCount, level: t(
+            difficulty === 'easy'
+              ? 'test.difficultyEasy'
+              : difficulty === 'hard'
+                ? 'test.difficultyHard'
+                : 'test.difficultyMedium',
+          ) })}
         />
       )}
 
