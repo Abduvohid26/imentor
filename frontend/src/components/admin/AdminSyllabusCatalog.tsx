@@ -47,6 +47,7 @@ import {
 } from '../../utils/syllabusInstructionLanguage';
 import {
   filterSyllabusUploadFiles,
+  stripSyllabusFileExtension,
   SYLLABUS_UPLOAD_ACCEPT,
 } from '../../utils/syllabusDocumentText';
 import SyllabusUploadPreview, {
@@ -423,7 +424,7 @@ export default function AdminSyllabusCatalog() {
     // 1 yoki ko'p PDF — bitta tugma; har variant/fayl fan sifatida saqlanadi.
     const subjectGuess =
       uploadFiles.length === 1
-        ? uploadFiles[0].name.replace(/\.(pdf|docx?)$/i, '').trim()
+        ? stripSyllabusFileExtension(uploadFiles[0].name)
         : t('admin.newSubject');
 
     setPreviewMode('create');
@@ -484,7 +485,7 @@ export default function AdminSyllabusCatalog() {
         // Har bir PDF = alohida fan; fan nomi = fayl nomi.
         for (let i = 0; i < variants.length; i++) {
           const v = variants[i];
-          const nameFromFile = (v.file_name || '').replace(/\.(pdf|docx?)$/i, '').trim();
+          const nameFromFile = stripSyllabusFileExtension(v.file_name || '');
           const subjectName = nameFromFile || v.label || t('admin.newSubject');
           await createAdminCourseSyllabus({
             subject_name: subjectName,

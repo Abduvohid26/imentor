@@ -8,7 +8,7 @@ export type SyllabusVariant = {
 
 /** `Falsafa (PI).pdf` → `PI`; `Anatomiya_PI.docx` → `PI`; yo'q bo'lsa qisqa nom */
 export function parseVariantLabel(fileName: string): string {
-  const base = fileName.replace(/\.(pdf|docx?)$/i, '').trim();
+  const base = fileName.replace(/\.(pdf|docx?|xlsx)$/i, '').trim();
   const paren = base.match(/\(([^)]+)\)\s*$/);
   if (paren?.[1]?.trim()) return paren[1].trim().slice(0, 32);
 

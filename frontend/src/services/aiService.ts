@@ -29,7 +29,10 @@ import {
 import {
   extractSyllabusDocumentText,
   stripSyllabusFileExtension,
+  syllabusFileExtension,
 } from '../utils/syllabusDocumentText';
+import { parseSyllabusExcel } from '../utils/syllabusExcelParse';
+import { readXlsxRows } from '../utils/xlsxRows';
 import { parseAiJson } from '../utils/parseAiJson';
 import {
   OPENAI_CHAT,
@@ -425,7 +428,7 @@ function syllabusExtractionErrorMessage(err: unknown, fileName: string, lang: Ap
   if (msg === 'doc-empty') {
     return translate(lang, 'ai.error.syllabusDocEmpty', { fileName });
   }
-  if (msg === 'unsupported-format') {
+  if (msg === 'unsupported-format' || msg === 'xlsx-invalid') {
     return translate(lang, 'ai.error.syllabusUnsupported', { fileName });
   }
   if (msg.startsWith('empty:')) {
@@ -1491,6 +1494,18 @@ function dedupePresentationRefs(refs: MedicalReference[]): MedicalReference[] {
 export const aiService = {
   async extractSyllabusFromDocument(file: File): Promise<SyllabusExtractResult> {
     try {
+      if (syllabusFileExtension(file.name) === '.xlsx') {
+        const rows = await readXlsxRows(await file.arrayBuffer());
+        const parsed = parseSyllabusExcel(rows);
+        if (!parsed.topics.length) {
+          throw new Error('empty-document');
+        }
+        return normalizeSyllabusExtract(
+          { topics: parsed.topics },
+          file.name,
+          parsed.asText,
+        );
+      }
       const docText = await extractSyllabusDocumentText(file);
       if (!docText.trim()) {
         throw new Error('empty-document');
